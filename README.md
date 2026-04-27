@@ -15,6 +15,15 @@
 - 账号：`admin`
 - 密码：`admin123`
 
+## 目录说明
+
+当前项目结构里，静态资源和模板都放在 `app/` 下面，这样更适合 FastAPI：
+
+- `app/static`：CSS、JS、图片等静态资源
+- `app/templates`：Jinja2 页面模板
+
+这样在 Windows 和 Linux 下都更稳，不容易出现路径解析错层的问题。
+
 ## 本地启动
 
 ```bash
