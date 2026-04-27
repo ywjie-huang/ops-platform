@@ -1,39 +1,55 @@
 # my-project · 运维管理系统
 
-基于 **Python + FastAPI** 构建的运维管理系统骨架。
+这是一个已经开始成型的 **Python + FastAPI 运维管理系统**。
 
-## 模块
+## 现在已经有的能力
 
-| 模块 | 路由前缀 | 说明 |
-|------|----------|------|
-| 资产管理 | `/api/v1/assets` | 服务器、容器、域名、证书 |
-| 监控面板 | _(待扩展)_ | 主机状态、资源趋势 |
-| 告警中心 | `/api/v1/alerts` | 告警聚合与分派 |
-| 变更发布 | _(待扩展)_ | 发布计划与回滚 |
-| 工单协作 | `/api/v1/tickets` | 工单创建与跟踪 |
-| 审计日志 | `/api/v1/audit/logs` | 操作审计 |
+- 登录页
+- 简单的 Cookie 登录流程
+- 后台首页仪表盘
+- 资产管理、告警中心、工单系统、审计建议区块
+- 基础 API 骨架
 
-## 快速启动
+## 演示账号
+
+- 账号：`admin`
+- 密码：`admin123`
+
+## 本地启动
 
 ```bash
 cd ~/.openclaw/my-project
 
-# 创建虚拟环境
 python3 -m venv venv
 source venv/bin/activate
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 启动开发服务器
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-访问 API 文档：http://localhost:8000/docs
+打开：
+- 登录页: http://localhost:8000/login
+- 系统首页: http://localhost:8000/
+- API 文档: http://localhost:8000/docs
 
-## 下一步
+## 当前阶段说明
 
-1. 配置 PostgreSQL，修改 `app/db/database.py` 中的 `DATABASE_URL`
-2. 运行 `alembic init alembic` 初始化数据库迁移
-3. 补全各模块的数据库 CRUD 操作
-4. 接入登录鉴权（JWT）
+这是一版可继续演进的第一阶段系统：
+- 页面已经有了
+- 登录流程已经有了
+- 业务数据目前还是演示数据
+- 还没有接数据库和真实用户体系
+
+## 我建议的下一步
+
+1. 把登录改成数据库用户表
+2. 先接 SQLite，后面再切 PostgreSQL
+3. 先完成资产管理 CRUD 页面
+4. 再补菜单详情页、权限、审计日志
+
+## 建议开发顺序
+
+- 第一步：用户登录 + 首页
+- 第二步：资产管理
+- 第三步：工单系统
+- 第四步：告警中心
+- 第五步：权限和审计
