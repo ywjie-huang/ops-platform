@@ -15,8 +15,9 @@ def dashboard(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     return templates.TemplateResponse(
-        "dashboard.html",
-        {
+        request=request,
+        name="dashboard.html",
+        context={
             "request": request,
             "stats": DASHBOARD_STATS,
             "assets": ASSETS,

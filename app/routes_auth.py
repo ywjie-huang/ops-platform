@@ -13,8 +13,9 @@ def login_page(request: Request, error: str = ""):
     if request.cookies.get("ops_session") == SECRET_KEY:
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": error},
+        request=request,
+        name="login.html",
+        context={"request": request, "error": error},
     )
 
 
