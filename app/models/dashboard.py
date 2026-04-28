@@ -7,3 +7,4 @@ class DashboardStats:
     online_hosts: int
     open_alerts: int
     pending_tickets: int
+    user_total: int

@@ -152,6 +152,10 @@ button {
   margin-top: 24px;
 }
 
+.stats-grid-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .stat-card,
 .panel {
   background: rgba(15, 23, 42, 0.86);
@@ -276,6 +280,7 @@ th {
   }
 
   .stats-grid,
+  .stats-grid-5,
   .two-col,
   .two-col-layout {
     grid-template-columns: 1fr;

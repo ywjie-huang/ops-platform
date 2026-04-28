@@ -13,6 +13,8 @@
       <a class="active" href="#">仪表盘</a>
       <a href="#assets">资产管理</a>
       <a href="#asset-form">新增资产</a>
+      <a href="#users">用户管理</a>
+      <a href="#user-form">新增用户</a>
       <a href="#todo">后续规划</a>
     </nav>
   </aside>
@@ -21,12 +23,12 @@
     <header class="topbar">
       <div>
         <h1>运维管理系统首页</h1>
-        <p class="muted">现在已经接入 SQLite、真实登录和资产管理 CRUD。</p>
+        <p class="muted">现在已经接入 SQLite、真实登录、资产管理 CRUD 和用户管理。</p>
       </div>
       <a class="ghost-btn" href="/logout">退出登录</a>
     </header>
 
-    <section class="stats-grid">
+    <section class="stats-grid stats-grid-5">
       <article class="stat-card">
         <span>资产总数</span>
         <strong>{{ stats.asset_total }}</strong>
@@ -42,6 +44,10 @@
       <article class="stat-card">
         <span>待处理工单</span>
         <strong>{{ stats.pending_tickets }}</strong>
+      </article>
+      <article class="stat-card">
+        <span>用户总数</span>
+        <strong>{{ stats.user_total }}</strong>
       </article>
     </section>
 
@@ -136,16 +142,90 @@
       </section>
     </div>
 
+    <div class="two-col-layout">
+      <section class="panel" id="users">
+        <div class="panel-head">
+          <h3>用户管理</h3>
+          <span>支持新增、编辑、删除，当前登录用户不能删自己</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>用户名</th>
+              <th>姓名</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in users %}
+            <tr>
+              <td>{{ item.id }}</td>
+              <td>{{ item.username }}</td>
+              <td>{{ item.full_name }}</td>
+              <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>
+                <div class="action-row">
+                  <a class="small-btn" href="/users/{{ item.id }}/edit">编辑</a>
+                  <form method="post" action="/users/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个用户吗？');">
+                    <button class="small-btn danger" type="submit">删除</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel" id="user-form">
+        <div class="panel-head">
+          <h3>{% if editing_user %}编辑用户{% else %}新增用户{% endif %}</h3>
+          <span>先做最核心的账号管理</span>
+        </div>
+
+        {% if user_error %}
+        <div class="alert error">{{ user_error }}</div>
+        {% endif %}
+
+        {% if editing_user %}
+        <form class="form-grid" method="post" action="/users/{{ editing_user.id }}/update">
+        {% else %}
+        <form class="form-grid" method="post" action="/users/create">
+        {% endif %}
+          <label>
+            <span>用户名</span>
+            <input name="username" required value="{{ editing_user.username if editing_user else '' }}" />
+          </label>
+          <label>
+            <span>姓名</span>
+            <input name="full_name" required value="{{ editing_user.full_name if editing_user else '' }}" />
+          </label>
+          <label>
+            <span>{% if editing_user %}新密码（留空则不修改）{% else %}密码{% endif %}</span>
+            <input name="password" {% if not editing_user %}required{% endif %} type="password" />
+          </label>
+          <div class="action-row">
+            <button type="submit">{% if editing_user %}保存用户{% else %}创建用户{% endif %}</button>
+            {% if editing_user %}
+            <a class="ghost-btn" href="/">取消编辑</a>
+            {% endif %}
+          </div>
+        </form>
+      </section>
+    </div>
+
     <section class="panel" id="todo">
       <div class="panel-head">
         <h3>下一阶段建议</h3>
         <span>后面可以逐步继续扩展</span>
       </div>
       <ol class="todo-list">
-        <li>增加用户管理页面</li>
         <li>补权限控制和角色</li>
         <li>增加工单、告警、审计真实数据表</li>
         <li>接入 PostgreSQL 和 Alembic 迁移</li>
+        <li>增加分页、搜索、筛选</li>
       </ol>
     </section>
   </main>
