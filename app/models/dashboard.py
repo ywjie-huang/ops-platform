@@ -8,3 +8,10 @@ class DashboardStats:
     open_alerts: int
     pending_tickets: int
     user_total: int
+
+
+@dataclass
+class NavItem:
+    label: str
+    href: str
+    key: str

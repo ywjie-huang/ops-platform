@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+
+{% block title %}仪表盘 | 运维管理系统{% endblock %}
+{% block page_title %}运维管理系统仪表盘{% endblock %}
+{% block page_desc %}这里放总览数据，每个业务模块现在已经拆成独立页面。{% endblock %}
+
+{% block page_content %}
+<section class="stats-grid stats-grid-5">
+  <article class="stat-card">
+    <span>资产总数</span>
+    <strong>{{ stats.asset_total }}</strong>
+  </article>
+  <article class="stat-card">
+    <span>在线主机</span>
+    <strong>{{ stats.online_hosts }}</strong>
+  </article>
+  <article class="stat-card">
+    <span>当前告警</span>
+    <strong>{{ stats.open_alerts }}</strong>
+  </article>
+  <article class="stat-card">
+    <span>待处理工单</span>
+    <strong>{{ stats.pending_tickets }}</strong>
+  </article>
+  <article class="stat-card">
+    <span>用户总数</span>
+    <strong>{{ stats.user_total }}</strong>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h3>当前系统结构</h3>
+    <span>已经调整为更像正式后台的结构</span>
+  </div>
+  <div class="card-grid">
+    <article class="mini-card">
+      <h4>资产管理</h4>
+      <p>独立页面，支持新增、编辑、删除资产。</p>
+      <a class="small-btn" href="/assets">进入资产管理</a>
+    </article>
+    <article class="mini-card">
+      <h4>用户管理</h4>
+      <p>独立页面，支持新增、编辑、删除用户。</p>
+      <a class="small-btn" href="/users">进入用户管理</a>
+    </article>
+    <article class="mini-card">
+      <h4>后续模块</h4>
+      <p>后面可以继续拆出工单、告警、审计日志页面。</p>
+      <span class="muted">下一步可继续扩展</span>
+    </article>
+  </div>
+</section>
+{% endblock %}

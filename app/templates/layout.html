@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div>
+      <p class="eyebrow">OPS PLATFORM</p>
+      <h2>运维管理系统</h2>
+    </div>
+    <nav class="nav-list">
+      {% for item in nav_items %}
+      <a href="{{ item.href }}" class="{% if active_nav == item.key %}active{% endif %}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <h1>{% block page_title %}{% endblock %}</h1>
+        <p class="muted">{% block page_desc %}{% endblock %}</p>
+      </div>
+      <a class="ghost-btn" href="/logout">退出登录</a>
+    </header>
+
+    {% block page_content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

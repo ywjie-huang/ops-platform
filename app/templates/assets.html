@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+
+{% block title %}资产管理 | 运维管理系统{% endblock %}
+{% block page_title %}资产管理{% endblock %}
+{% block page_desc %}独立页面管理资产信息，适合后续继续扩展筛选、分页和详情页。{% endblock %}
+
+{% block page_content %}
+<div class="two-col-layout">
+  <section class="panel">
+    <div class="panel-head">
+      <h3>资产列表</h3>
+      <span>支持新增、编辑、删除</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>IP</th>
+          <th>状态</th>
+          <th>负责人</th>
+          <th>说明</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in assets %}
+        <tr>
+          <td>{{ item.name }}</td>
+          <td>{{ item.asset_type }}</td>
+          <td>{{ item.ip_address }}</td>
+          <td>{{ item.status }}</td>
+          <td>{{ item.owner }}</td>
+          <td>{{ item.description }}</td>
+          <td>
+            <div class="action-row">
+              <a class="small-btn" href="/assets/{{ item.id }}/edit">编辑</a>
+              <form method="post" action="/assets/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个资产吗？');">
+                <button class="small-btn danger" type="submit">删除</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h3>{% if editing_asset %}编辑资产{% else %}新增资产{% endif %}</h3>
+      <span>核心信息维护</span>
+    </div>
+
+    {% if editing_asset %}
+    <form class="form-grid" method="post" action="/assets/{{ editing_asset.id }}/update">
+    {% else %}
+    <form class="form-grid" method="post" action="/assets/create">
+    {% endif %}
+      <label>
+        <span>资产名称</span>
+        <input name="name" required value="{{ editing_asset.name if editing_asset else '' }}" />
+      </label>
+      <label>
+        <span>资产类型</span>
+        <input name="asset_type" required value="{{ editing_asset.asset_type if editing_asset else '' }}" />
+      </label>
+      <label>
+        <span>IP 地址</span>
+        <input name="ip_address" required value="{{ editing_asset.ip_address if editing_asset else '' }}" />
+      </label>
+      <label>
+        <span>状态</span>
+        <select name="status">
+          {% set current_status = editing_asset.status if editing_asset else '在线' %}
+          <option value="在线" {% if current_status == '在线' %}selected{% endif %}>在线</option>
+          <option value="离线" {% if current_status == '离线' %}selected{% endif %}>离线</option>
+          <option value="维护中" {% if current_status == '维护中' %}selected{% endif %}>维护中</option>
+        </select>
+      </label>
+      <label>
+        <span>负责人</span>
+        <input name="owner" value="{{ editing_asset.owner if editing_asset else '' }}" />
+      </label>
+      <label>
+        <span>说明</span>
+        <textarea name="description" rows="4">{{ editing_asset.description if editing_asset else '' }}</textarea>
+      </label>
+      <div class="action-row">
+        <button type="submit">{% if editing_asset %}保存修改{% else %}创建资产{% endif %}</button>
+        {% if editing_asset %}
+        <a class="ghost-btn" href="/assets">取消编辑</a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

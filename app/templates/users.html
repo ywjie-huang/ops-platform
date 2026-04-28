@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block title %}用户管理 | 运维管理系统{% endblock %}
+{% block page_title %}用户管理{% endblock %}
+{% block page_desc %}独立页面管理用户账号，后面可以继续扩展角色、权限和组织结构。{% endblock %}
+
+{% block page_content %}
+<div class="two-col-layout">
+  <section class="panel">
+    <div class="panel-head">
+      <h3>用户列表</h3>
+      <span>支持新增、编辑、删除，当前登录用户不能删自己</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>用户名</th>
+          <th>姓名</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in users %}
+        <tr>
+          <td>{{ item.id }}</td>
+          <td>{{ item.username }}</td>
+          <td>{{ item.full_name }}</td>
+          <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            <div class="action-row">
+              <a class="small-btn" href="/users/{{ item.id }}/edit">编辑</a>
+              {% if item.id|string != session_user_id|string %}
+              <form method="post" action="/users/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个用户吗？');">
+                <button class="small-btn danger" type="submit">删除</button>
+              </form>
+              {% else %}
+              <span class="muted">当前登录用户</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h3>{% if editing_user %}编辑用户{% else %}新增用户{% endif %}</h3>
+      <span>先做最核心的账号管理</span>
+    </div>
+
+    {% if user_error %}
+    <div class="alert error">{{ user_error }}</div>
+    {% endif %}
+
+    {% if editing_user %}
+    <form class="form-grid" method="post" action="/users/{{ editing_user.id }}/update">
+    {% else %}
+    <form class="form-grid" method="post" action="/users/create">
+    {% endif %}
+      <label>
+        <span>用户名</span>
+        <input name="username" required value="{{ editing_user.username if editing_user else '' }}" />
+      </label>
+      <label>
+        <span>姓名</span>
+        <input name="full_name" required value="{{ editing_user.full_name if editing_user else '' }}" />
+      </label>
+      <label>
+        <span>{% if editing_user %}新密码（留空则不修改）{% else %}密码{% endif %}</span>
+        <input name="password" {% if not editing_user %}required{% endif %} type="password" />
+      </label>
+      <div class="action-row">
+        <button type="submit">{% if editing_user %}保存用户{% else %}创建用户{% endif %}</button>
+        {% if editing_user %}
+        <a class="ghost-btn" href="/users">取消编辑</a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
