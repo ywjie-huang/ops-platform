@@ -9,7 +9,7 @@ from app.db.database import Base, engine
 from app.models.asset import Asset
 from app.models.user import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -32,6 +32,8 @@ def init_db() -> None:
 def _seed_users(db: Session) -> None:
     existing_user = db.scalar(select(User).where(User.username == DEMO_USERNAME))
     if existing_user:
+        if not existing_user.password_hash.startswith("$pbkdf2-sha256$"):
+            existing_user.password_hash = hash_password(DEMO_PASSWORD)
         return
 
     db.add(
