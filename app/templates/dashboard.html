@@ -12,17 +12,16 @@
     <nav class="nav-list">
       <a class="active" href="#">仪表盘</a>
       <a href="#assets">资产管理</a>
-      <a href="#alerts">告警中心</a>
-      <a href="#tickets">工单系统</a>
-      <a href="#audit">审计日志</a>
+      <a href="#asset-form">新增资产</a>
+      <a href="#todo">后续规划</a>
     </nav>
   </aside>
 
   <main class="content">
     <header class="topbar">
       <div>
-        <h1>欢迎回来</h1>
-        <p class="muted">这是第一版后台页面，已经可以登录并查看基础信息。</p>
+        <h1>运维管理系统首页</h1>
+        <p class="muted">现在已经接入 SQLite、真实登录和资产管理 CRUD。</p>
       </div>
       <a class="ghost-btn" href="/logout">退出登录</a>
     </header>
@@ -46,77 +45,107 @@
       </article>
     </section>
 
-    <section class="panel" id="assets">
-      <div class="panel-head">
-        <h3>资产管理</h3>
-        <span>先做静态展示，后面再接数据库</span>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>类型</th>
-            <th>负责人</th>
-            <th>状态</th>
-            <th>IP</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in assets %}
-          <tr>
-            <td>{{ item.name }}</td>
-            <td>{{ item.asset_type }}</td>
-            <td>{{ item.owner }}</td>
-            <td>{{ item.status }}</td>
-            <td>{{ item.ip_address }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <div class="two-col">
-      <section class="panel" id="alerts">
+    <div class="two-col-layout">
+      <section class="panel" id="assets">
         <div class="panel-head">
-          <h3>告警中心</h3>
-          <span>简单列表</span>
+          <h3>资产管理</h3>
+          <span>支持新增、编辑、删除</span>
         </div>
-        <ul class="simple-list">
-          {% for item in alerts %}
-          <li>
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.source }} · {{ item.severity }} · {{ item.status }}</span>
-          </li>
-          {% endfor %}
-        </ul>
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>类型</th>
+              <th>IP</th>
+              <th>状态</th>
+              <th>负责人</th>
+              <th>说明</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in assets %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td>{{ item.asset_type }}</td>
+              <td>{{ item.ip_address }}</td>
+              <td>{{ item.status }}</td>
+              <td>{{ item.owner }}</td>
+              <td>{{ item.description }}</td>
+              <td>
+                <div class="action-row">
+                  <a class="small-btn" href="/assets/{{ item.id }}/edit">编辑</a>
+                  <form method="post" action="/assets/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个资产吗？');">
+                    <button class="small-btn danger" type="submit">删除</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </section>
 
-      <section class="panel" id="tickets">
+      <section class="panel" id="asset-form">
         <div class="panel-head">
-          <h3>工单系统</h3>
-          <span>第一版工作台</span>
+          <h3>{% if editing_asset %}编辑资产{% else %}新增资产{% endif %}</h3>
+          <span>第一版先把最核心信息接起来</span>
         </div>
-        <ul class="simple-list">
-          {% for item in tickets %}
-          <li>
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.assignee }} · {{ item.priority }} · {{ item.status }}</span>
-          </li>
-          {% endfor %}
-        </ul>
+
+        {% if editing_asset %}
+        <form class="form-grid" method="post" action="/assets/{{ editing_asset.id }}/update">
+        {% else %}
+        <form class="form-grid" method="post" action="/assets/create">
+        {% endif %}
+          <label>
+            <span>资产名称</span>
+            <input name="name" required value="{{ editing_asset.name if editing_asset else '' }}" />
+          </label>
+          <label>
+            <span>资产类型</span>
+            <input name="asset_type" required value="{{ editing_asset.asset_type if editing_asset else '' }}" placeholder="如：云主机 / 数据库 / 网络设备" />
+          </label>
+          <label>
+            <span>IP 地址</span>
+            <input name="ip_address" required value="{{ editing_asset.ip_address if editing_asset else '' }}" />
+          </label>
+          <label>
+            <span>状态</span>
+            <select name="status">
+              {% set current_status = editing_asset.status if editing_asset else '在线' %}
+              <option value="在线" {% if current_status == '在线' %}selected{% endif %}>在线</option>
+              <option value="离线" {% if current_status == '离线' %}selected{% endif %}>离线</option>
+              <option value="维护中" {% if current_status == '维护中' %}selected{% endif %}>维护中</option>
+            </select>
+          </label>
+          <label>
+            <span>负责人</span>
+            <input name="owner" value="{{ editing_asset.owner if editing_asset else '' }}" />
+          </label>
+          <label>
+            <span>说明</span>
+            <textarea name="description" rows="4">{{ editing_asset.description if editing_asset else '' }}</textarea>
+          </label>
+          <div class="action-row">
+            <button type="submit">{% if editing_asset %}保存修改{% else %}创建资产{% endif %}</button>
+            {% if editing_asset %}
+            <a class="ghost-btn" href="/">取消编辑</a>
+            {% endif %}
+          </div>
+        </form>
       </section>
     </div>
 
-    <section class="panel" id="audit">
+    <section class="panel" id="todo">
       <div class="panel-head">
-        <h3>后续建议</h3>
-        <span>下一步我建议的开发顺序</span>
+        <h3>下一阶段建议</h3>
+        <span>后面可以逐步继续扩展</span>
       </div>
       <ol class="todo-list">
-        <li>把登录改成数据库用户表 + 密码哈希</li>
-        <li>接入 SQLite/PostgreSQL，先做资产 CRUD</li>
-        <li>增加真实菜单页和表单页面</li>
-        <li>补权限、审计、告警处理流程</li>
+        <li>增加用户管理页面</li>
+        <li>补权限控制和角色</li>
+        <li>增加工单、告警、审计真实数据表</li>
+        <li>接入 PostgreSQL 和 Alembic 迁移</li>
       </ol>
     </section>
   </main>

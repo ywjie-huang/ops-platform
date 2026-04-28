@@ -1,28 +1,32 @@
 # my-project · 运维管理系统
 
-这是一个已经开始成型的 **Python + FastAPI 运维管理系统**。
+这是一个已经能实际使用的 **Python + FastAPI 运维管理系统第一版**。
 
-## 现在已经有的能力
+## 当前已经实现
 
 - 登录页
-- 简单的 Cookie 登录流程
+- 基于 SQLite 的真实用户表
+- 基于数据库校验的登录流程
 - 后台首页仪表盘
-- 资产管理、告警中心、工单系统、审计建议区块
-- 基础 API 骨架
+- 资产管理页面
+- 资产新增、编辑、删除
+- 自动初始化默认管理员和示例资产
 
-## 演示账号
+## 默认登录账号
 
 - 账号：`admin`
 - 密码：`admin123`
 
-## 目录说明
+> 首次启动会自动创建 SQLite 数据库和默认管理员。
 
-当前项目结构里，静态资源和模板都放在 `app/` 下面，这样更适合 FastAPI：
+## 项目结构
 
-- `app/static`：CSS、JS、图片等静态资源
+- `app/static`：CSS、图片等静态资源
 - `app/templates`：Jinja2 页面模板
-
-这样在 Windows 和 Linux 下都更稳，不容易出现路径解析错层的问题。
+- `app/db`：数据库连接与初始化
+- `app/models`：SQLAlchemy 数据模型
+- `app/routes_auth.py`：登录相关路由
+- `app/routes_pages.py`：后台页面与资产 CRUD 页面
 
 ## 本地启动
 
@@ -35,30 +39,30 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Windows PowerShell 可用：
+
+```powershell
+cd D:\openclaw\config\my-project
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
 打开：
-- 登录页: http://localhost:8000/login
-- 系统首页: http://localhost:8000/
-- API 文档: http://localhost:8000/docs
+- 登录页：`http://localhost:8000/login`
+- 首页：`http://localhost:8000/`
+- API 文档：`http://localhost:8000/docs`
 
-## 当前阶段说明
+## 数据文件
 
-这是一版可继续演进的第一阶段系统：
-- 页面已经有了
-- 登录流程已经有了
-- 业务数据目前还是演示数据
-- 还没有接数据库和真实用户体系
+SQLite 数据库默认在：
 
-## 我建议的下一步
+- `data/ops.db`
 
-1. 把登录改成数据库用户表
-2. 先接 SQLite，后面再切 PostgreSQL
-3. 先完成资产管理 CRUD 页面
-4. 再补菜单详情页、权限、审计日志
+## 下一步建议
 
-## 建议开发顺序
-
-- 第一步：用户登录 + 首页
-- 第二步：资产管理
-- 第三步：工单系统
-- 第四步：告警中心
-- 第五步：权限和审计
+1. 增加用户管理页面
+2. 做角色与权限
+3. 增加工单、告警、审计真实数据表
+4. 接入 Alembic 做数据库迁移
+5. 后续切 PostgreSQL
