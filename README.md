@@ -162,6 +162,55 @@
 
 ## 项目结构
 
+### 前端 SPA（`frontend/`）
+
+```
+frontend/src/
+├── api/                    # API 请求层（13个模块）
+│   ├── request.ts          # Axios 实例 + JWT 拦截器
+│   ├── auth.ts             # 登录/登出/用户信息
+│   ├── dashboard.ts        # 仪表盘
+│   ├── assets.ts           # 资产管理
+│   ├── users.ts            # 用户管理
+│   ├── roles.ts            # 角色权限 + 分配菜单
+│   ├── tickets.ts          # 工单协作
+│   ├── alerts.ts           # 告警中心
+│   ├── containers.ts       # 容器管理
+│   ├── monitoring.ts       # 监控
+│   ├── reports.ts          # 报表
+│   └── audit.ts            # 审计日志
+├── assets/styles/          # 全局 SCSS 样式
+├── layouts/                # 布局组件
+│   ├── DefaultLayout.vue   # 整体布局
+│   ├── Sidebar.vue         # 侧边栏（动态菜单+权限过滤）
+│   ├── Header.vue          # 顶栏（面包屑+用户下拉）
+│   └── AppMain.vue         # 内容区（路由过渡动画）
+├── router/                 # 路由
+│   ├── index.ts            # 路由实例 + 全局守卫（JWT 鉴权）
+│   └── modules/routes.ts   # 路由配置（按模块拆分）
+├── stores/                 # Pinia 状态管理
+│   └── modules/
+│       ├── auth.ts         # 认证状态（token/用户信息/权限）
+│       └── app.ts          # 应用状态（侧边栏折叠）
+├── utils/                  # 工具函数
+│   └── auth.ts             # Token 存取
+└── views/                  # 页面组件（14个）
+    ├── login/              # 登录页
+    ├── dashboard/          # 仪表盘
+    ├── assets/             # 资产管理（列表+详情）
+    ├── users/              # 用户管理
+    ├── roles/              # 角色权限（含分配菜单弹窗）
+    ├── tickets/            # 工单协作（列表+详情）
+    ├── alerts/             # 告警中心（列表+详情）
+    ├── containers/         # 容器管理
+    ├── monitoring/         # 监控（指标+主机+详情）
+    ├── reports/            # 报表中心
+    ├── audit/              # 审计日志
+    └── password/           # 修改密码
+```
+
+### 后端（`app/`）
+
 ```
 app/
 ├── static/
