@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+venv-linux/
 *.db
 .env
 .env.*
@@ -11,3 +12,13 @@ venv/
 dist/
 build/
 *.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
