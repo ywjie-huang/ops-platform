@@ -162,6 +162,31 @@
 
 ## 项目结构
 
+```
+my-project/
+├── backend/                # 后端（FastAPI + Jinja2）
+│   ├── app/
+│   │   ├── api/            # REST API 端点（14个模块）
+│   │   ├── core/           # 配置 + JWT
+│   │   ├── db/             # 数据库连接与初始化
+│   │   ├── models/         # SQLAlchemy 模型
+│   │   ├── routes/         # SSR 页面路由
+│   │   ├── services/       # 业务逻辑层
+│   │   ├── templates/      # Jinja2 模板
+│   │   └── static/         # 静态资源
+│   ├── data/               # 数据文件
+│   ├── tests/              # 测试
+│   └── requirements.txt
+├── frontend/               # 前端 SPA（Vue 3 + Element Plus）
+│   └── src/
+│       ├── api/            # API 请求层
+│       ├── layouts/        # 布局组件
+│       ├── router/         # 路由 + 守卫
+│       ├── stores/         # Pinia 状态管理
+│       └── views/          # 页面组件
+└── README.md
+```
+
 ### 前端 SPA（`frontend/`）
 
 ```
@@ -275,22 +300,35 @@ app/
 
 ## 本地启动
 
+### 后端
+
 ```bash
-cd ~/.openclaw/my-project
+cd my-project/backend
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate      # Linux/Mac
+# venv\Scripts\activate       # Windows
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 前端
+
+```bash
+cd my-project/frontend
+npm install
+NODE_ENV=development npx vite --host
+```
+
 打开：
-- 登录页：`http://localhost:8000/login`
-- 首页：`http://localhost:8000/`
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8000`
 - API 文档：`http://localhost:8000/docs`
 
 数据库：MySQL `ops_platform`（启动时自动建库建表）
 
 默认连接：`localhost:3306`，`root` / `123456`
+
+默认登录：`admin` / `admin123`
 
 ---
 
