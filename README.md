@@ -1,6 +1,6 @@
 # my-project · 运维管理系统
 
-基于 **Python + FastAPI + Jinja2 + MySQL** 的企业级运维后台管理系统，具备资产管理、容器管理、监控告警、报表分析、工单协作、审计日志、用户权限等核心能力。
+基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，前后端分离架构，具备资产管理、容器管理、监控告警、报表分析、工单协作、审计日志、用户权限等核心能力。
 
 ---
 
@@ -234,66 +234,33 @@ frontend/src/
     └── password/           # 修改密码
 ```
 
-### 后端（`app/`）
+### 后端（`backend/`）
 
 ```
-app/
-├── static/
-│   ├── style.css              # 全局样式（企业级 UI 主题）
-│   ├── dialog.js              # 通用弹窗组件（Modal）
-│   ├── table.js               # 表格排序 + 分页组件（TableKit）
-│   └── filter.js              # 搜索栏交互增强
-├── templates/
-│   ├── base.html              # HTML 基础模板
-│   ├── layout.html            # 侧边栏 + 顶栏 + 内容区布局
-│   ├── login.html             # 登录页
-│   ├── dashboard_home.html    # 仪表盘
-│   ├── assets.html            # 主机管理（弹窗表单）
-│   ├── asset_detail.html      # 资产详情
-│   ├── containers.html        # 容器管理 - 集群列表
-│   ├── pods.html              # 容器管理 - Pod 列表
-│   ├── services.html          # 容器管理 - Service 列表
-│   ├── monitoring.html        # 监控指标管理
-│   ├── monitoring_host.html   # 主机监控列表
-│   ├── monitoring_host_detail.html  # 主机监控详情（圆形进度条）
-│   ├── reports.html           # 报表中心首页
-│   ├── report_detail.html     # 预置报表详情
-│   ├── report_custom.html     # 自定义报表
-│   ├── report_schedule.html   # 定时发送配置
-│   ├── tickets.html           # 工单协作（弹窗表单）
-│   ├── ticket_detail.html     # 工单详情
-│   ├── alerts.html            # 告警中心（弹窗表单）
-│   ├── alert_detail.html      # 告警详情
-│   ├── audit.html             # 审计日志
-│   ├── users.html             # 用户管理（弹窗表单）
-│   ├── roles.html             # 角色权限（弹窗表单 + 分配菜单树形弹窗）
-│   ├── password.html          # 修改密码
-│   └── forbidden.html         # 无权限页
-├── db/                        # 数据库连接与初始化
-├── models/
-│   ├── asset.py               # 资产模型
-│   ├── container.py           # 容器模型（集群/Deployment/Pod/Service）
-│   ├── monitoring.py          # 监控模型（指标定义/数据点）
-│   ├── ticket.py              # 工单模型
-│   ├── alert.py               # 告警模型
-│   ├── audit.py               # 审计日志模型
-│   ├── user.py                # 用户模型
-│   ├── rbac.py                # 角色权限模型
-│   └── dashboard.py           # 仪表盘数据结构
-├── api/                       # REST API 路由
-├── routes_auth.py             # 登录路由
-├── routes_pages.py            # 后台页面路由（所有页面）
-├── services_assets.py         # 资产服务
-├── services_containers.py     # 容器管理服务
-├── services_monitoring.py     # 监控告警服务
-├── services_reports.py        # 报表服务
-├── services_tickets.py        # 工单服务
-├── services_alerts.py         # 告警服务
-├── services_audit.py          # 审计日志服务
-├── services_users.py          # 用户服务
-├── services_roles.py          # 角色 / 权限服务
-├── services_permissions.py    # 权限判断与统一封装
-└── services_auth.py           # 认证服务
+backend/app/
+├── api/            # REST API 端点（14个模块）
+│   ├── auth.py     # 认证（登录/登出/当前用户）
+│   ├── dashboard.py# 仪表盘
+│   ├── assets.py   # 资产管理
+│   ├── users.py    # 用户管理
+│   ├── roles.py    # 角色权限 + 分配菜单
+│   ├── tickets.py  # 工单协作
+│   ├── alerts.py   # 告警中心
+│   ├── containers.py# 容器管理
+│   ├── monitoring.py# 监控
+│   ├── reports.py  # 报表
+│   ├── audit.py    # 审计日志
+│   ├── password.py # 密码修改
+│   └── deps.py     # 认证 + 权限依赖注入
+├── core/           # 核心配置
+│   ├── config.py   # 应用配置（MySQL/JWT/路径）
+│   └── jwt.py      # JWT 令牌工具
+├── db/             # 数据库连接与初始化
+├── models/         # SQLAlchemy 模型
+├── routes/         # SSR 页面路由（兼容旧版）
+├── services/       # 业务逻辑层
+├── templates/      # Jinja2 模板（兼容旧版）
+└── static/         # 静态资源（兼容旧版）
 ```
 
 ---
@@ -316,12 +283,14 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 cd my-project/frontend
 npm install
-NODE_ENV=development npx vite --host
+npx vite --host
 ```
 
+> Windows 用户直接用 `npx vite --host`，不需要设置 `NODE_ENV`。
+
 打开：
-- 前端：`http://localhost:3000`
-- 后端：`http://localhost:8000`
+- **前端 SPA**：`http://localhost:3000`（推荐）
+- 后端 API：`http://localhost:8000`
 - API 文档：`http://localhost:8000/docs`
 
 数据库：MySQL `ops_platform`（启动时自动建库建表）
@@ -400,11 +369,12 @@ NODE_ENV=development npx vite --host
 
 ## 架构说明
 
-项目支持 **双模式运行**：
-- **SSR 模式**（现有）：FastAPI + Jinja2 服务端渲染，适合快速部署
-- **前后端分离**（已支持）：后端纯 REST API，前端可对接 Vue/React SPA
+当前为 **前后端分离架构**：
+- **前端**（`frontend/`）：Vue 3 + Element Plus SPA，端口 3000
+- **后端**（`backend/`）：FastAPI REST API + SSR 页面路由（兼容），端口 8000
+- 前端通过 `/api/v1/*` 调用后端接口，Vite 开发服务器自动代理
 
-两种模式共存，API 和页面路由互不干扰。
+> 后端仍保留 SSR 页面路由作为降级方案，后续将移除 SSR，实现纯前后端分离。
 
 ---
 
@@ -415,7 +385,8 @@ NODE_ENV=development npx vite --host
 - ✅ **REST API 层** — 全部模块 API 已就绪（60+ 接口）
 - ✅ **JWT 认证** — 登录/鉴权/权限校验
 - ✅ **CORS** — 已配置，支持前端跨域开发
-- 🔲 **前端 SPA** — Vue 3 + Element Plus 前端开发
+- ✅ **前端 SPA** — Vue 3 + Element Plus 前端开发完成
+- 🔲 **纯前后端分离** — 移除后端 SSR 路由和模板，后端只保留 API
 
 ### 短期优化
 
