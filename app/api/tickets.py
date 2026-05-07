@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_audit import write_log
-from app.services_tickets import (
+from app.services.audit import write_log
+from app.services.tickets import (
     create_ticket,
     delete_ticket,
     get_ticket,

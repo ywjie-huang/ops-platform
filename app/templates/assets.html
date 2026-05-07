@@ -2,15 +2,48 @@
 
 {% block title %}资产管理 | 运维管理系统{% endblock %}
 {% block page_title %}资产管理{% endblock %}
-{% block page_desc %}独立页面管理资产信息，适合后续继续扩展筛选、分页和详情页。{% endblock %}
+{% block page_desc %}统一维护主机、数据库和网络设备{% endblock %}
 
 {% block page_content %}
-<div class="two-col-layout">
-  <section class="panel">
-    <div class="panel-head">
-      <h3>资产列表</h3>
-      <span>支持新增、编辑、删除</span>
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">资产台账</p>
+    <h3>统一维护主机、数据库和网络设备</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ assets|length }} 条资产</span>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/assets">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索名称、IP、负责人…" value="{{ asset_filters.keyword }}" />
+    {% if asset_filters.keyword %}<a class="filter-search-clear visible" href="/assets" title="清除">✕</a>{% endif %}
+  </div>
+  <select class="filter-select {% if asset_filters.asset_type %}has-value{% endif %}" name="asset_type">
+    <option value="">全部类型</option>
+    {% for option in asset_type_options %}<option value="{{ option }}" {% if asset_filters.asset_type == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <select class="filter-select {% if asset_filters.status %}has-value{% endif %}" name="status">
+    <option value="">全部状态</option>
+    {% for option in asset_status_options %}<option value="{{ option }}" {% if asset_filters.status == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/assets">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">资产列表</p>
+      <h3>核心资产一览</h3>
     </div>
+    {% if can.get('assets.create') %}
+    <button class="filter-btn" type="button" onclick="Modal.open('asset-modal')">+ 新增资产</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
     <table>
       <thead>
         <tr>
@@ -20,79 +53,126 @@
           <th>状态</th>
           <th>负责人</th>
           <th>说明</th>
-          <th>操作</th>
+          <th data-sort="false">操作</th>
         </tr>
       </thead>
       <tbody>
         {% for item in assets %}
         <tr>
-          <td>{{ item.name }}</td>
-          <td>{{ item.asset_type }}</td>
-          <td>{{ item.ip_address }}</td>
-          <td>{{ item.status }}</td>
-          <td>{{ item.owner }}</td>
-          <td>{{ item.description }}</td>
+          <td><a href="/assets/{{ item.id }}"><strong>{{ item.name }}</strong></a></td>
+          <td><span class="table-tag">{{ item.asset_type }}</span></td>
+          <td><code>{{ item.ip_address }}</code></td>
+          <td><span class="status-pill {% if item.status == '在线' %}status-online{% elif item.status == '维护中' %}status-maintain{% else %}status-offline{% endif %}">{{ item.status }}</span></td>
+          <td>{{ item.owner or '-' }}</td>
+          <td class="cell-muted">{{ item.description or '-' }}</td>
           <td>
             <div class="action-row">
-              <a class="small-btn" href="/assets/{{ item.id }}/edit">编辑</a>
+              {% if can.get('assets.update') %}
+              <button class="small-btn" type="button" onclick="editAsset({{ item.id }}, '{{ item.name }}', '{{ item.asset_type }}', '{{ item.ip_address }}', '{{ item.status }}', '{{ item.owner or '' }}', `{{ item.description or '' }}`)">编辑</button>
+              {% endif %}
+              {% if can.get('assets.delete') %}
               <form method="post" action="/assets/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个资产吗？');">
                 <button class="small-btn danger" type="submit">删除</button>
               </form>
+              {% endif %}
+              {% if not can.get('assets.update') and not can.get('assets.delete') %}
+              <span class="muted">只读</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7">
+            <div class="table-empty">
+              <div class="empty-icon">📦</div>
+              <strong>没有符合条件的资产记录</strong>
+              <p class="muted">调整筛选条件或新增资产</p>
             </div>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-  </section>
+  </div>
+</section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h3>{% if editing_asset %}编辑资产{% else %}新增资产{% endif %}</h3>
-      <span>核心信息维护</span>
+{# ── 新增/编辑弹窗 ── #}
+{% if can.get('assets.create') or can.get('assets.update') %}
+<div class="modal" id="asset-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="asset-modal-title">新增资产</h3>
+      <button class="modal-close">&times;</button>
     </div>
-
-    {% if editing_asset %}
-    <form class="form-grid" method="post" action="/assets/{{ editing_asset.id }}/update">
-    {% else %}
-    <form class="form-grid" method="post" action="/assets/create">
-    {% endif %}
-      <label>
-        <span>资产名称</span>
-        <input name="name" required value="{{ editing_asset.name if editing_asset else '' }}" />
-      </label>
-      <label>
-        <span>资产类型</span>
-        <input name="asset_type" required value="{{ editing_asset.asset_type if editing_asset else '' }}" />
-      </label>
-      <label>
-        <span>IP 地址</span>
-        <input name="ip_address" required value="{{ editing_asset.ip_address if editing_asset else '' }}" />
-      </label>
-      <label>
-        <span>状态</span>
-        <select name="status">
-          {% set current_status = editing_asset.status if editing_asset else '在线' %}
-          <option value="在线" {% if current_status == '在线' %}selected{% endif %}>在线</option>
-          <option value="离线" {% if current_status == '离线' %}selected{% endif %}>离线</option>
-          <option value="维护中" {% if current_status == '维护中' %}selected{% endif %}>维护中</option>
-        </select>
-      </label>
-      <label>
-        <span>负责人</span>
-        <input name="owner" value="{{ editing_asset.owner if editing_asset else '' }}" />
-      </label>
-      <label>
-        <span>说明</span>
-        <textarea name="description" rows="4">{{ editing_asset.description if editing_asset else '' }}</textarea>
-      </label>
-      <div class="action-row">
-        <button type="submit">{% if editing_asset %}保存修改{% else %}创建资产{% endif %}</button>
-        {% if editing_asset %}
-        <a class="ghost-btn" href="/assets">取消编辑</a>
-        {% endif %}
-      </div>
-    </form>
-  </section>
+    <div class="modal-body">
+      <form id="asset-form" class="form-grid" method="post" action="/assets/create">
+        <label>
+          <span>资产名称</span>
+          <input name="name" required placeholder="如：Web服务器01" />
+        </label>
+        <label>
+          <span>资产类型</span>
+          <select name="asset_type" required>
+            {% for option in asset_type_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>IP 地址</span>
+          <input name="ip_address" required placeholder="如：192.168.1.100" />
+        </label>
+        <label>
+          <span>状态</span>
+          <select name="status" required>
+            {% for option in asset_status_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>负责人</span>
+          <input name="owner" placeholder="如：张三" />
+        </label>
+        <label class="field-span-2">
+          <span>说明</span>
+          <textarea name="description" rows="3" placeholder="资产描述信息…"></textarea>
+        </label>
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('asset-modal')">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
+{% endif %}
+
+<script>
+function editAsset(id, name, type, ip, status, owner, desc) {
+  var form = document.getElementById('asset-form');
+  form.action = '/assets/' + id + '/update';
+  form.querySelector('[name=name]').value = name;
+  form.querySelector('[name=asset_type]').value = type;
+  form.querySelector('[name=ip_address]').value = ip;
+  form.querySelector('[name=status]').value = status;
+  form.querySelector('[name=owner]').value = owner;
+  form.querySelector('[name=description]').value = desc;
+  document.getElementById('asset-modal-title').textContent = '编辑资产';
+  Modal.open('asset-modal');
+}
+
+// 新增时重置表单
+function resetAssetForm() {
+  var form = document.getElementById('asset-form');
+  form.action = '/assets/create';
+  form.reset();
+  document.getElementById('asset-modal-title').textContent = '新增资产';
+}
+
+// 如果有 editing_asset，自动弹出编辑弹窗
+{% if editing_asset %}
+document.addEventListener('DOMContentLoaded', function() {
+  editAsset({{ editing_asset.id }}, '{{ editing_asset.name }}', '{{ editing_asset.asset_type }}', '{{ editing_asset.ip_address }}', '{{ editing_asset.status }}', '{{ editing_asset.owner or '' }}', `{{ editing_asset.description or '' }}`);
+});
+{% endif %}
+</script>
 {% endblock %}

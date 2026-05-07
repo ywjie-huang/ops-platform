@@ -4,11 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import router as api_router
-from app.config import STATIC_DIR, TEMPLATES_DIR
+from app.core.config import STATIC_DIR, TEMPLATES_DIR
 from app.db.init_db import init_db
 from app.models import alert, asset, audit, container, monitoring, rbac, ticket, user  # noqa: F401
-from app.routes_auth import router as auth_router
-from app.routes_pages import router as pages_router
+from app.routes.auth import router as auth_router
+from app.routes.pages import router as pages_router
 
 app = FastAPI(title="运维管理系统", version="0.7.0")
 

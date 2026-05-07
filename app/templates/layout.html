@@ -1,29 +1,237 @@
 {% extends "base.html" %}
 
+{% macro nav_icon(key, size) -%}
+  {% set s = size or 18 %}
+  {% if key == 'dashboard' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+  {% elif key == 'reports' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+  {% elif key == 'containers' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+  {% elif key == 'assets' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+  {% elif key == 'tickets' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+  {% elif key == 'alerts' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+  {% elif key == 'users' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  {% elif key == 'roles' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+  {% elif key == 'audit' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+  {% elif key == 'monitoring' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+  {% elif key == 'monitoring_host' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><circle cx="12" cy="10" r="3"/></svg>
+  {% elif key == 'report' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+  {% elif key == 'system' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  {% elif key == 'asset' %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+  {% else %}<svg width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  {% endif %}
+{%- endmacro %}
+
+{# 分组配置：哪些 key 属于哪个组 #}
+{% set report_nav_keys = ['dashboard', 'reports'] %}
+{% set asset_nav_keys = ['assets', 'containers'] %}
+{% set monitor_nav_keys = ['monitoring', 'monitoring_host'] %}
+{% set user_nav_keys = ['users', 'roles'] %}
+{% set system_nav_keys = ['audit'] %}
+{% set active_in_report = active_nav in report_nav_keys %}
+{% set active_in_asset = active_nav in asset_nav_keys %}
+{% set active_in_monitor = active_nav in monitor_nav_keys %}
+{% set active_in_user = active_nav in user_nav_keys %}
+{% set active_in_system = active_nav in system_nav_keys %}
+
 {% block body %}
 <div class="app-shell">
   <aside class="sidebar">
-    <div>
-      <p class="eyebrow">OPS PLATFORM</p>
-      <h2>运维管理系统</h2>
+    {# Logo #}
+    <div class="sidebar-brand">
+      <div class="brand-mark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">OPS</span>
+        <span class="brand-sub">运维管理平台</span>
+      </div>
     </div>
-    <nav class="nav-list">
+
+    {# User card in sidebar #}
+    {% if current_user %}
+    <div class="sidebar-user">
+      <div class="sidebar-user-avatar">{{ current_user.full_name[:1] }}</div>
+      <div class="sidebar-user-info">
+        <span class="sidebar-user-name">{{ current_user.full_name }}</span>
+        <span class="sidebar-user-role">{{ current_user.username }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Navigation #}
+    <nav class="sidebar-nav">
+
+      {# ── 报表大屏（一级分组） ── #}
+      {% set has_report_perm = can.get('dashboard.view') or can.get('reports.view') %}
+      {% if has_report_perm %}
+      <div class="nav-section-label">数据</div>
+      <div class="nav-group {% if active_in_report %}expanded{% endif %}">
+        <button class="nav-group-toggle {% if active_in_report %}active{% endif %}" type="button">
+          <span class="nav-item-icon">{{ nav_icon('report') }}</span>
+          <span class="nav-item-text">报表大屏</span>
+          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-children">
+          {% for item in nav_items %}
+          {% if item.key in report_nav_keys and can.get(item.key ~ '.view') %}
+          <a href="{{ item.href }}" class="nav-child {% if active_nav == item.key %}active{% endif %}">
+            <span class="nav-child-icon">{{ nav_icon(item.key, 14) }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── 资产管理（一级分组） ── #}
+      {% set has_asset_perm = can.get('assets.view') or can.get('containers.view') %}
+      {% if has_asset_perm %}
+      <div class="nav-section-label" style="margin-top: 14px;">资产</div>
+      <div class="nav-group {% if active_in_asset %}expanded{% endif %}">
+        <button class="nav-group-toggle {% if active_in_asset %}active{% endif %}" type="button">
+          <span class="nav-item-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+          <span class="nav-item-text">资产管理</span>
+          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-children">
+          {% for item in nav_items %}
+          {% if item.key in asset_nav_keys and can.get(item.key ~ '.view') %}
+          <a href="{{ item.href }}" class="nav-child {% if active_nav == item.key %}active{% endif %}">
+            <span class="nav-child-icon">{{ nav_icon(item.key, 14) }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── 监控告警（一级分组） ── #}
+      {% set has_monitor_perm = can.get('monitoring.view') %}
+      {% if has_monitor_perm %}
+      <div class="nav-section-label" style="margin-top: 14px;">监控</div>
+      <div class="nav-group {% if active_in_monitor %}expanded{% endif %}">
+        <button class="nav-group-toggle {% if active_in_monitor %}active{% endif %}" type="button">
+          <span class="nav-item-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+          <span class="nav-item-text">监控告警</span>
+          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-children">
+          {% for item in nav_items %}
+          {% if item.key in monitor_nav_keys and can.get('monitoring.view') %}
+          <a href="{{ item.href }}" class="nav-child {% if active_nav == item.key %}active{% endif %}">
+            <span class="nav-child-icon">{{ nav_icon(item.key, 14) }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── 用户管理（一级分组） ── #}
+      {% set has_user_perm = can.get('users.view') or can.get('roles.view') %}
+      {% if has_user_perm %}
+      <div class="nav-section-label" style="margin-top: 14px;">用户</div>
+      <div class="nav-group {% if active_in_user %}expanded{% endif %}">
+        <button class="nav-group-toggle {% if active_in_user %}active{% endif %}" type="button">
+          <span class="nav-item-icon">{{ nav_icon('users') }}</span>
+          <span class="nav-item-text">用户管理</span>
+          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-children">
+          {% for item in nav_items %}
+          {% if item.key in user_nav_keys and can.get(item.key ~ '.view') %}
+          <a href="{{ item.href }}" class="nav-child {% if active_nav == item.key %}active{% endif %}">
+            <span class="nav-child-icon">{{ nav_icon(item.key, 14) }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── 独立一级菜单（工单、告警） ── #}
+      <div class="nav-section-label" style="margin-top: 14px;">业务</div>
       {% for item in nav_items %}
-      <a href="{{ item.href }}" class="{% if active_nav == item.key %}active{% endif %}">{{ item.label }}</a>
+      {% if item.key not in report_nav_keys and item.key not in asset_nav_keys and item.key not in monitor_nav_keys and item.key not in user_nav_keys and item.key not in system_nav_keys and can.get(item.key ~ '.view') %}
+      <a href="{{ item.href }}" class="nav-item {% if active_nav == item.key %}active{% endif %}">
+        <span class="nav-item-icon">{{ nav_icon(item.key) }}</span>
+        <span class="nav-item-text">{{ item.label }}</span>
+      </a>
+      {% endif %}
       {% endfor %}
+
+      {# ── 系统管理（一级分组） ── #}
+      {% set has_system_perm = can.get('users.view') or can.get('roles.view') or can.get('audit.view') %}
+      {% if has_system_perm %}
+      <div class="nav-section-label" style="margin-top: 14px;">系统</div>
+      <div class="nav-group {% if active_in_system %}expanded{% endif %}">
+        <button class="nav-group-toggle {% if active_in_system %}active{% endif %}" type="button">
+          <span class="nav-item-icon">{{ nav_icon('system') }}</span>
+          <span class="nav-item-text">系统管理</span>
+          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-children">
+          {% for item in nav_items %}
+          {% if item.key in system_nav_keys and can.get(item.key ~ '.view') %}
+          <a href="{{ item.href }}" class="nav-child {% if active_nav == item.key %}active{% endif %}">
+            <span class="nav-child-icon">{{ nav_icon(item.key, 14) }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
     </nav>
+
+    {# Sidebar footer #}
+    <div class="sidebar-footer">
+      <a href="/password" class="sidebar-footer-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        修改密码
+      </a>
+      <a href="/logout" class="sidebar-footer-link logout">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        退出登录
+      </a>
+    </div>
   </aside>
 
   <main class="content">
+    {# Top bar with page title #}
     <header class="topbar">
-      <div>
+      <div class="topbar-left">
         <h1>{% block page_title %}{% endblock %}</h1>
-        <p class="muted">{% block page_desc %}{% endblock %}</p>
+        <p class="topbar-desc">{% block page_desc %}{% endblock %}</p>
       </div>
-      <a class="ghost-btn" href="/logout">退出登录</a>
+      <div class="topbar-right">
+        {% if current_user %}
+        <div class="topbar-user">
+          <span class="topbar-user-avatar">{{ current_user.full_name[:1] }}</span>
+          <span class="topbar-user-name">{{ current_user.full_name }}</span>
+        </div>
+        {% endif %}
+      </div>
     </header>
 
-    {% block page_content %}{% endblock %}
+    {# Page content #}
+    <div class="page-body">
+      {% block page_content %}{% endblock %}
+    </div>
   </main>
 </div>
+
+<script>
+(function() {
+  // Submenu toggle
+  document.querySelectorAll('.nav-group-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      btn.closest('.nav-group').classList.toggle('expanded');
+    });
+  });
+})();
+</script>
 {% endblock %}

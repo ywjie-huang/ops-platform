@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+
+{% block title %}审计日志 | 运维管理系统{% endblock %}
+{% block page_title %}审计日志{% endblock %}
+{% block page_desc %}记录系统关键操作，方便事后追溯和排查。{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">操作追溯</p>
+    <h3>系统操作审计日志</h3>
+    <p class="muted">自动记录资产、用户、角色、工单、告警的增删改操作以及登录登出事件。</p>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ logs|length }} 条记录</span>
+    <span class="meta-pill soft">自动写入，不可手动修改</span>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/audit">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    <input name="keyword" placeholder="搜索操作人、对象名称、详情…" value="{{ audit_filters.keyword }}" />
+    {% if audit_filters.keyword %}
+    <a class="filter-search-clear visible" href="/audit" title="清除">✕</a>
+    {% endif %}
+  </div>
+  <select class="filter-select {% if audit_filters.action %}has-value{% endif %}" name="action">
+    <option value="">全部操作</option>
+    {% for code, label in action_options.items() %}
+    <option value="{{ code }}" {% if audit_filters.action == code %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select {% if audit_filters.target_type %}has-value{% endif %}" name="target_type">
+    <option value="">全部对象</option>
+    {% for code, label in target_options.items() %}
+    <option value="{{ code }}" {% if audit_filters.target_type == code %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select class="filter-select {% if audit_filters.days %}has-value{% endif %}" name="days">
+    <option value="">全部时间</option>
+    <option value="1" {% if audit_filters.days == '1' %}selected{% endif %}>近 1 天</option>
+    <option value="7" {% if audit_filters.days == '7' %}selected{% endif %}>近 7 天</option>
+    <option value="30" {% if audit_filters.days == '30' %}selected{% endif %}>近 30 天</option>
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset ghost-btn" href="/audit">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head panel-head-stack">
+    <div>
+      <p class="section-kicker">操作记录</p>
+      <h3>全部审计日志</h3>
+    </div>
+    <span>按时间倒序排列，最近操作在最前</span>
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>操作人</th>
+          <th>操作</th>
+          <th>对象类型</th>
+          <th>对象</th>
+          <th>详情</th>
+          <th>IP</th>
+          <th>时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in logs %}
+        <tr>
+          <td>{{ item.id }}</td>
+          <td><strong>{{ item.username or '-' }}</strong></td>
+          <td>
+            {% if item.action == 'create' %}
+            <span class="status-pill status-online">新增</span>
+            {% elif item.action == 'update' %}
+            <span class="status-pill" style="background:#e8f1ff;color:#2563eb;">编辑</span>
+            {% elif item.action == 'delete' %}
+            <span class="status-pill status-offline">删除</span>
+            {% elif item.action == 'login' %}
+            <span class="status-pill" style="background:#eaf8f0;color:#16a34a;">登录</span>
+            {% elif item.action == 'logout' %}
+            <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">登出</span>
+            {% else %}
+            <span class="status-pill">{{ item.action }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.target_type == 'asset' %}🖥️ 资产
+            {% elif item.target_type == 'user' %}👤 用户
+            {% elif item.target_type == 'role' %}🛡️ 角色
+            {% elif item.target_type == 'ticket' %}📋 工单
+            {% elif item.target_type == 'alert' %}🔔 告警
+            {% elif item.target_type == 'auth' %}🔑 认证
+            {% else %}{{ item.target_type }}
+            {% endif %}
+          </td>
+          <td>{{ item.target_name or '-' }}</td>
+          <td class="cell-muted">{{ item.detail or '-' }}</td>
+          <td><code>{{ item.ip_address or '-' }}</code></td>
+          <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8">
+            <div class="table-empty">
+              <div class="empty-icon">📜</div>
+              <strong>暂无审计记录</strong>
+              <p class="muted">系统操作会自动记录到这里，方便事后追溯。</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

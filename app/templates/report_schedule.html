@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+
+{% block title %}定时发送 | 报表中心{% endblock %}
+{% block page_title %}定时发送{% endblock %}
+{% block page_desc %}配置报表定时邮件推送{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">自动化推送</p>
+    <h3>报表定时邮件发送配置</h3>
+  </div>
+  <div class="intro-meta">
+    <a class="ghost-btn" href="/reports">← 返回报表中心</a>
+  </div>
+</div>
+
+{# ── 定时任务列表 ── #}
+<section class="panel" style="margin-bottom: 20px;">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">定时任务</p>
+      <h3>已配置的定时发送任务</h3>
+    </div>
+    <button class="filter-btn" type="button" onclick="Modal.open('schedule-modal')">+ 新建定时任务</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>任务名称</th>
+          <th>报表</th>
+          <th>频率</th>
+          <th>收件人</th>
+          <th>状态</th>
+          <th>下次执行</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td colspan="7">
+            <div class="table-empty">
+              <div class="empty-icon">⏰</div>
+              <strong>暂无定时任务</strong>
+              <p class="muted">点击右上角「+ 新建定时任务」开始配置</p>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── 说明卡片 ── #}
+<section class="panel">
+  <div class="panel-head">
+    <h3>使用说明</h3>
+  </div>
+  <div style="padding: 20px; font-size: 13px; color: var(--text-sub); line-height: 1.8;">
+    <p><strong>定时发送功能说明：</strong></p>
+    <ul style="padding-left: 20px; margin-top: 8px;">
+      <li>选择一个预置报表或自定义报表作为数据源</li>
+      <li>设置发送频率：每日、每周一、每月一号</li>
+      <li>配置收件人邮箱（多个用逗号分隔）</li>
+      <li>系统会在指定时间自动生成报表并发送邮件</li>
+      <li>支持 PDF 和 Excel 两种附件格式</li>
+    </ul>
+    <p style="margin-top: 16px; color: var(--text-muted);">
+      💡 需要先在系统配置中设置 SMTP 邮件服务器信息
+    </p>
+  </div>
+</section>
+
+{# ── 新建定时任务弹窗 ── #}
+<div class="modal" id="schedule-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog" style="max-width: 560px;">
+    <div class="modal-header">
+      <h3>新建定时任务</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form class="form-grid" method="post" action="/reports/schedule/create">
+        <label class="field-span-2">
+          <span>任务名称</span>
+          <input name="name" required placeholder="如：每日资产统计推送" />
+        </label>
+        <label class="field-span-2">
+          <span>报表</span>
+          <select name="report_id" required>
+            <option value="">请选择报表</option>
+            {% for report in preset_reports %}
+            <option value="{{ report.id }}">{{ report.icon }} {{ report.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>发送频率</span>
+          <select name="frequency">
+            <option value="daily">每日</option>
+            <option value="weekly">每周一</option>
+            <option value="monthly">每月一号</option>
+          </select>
+        </label>
+        <label>
+          <span>附件格式</span>
+          <select name="format">
+            <option value="csv">CSV</option>
+            <option value="pdf">PDF</option>
+            <option value="excel">Excel</option>
+          </select>
+        </label>
+        <label class="field-span-2">
+          <span>收件人邮箱</span>
+          <input name="recipients" required placeholder="多个邮箱用逗号分隔，如：a@co.com, b@co.com" />
+        </label>
+        <label class="field-span-2">
+          <span>备注</span>
+          <textarea name="note" rows="2" placeholder="可选备注…"></textarea>
+        </label>
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('schedule-modal')">取消</button>
+          <button type="submit">创建任务</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

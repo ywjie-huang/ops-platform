@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_monitoring import (
+from app.services.monitoring import (
     create_metric,
     delete_metric,
     get_host_detail,

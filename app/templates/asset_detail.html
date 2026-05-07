@@ -1,0 +1,122 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ asset.name }} | 资产详情{% endblock %}
+{% block page_title %}资产详情{% endblock %}
+{% block page_desc %}查看资产完整信息、关联工单和告警。{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">资产台账</p>
+    <h3>{{ asset.name }}</h3>
+    <p class="muted">{{ asset.asset_type }} · {{ asset.ip_address }} · 负责人 {{ asset.owner or '未填写' }}</p>
+  </div>
+  <div class="intro-meta">
+    <span class="status-pill {% if asset.status == '在线' %}status-online{% elif asset.status == '维护中' %}status-maintain{% else %}status-offline{% endif %}">{{ asset.status }}</span>
+    {% if can.get('assets.update') %}
+    <a class="small-btn" href="/assets/{{ asset.id }}/edit">编辑</a>
+    {% endif %}
+    <a class="ghost-btn" href="/assets">返回列表</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  {# 基本信息 #}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">基本信息</p>
+        <h3>资产属性</h3>
+      </div>
+    </div>
+    <div class="detail-fields">
+      <div class="detail-field">
+        <span class="detail-label">资产名称</span>
+        <strong>{{ asset.name }}</strong>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">资产类型</span>
+        <span class="table-tag">{{ asset.asset_type }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">IP 地址</span>
+        <code>{{ asset.ip_address }}</code>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">状态</span>
+        <span class="status-pill {% if asset.status == '在线' %}status-online{% elif asset.status == '维护中' %}status-maintain{% else %}status-offline{% endif %}">{{ asset.status }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">负责人</span>
+        <span>{{ asset.owner or '-' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">说明</span>
+        <span>{{ asset.description or '-' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">创建时间</span>
+        <span>{{ asset.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+    </div>
+  </section>
+
+  {# 关联工单 #}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">关联工单</p>
+        <h3>与此资产相关的工单</h3>
+      </div>
+      {% if can.get('tickets.view') %}<a class="small-btn" href="/tickets">全部工单</a>{% endif %}
+    </div>
+    <div class="activity-feed">
+      {% for t in tickets %}
+      <div class="feed-item compact">
+        <div class="feed-dot tone-{% if t.status == 'open' %}blue{% elif t.status == 'in_progress' %}orange{% elif t.status == 'resolved' %}green{% else %}default{% endif %}"></div>
+        <div class="feed-body">
+          <div class="feed-head">
+            <strong>{{ t.title }}</strong>
+            <span class="status-tag tone-{% if t.status == 'open' %}blue{% elif t.status == 'in_progress' %}orange{% elif t.status == 'resolved' %}green{% else %}default{% endif %}">{{ t.status }}</span>
+          </div>
+          <p class="feed-meta">{{ t.priority }} · {{ t.assignee or '未指派' }} · {{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-hint">
+        <p class="muted">暂无关联工单</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# 关联告警 #}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">关联告警</p>
+        <h3>与此资产相关的告警</h3>
+      </div>
+      {% if can.get('alerts.view') %}<a class="small-btn" href="/alerts">全部告警</a>{% endif %}
+    </div>
+    <div class="activity-feed">
+      {% for a in alerts %}
+      <div class="feed-item compact">
+        <div class="feed-dot tone-{% if a.status == 'pending' %}red{% elif a.status == 'confirmed' %}orange{% elif a.status == 'resolved' %}green{% else %}default{% endif %}"></div>
+        <div class="feed-body">
+          <div class="feed-head">
+            <strong>{{ a.title }}</strong>
+            <span class="status-tag tone-{% if a.status == 'pending' %}red{% elif a.status == 'confirmed' %}orange{% elif a.status == 'resolved' %}green{% else %}default{% endif %}">{{ a.status }}</span>
+          </div>
+          <p class="feed-meta">{{ a.level }} · {{ a.source or '未知来源' }} · {{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-hint">
+        <p class="muted">暂无关联告警</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required, get_current_api_user
 from app.db.database import get_db
 from app.models.user import User
-from app.services_audit import write_log
-from app.services_roles import list_roles
-from app.services_users import (
+from app.services.audit import write_log
+from app.services.roles import list_roles
+from app.services.users import (
     change_password,
     create_user,
     delete_user,

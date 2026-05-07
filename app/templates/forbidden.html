@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+
+{% block title %}无权限访问 | 运维管理系统{% endblock %}
+{% block page_title %}无权限访问{% endblock %}
+{% block page_desc %}当前账号没有访问这个功能的权限，如有需要请联系管理员调整角色。{% endblock %}
+
+{% block page_content %}
+<section class="panel empty-state-panel forbidden-panel">
+  <div class="empty-icon">🔐</div>
+  <h3>抱歉，这个页面你现在还不能进</h3>
+  <p class="muted">角色权限已经开始生效了。你可以先返回首页，或者让管理员给当前账号补上对应权限。</p>
+  <div class="action-row centered-actions">
+    <a class="ghost-btn" href="/">返回首页</a>
+    <a href="/logout"><button type="button">切换账号</button></a>
+  </div>
+</section>
+{% endblock %}

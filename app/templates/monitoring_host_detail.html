@@ -1,0 +1,123 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ host.hostname }} | 主机监控{% endblock %}
+{% block page_title %}{{ host.hostname }}{% endblock %}
+{% block page_desc %}{{ host.ip }} · 详细资源监控{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">主机详情</p>
+    <h3>{{ host.hostname }}（{{ host.ip }}）</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">{{ host.os }}</span>
+    <span class="meta-pill soft">运行 {{ host.uptime_hours }} 小时</span>
+    <a class="report-top-btn secondary" href="/monitoring/host">← 返回主机列表</a>
+  </div>
+</div>
+
+{# ── 圆形进度条指标卡 ── #}
+<section class="gauge-grid">
+  <div class="gauge-card">
+    <div class="gauge-ring {% if host.cpu.usage >= 95 %}gauge-critical{% elif host.cpu.usage >= 80 %}gauge-warning{% else %}gauge-ok{% endif %}" style="--pct: {{ host.cpu.usage }}">
+      <svg viewBox="0 0 100 100"><circle class="gauge-bg" cx="50" cy="50" r="42"/><circle class="gauge-fill" cx="50" cy="50" r="42"/></svg>
+      <div class="gauge-value"><strong>{{ host.cpu.usage }}</strong><span>%</span></div>
+    </div>
+    <div class="gauge-label">CPU 利用率</div>
+    <div class="gauge-sub">{{ host.cpu.cores }} 核 · {{ host.cpu.model }}</div>
+  </div>
+
+  <div class="gauge-card">
+    <div class="gauge-ring {% if host.memory.usage >= 95 %}gauge-critical{% elif host.memory.usage >= 85 %}gauge-warning{% else %}gauge-ok{% endif %}" style="--pct: {{ host.memory.usage }}">
+      <svg viewBox="0 0 100 100"><circle class="gauge-bg" cx="50" cy="50" r="42"/><circle class="gauge-fill" cx="50" cy="50" r="42"/></svg>
+      <div class="gauge-value"><strong>{{ host.memory.usage }}</strong><span>%</span></div>
+    </div>
+    <div class="gauge-label">内存使用率</div>
+    <div class="gauge-sub">{{ host.memory.used_gb }} / {{ host.memory.total_gb }} GB</div>
+  </div>
+
+  <div class="gauge-card">
+    <div class="gauge-ring {% if host.disk.usage >= 95 %}gauge-critical{% elif host.disk.usage >= 85 %}gauge-warning{% else %}gauge-ok{% endif %}" style="--pct: {{ host.disk.usage }}">
+      <svg viewBox="0 0 100 100"><circle class="gauge-bg" cx="50" cy="50" r="42"/><circle class="gauge-fill" cx="50" cy="50" r="42"/></svg>
+      <div class="gauge-value"><strong>{{ host.disk.usage }}</strong><span>%</span></div>
+    </div>
+    <div class="gauge-label">磁盘使用率</div>
+    <div class="gauge-sub">{{ host.disk.used_gb }} / {{ host.disk.total_gb }} GB</div>
+  </div>
+
+  {% set load_pct = (host.load['1m'] / 8 * 100) %}
+  {% if load_pct > 100 %}{% set load_pct = 100 %}{% endif %}
+  <div class="gauge-card">
+    <div class="gauge-ring {% if host.load['1m'] >= 8 %}gauge-critical{% elif host.load['1m'] >= 4 %}gauge-warning{% else %}gauge-ok{% endif %}" style="--pct: {{ load_pct | round(1) }}">
+      <svg viewBox="0 0 100 100"><circle class="gauge-bg" cx="50" cy="50" r="42"/><circle class="gauge-fill" cx="50" cy="50" r="42"/></svg>
+      <div class="gauge-value"><strong>{{ host.load['1m'] }}</strong><span></span></div>
+    </div>
+    <div class="gauge-label">系统负载</div>
+    <div class="gauge-sub">1min {{ host.load['1m'] }} · 5min {{ host.load['5m'] }} · 15min {{ host.load['15m'] }}</div>
+  </div>
+</section>
+
+{# ── 详细数据 ── #}
+<section class="monitor-detail-grid">
+  <div class="panel">
+    <div class="panel-head"><h3>🌐 网络流量</h3></div>
+    <div class="monitor-detail-body">
+      <div class="monitor-bar-row">
+        <span class="monitor-bar-label">入站</span>
+        <div class="monitor-bar-track"><div class="monitor-bar-fill gauge-ok" style="width: {{ (host.network.in_mbps / 1000 * 100) | round(1) }}%"></div></div>
+        <span class="monitor-bar-value">{{ host.network.in_mbps }} Mbps</span>
+      </div>
+      <div class="monitor-bar-row">
+        <span class="monitor-bar-label">出站</span>
+        <div class="monitor-bar-track"><div class="monitor-bar-fill gauge-ok" style="width: {{ (host.network.out_mbps / 1000 * 100) | round(1) }}%"></div></div>
+        <span class="monitor-bar-value">{{ host.network.out_mbps }} Mbps</span>
+      </div>
+      <div class="monitor-stat-row">
+        <div class="monitor-stat"><span>TCP 连接</span><strong>{{ host.network.tcp_connections }}</strong></div>
+        <div class="monitor-stat"><span>入包</span><strong>{{ host.network.packets_in }}</strong></div>
+        <div class="monitor-stat"><span>出包</span><strong>{{ host.network.packets_out }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>💾 磁盘 IO</h3></div>
+    <div class="monitor-detail-body">
+      <div class="monitor-bar-row">
+        <span class="monitor-bar-label">读取</span>
+        <div class="monitor-bar-track"><div class="monitor-bar-fill gauge-ok" style="width: {{ (host.disk.read_mb / 200 * 100) | round(1) }}%"></div></div>
+        <span class="monitor-bar-value">{{ host.disk.read_mb }} MB/s</span>
+      </div>
+      <div class="monitor-bar-row">
+        <span class="monitor-bar-label">写入</span>
+        <div class="monitor-bar-track"><div class="monitor-bar-fill gauge-ok" style="width: {{ (host.disk.write_mb / 200 * 100) | round(1) }}%"></div></div>
+        <span class="monitor-bar-value">{{ host.disk.write_mb }} MB/s</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>⚙️ 进程</h3></div>
+    <div class="monitor-detail-body">
+      <div class="monitor-stat-row">
+        <div class="monitor-stat"><span>总进程</span><strong>{{ host.processes.total }}</strong></div>
+        <div class="monitor-stat"><span>运行中</span><strong style="color:var(--success)">{{ host.processes.running }}</strong></div>
+        <div class="monitor-stat"><span>休眠</span><strong>{{ host.processes.sleeping }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>🖥️ 系统信息</h3></div>
+    <div class="monitor-detail-body">
+      <div class="monitor-info-row"><span>主机名</span><strong>{{ host.hostname }}</strong></div>
+      <div class="monitor-info-row"><span>IP 地址</span><code>{{ host.ip }}</code></div>
+      <div class="monitor-info-row"><span>操作系统</span><strong>{{ host.os }}</strong></div>
+      <div class="monitor-info-row"><span>内核</span><code>{{ host.kernel }}</code></div>
+      <div class="monitor-info-row"><span>CPU</span><strong>{{ host.cpu.model }} ({{ host.cpu.cores }}核)</strong></div>
+      <div class="monitor-info-row"><span>运行时间</span><strong>{{ host.uptime_hours }} 小时</strong></div>
+    </div>
+  </div>
+</section>
+{% endblock %}

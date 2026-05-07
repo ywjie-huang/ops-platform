@@ -2,84 +2,137 @@
 
 {% block title %}用户管理 | 运维管理系统{% endblock %}
 {% block page_title %}用户管理{% endblock %}
-{% block page_desc %}独立页面管理用户账号，后面可以继续扩展角色、权限和组织结构。{% endblock %}
+{% block page_desc %}管理系统用户和角色分配{% endblock %}
 
 {% block page_content %}
-<div class="two-col-layout">
-  <section class="panel">
-    <div class="panel-head">
-      <h3>用户列表</h3>
-      <span>支持新增、编辑、删除，当前登录用户不能删自己</span>
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">账号治理</p>
+    <h3>统一管理系统用户和角色分配</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ users|length }} 个用户</span>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/users">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索用户名、姓名…" value="{{ user_filters.keyword }}" />
+    {% if user_filters.keyword %}<a class="filter-search-clear visible" href="/users">✕</a>{% endif %}
+  </div>
+  <select class="filter-select {% if user_filters.role_id %}has-value{% endif %}" name="role_id">
+    <option value="">全部角色</option>
+    {% for role in roles %}<option value="{{ role.id }}" {% if user_filters.role_id == role.id %}selected{% endif %}>{{ role.name }}</option>{% endfor %}
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/users">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">用户列表</p>
+      <h3>账号信息与角色分配</h3>
     </div>
+    {% if can.get('users.create') %}
+    <button class="filter-btn" type="button" onclick="Modal.open('user-modal')">+ 新增用户</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
     <table>
       <thead>
         <tr>
           <th>ID</th>
           <th>用户名</th>
           <th>姓名</th>
+          <th>角色</th>
           <th>创建时间</th>
-          <th>操作</th>
+          <th data-sort="false">操作</th>
         </tr>
       </thead>
       <tbody>
         {% for item in users %}
         <tr>
           <td>{{ item.id }}</td>
-          <td>{{ item.username }}</td>
+          <td><strong>{{ item.username }}</strong></td>
           <td>{{ item.full_name }}</td>
+          <td>
+            {% if item.roles %}{% for role in item.roles %}<span class="badge">{{ role.name }}</span> {% endfor %}{% else %}<span class="muted">未分配</span>{% endif %}
+          </td>
           <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
           <td>
             <div class="action-row">
-              <a class="small-btn" href="/users/{{ item.id }}/edit">编辑</a>
-              {% if item.id|string != session_user_id|string %}
-              <form method="post" action="/users/{{ item.id }}/delete" onsubmit="return confirm('确认删除这个用户吗？');">
-                <button class="small-btn danger" type="submit">删除</button>
-              </form>
-              {% else %}
-              <span class="muted">当前登录用户</span>
+              {% if can.get('users.update') %}
+              <button class="small-btn" type="button" onclick="editUser({{ item.id }}, '{{ item.username }}', '{{ item.full_name }}', [{% for r in item.roles %}{{ r.id }}{% if not loop.last %},{% endif %}{% endfor %}])">编辑</button>
+              {% endif %}
+              {% if can.get('users.delete') and item.id|string != session_user_id|string %}
+              <form method="post" action="/users/{{ item.id }}/delete" onsubmit="return confirm('确认删除？');"><button class="small-btn danger" type="submit">删除</button></form>
               {% endif %}
             </div>
           </td>
         </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="table-empty"><div class="empty-icon">👥</div><strong>暂无用户</strong></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
-  </section>
+  </div>
+</section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h3>{% if editing_user %}编辑用户{% else %}新增用户{% endif %}</h3>
-      <span>先做最核心的账号管理</span>
+{% if can.get('users.create') or can.get('users.update') %}
+<div class="modal" id="user-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog" style="max-width: 560px;">
+    <div class="modal-header">
+      <h3 id="user-modal-title">新增用户</h3>
+      <button class="modal-close">&times;</button>
     </div>
-
-    {% if user_error %}
-    <div class="alert error">{{ user_error }}</div>
-    {% endif %}
-
-    {% if editing_user %}
-    <form class="form-grid" method="post" action="/users/{{ editing_user.id }}/update">
-    {% else %}
-    <form class="form-grid" method="post" action="/users/create">
-    {% endif %}
-      <label>
-        <span>用户名</span>
-        <input name="username" required value="{{ editing_user.username if editing_user else '' }}" />
-      </label>
-      <label>
-        <span>姓名</span>
-        <input name="full_name" required value="{{ editing_user.full_name if editing_user else '' }}" />
-      </label>
-      <label>
-        <span>{% if editing_user %}新密码（留空则不修改）{% else %}密码{% endif %}</span>
-        <input name="password" {% if not editing_user %}required{% endif %} type="password" />
-      </label>
-      <div class="action-row">
-        <button type="submit">{% if editing_user %}保存用户{% else %}创建用户{% endif %}</button>
-        {% if editing_user %}
-        <a class="ghost-btn" href="/users">取消编辑</a>
-        {% endif %}
-      </div>
-    </form>
-  </section>
+    <div class="modal-body">
+      {% if user_error %}<div class="alert error">{{ user_error }}</div>{% endif %}
+      <form id="user-form" class="form-grid" method="post" action="/users/create">
+        <label><span>用户名</span><input name="username" required placeholder="登录账号" /></label>
+        <label><span>姓名</span><input name="full_name" required placeholder="显示名称" /></label>
+        <label class="field-span-2"><span id="password-label">密码</span><input name="password" required type="password" placeholder="至少 6 位" /></label>
+        <div class="role-picker field-span-2">
+          <span class="section-label">分配角色</span>
+          {% for role in roles %}
+          <label class="checkbox-row">
+            <input type="checkbox" name="role_ids" value="{{ role.id }}" />
+            <div><strong>{{ role.name }}</strong><span class="muted"> {{ role.description or '' }}</span></div>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('user-modal')">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
+{% endif %}
+
+<script>
+function editUser(id, username, fullName, roleIds) {
+  var form = document.getElementById('user-form');
+  form.action = '/users/' + id + '/update';
+  form.querySelector('[name=username]').value = username;
+  form.querySelector('[name=full_name]').value = fullName;
+  var pw = form.querySelector('[name=password]');
+  pw.value = ''; pw.removeAttribute('required');
+  document.getElementById('password-label').textContent = '新密码（留空则不修改）';
+  // 重置角色勾选
+  form.querySelectorAll('[name=role_ids]').forEach(function(cb) {
+    cb.checked = roleIds.indexOf(parseInt(cb.value)) !== -1;
+  });
+  document.getElementById('user-modal-title').textContent = '编辑用户';
+  Modal.open('user-modal');
+}
+{% if editing_user %}
+document.addEventListener('DOMContentLoaded', function() {
+  editUser({{ editing_user.id }}, '{{ editing_user.username }}', '{{ editing_user.full_name }}', [{% for r in editing_user.roles %}{{ r.id }}{% if not loop.last %},{% endif %}{% endfor %}]);
+});
+{% endif %}
+</script>
 {% endblock %}

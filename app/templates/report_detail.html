@@ -1,0 +1,194 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ report.name }} | 报表中心{% endblock %}
+{% block page_title %}{{ report.name }}{% endblock %}
+{% block page_desc %}{{ report.description }}{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">{{ report.category }}报表</p>
+    <h3>{{ report.name }}</h3>
+  </div>
+  <div class="intro-meta">
+    <a class="ghost-btn" href="/reports">← 返回报表中心</a>
+    <a class="filter-btn" href="/reports/export/{{ report.id }}?days={{ days }}" style="text-decoration:none;">📥 导出 CSV</a>
+  </div>
+</div>
+
+{# ── 时间范围选择 ── #}
+<div class="report-time-bar">
+  <span class="report-time-label">时间范围：</span>
+  {% for d in [7, 14, 30, 90] %}
+  <a href="/reports/preset/{{ report.id }}?days={{ d }}" class="report-time-btn {% if days == d %}active{% endif %}">{{ d }}天</a>
+  {% endfor %}
+</div>
+
+{# ── 报表内容 ── #}
+<div class="report-content">
+  {% if data.error %}
+  <div class="alert error">{{ data.error }}</div>
+  {% else %}
+
+  {# 总览指标 #}
+  {% if data.total is defined %}
+  <div class="report-metrics">
+    <div class="report-metric">
+      <span>总计</span>
+      <strong>{{ data.total }}</strong>
+    </div>
+    {% if data.resolved is defined %}
+    <div class="report-metric">
+      <span>已解决</span>
+      <strong>{{ data.resolved }}</strong>
+    </div>
+    {% endif %}
+    {% if data.resolution_rate is defined %}
+    <div class="report-metric">
+      <span>解决率</span>
+      <strong>{{ data.resolution_rate }}</strong>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.metrics is defined %}
+  <div class="report-metrics">
+    {% for key, val in data.metrics.items() %}
+    <div class="report-metric">
+      <span>{{ key }}</span>
+      <strong>{{ val }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# 数据表格 #}
+  {% if data.by_type is defined %}
+  <div class="report-tables">
+    <div class="panel">
+      <div class="panel-head"><h3>按类型统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_type.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_type.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% if data.by_status is defined %}
+    <div class="panel">
+      <div class="panel-head"><h3>按状态统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_status.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_status.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.by_status is defined and data.by_type is not defined %}
+  <div class="report-tables">
+    <div class="panel">
+      <div class="panel-head"><h3>按状态统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_status.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_status.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% if data.by_priority is defined %}
+    <div class="panel">
+      <div class="panel-head"><h3>按优先级统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_priority.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_priority.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.by_level is defined %}
+  <div class="report-tables">
+    <div class="panel">
+      <div class="panel-head"><h3>按级别统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_level.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_level.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% if data.by_status is defined %}
+    <div class="panel">
+      <div class="panel-head"><h3>按状态统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_status.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_status.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.by_action is defined %}
+  <div class="report-tables">
+    <div class="panel">
+      <div class="panel-head"><h3>按操作类型统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_action.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_action.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% if data.by_target is defined %}
+    <div class="panel">
+      <div class="panel-head"><h3>按对象类型统计</h3></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for col in data.by_target.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in data.by_target.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.columns is defined and data.rows is defined %}
+  <div class="panel">
+    <div class="panel-head"><h3>{{ data.title }}</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for col in data.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in data.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if data.current is defined %}
+  <div class="panel">
+    <div class="panel-head"><h3>当前快照</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for col in data.current.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in data.current.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% if data.note %}<p class="muted" style="margin-top:8px;font-size:12px;">💡 {{ data.note }}</p>{% endif %}
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

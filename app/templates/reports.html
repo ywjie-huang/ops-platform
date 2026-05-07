@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block title %}报表中心 | 运维管理系统{% endblock %}
+{% block page_title %}报表中心{% endblock %}
+{% block page_desc %}预置报表、自定义分析、数据导出{% endblock %}
+
+{% block page_content %}
+{# ── 顶部操作 ── #}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">数据分析</p>
+    <h3>运维数据报表与分析中心</h3>
+  </div>
+  <div class="intro-meta">
+    {% if can.get('reports.create') %}
+    <a class="report-top-btn" href="/reports/custom">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      自定义报表
+    </a>
+    {% endif %}
+    <a class="report-top-btn secondary" href="/reports/schedule">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      定时发送
+    </a>
+  </div>
+</div>
+
+{# ── 预置报表卡片 ── #}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">预置报表</p>
+      <h3>系统内置的常用运维报表</h3>
+    </div>
+  </div>
+  <div style="padding: 20px;">
+    <div class="report-grid">
+      {% for report in preset_reports %}
+      <a href="/reports/preset/{{ report.id }}" class="report-card">
+        <div class="report-card-icon">{{ report.icon }}</div>
+        <div class="report-card-body">
+          <strong>{{ report.name }}</strong>
+          <p>{{ report.description }}</p>
+          <span class="report-card-tag">{{ report.category }}</span>
+        </div>
+        <svg class="report-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_assets import (
+from app.services.assets import (
     create_asset as create_asset_record,
     delete_asset,
     get_asset,
     list_assets,
     update_asset,
 )
-from app.services_audit import write_log
+from app.services.audit import write_log
 
 router = APIRouter(prefix="/assets", tags=["资产管理"])
 

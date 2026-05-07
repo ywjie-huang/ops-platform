@@ -1,0 +1,82 @@
+{% extends "layout.html" %}
+
+{% block title %}Service 管理 | 容器管理{% endblock %}
+{% block page_title %}Service 管理{% endblock %}
+{% block page_desc %}查看和管理所有 K8s Service / 网络服务{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">网络服务</p>
+    <h3>Service 资源一览</h3>
+  </div>
+  <div class="intro-meta">
+    <a class="ghost-btn" href="/containers">← 返回集群</a>
+    <a class="ghost-btn" href="/containers/pods">Pod</a>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/containers/services">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索 Service 名称…" value="{{ keyword }}" />
+    {% if keyword %}<a class="filter-search-clear visible" href="/containers/services">✕</a>{% endif %}
+  </div>
+  <select class="filter-select {% if selected_cluster %}has-value{% endif %}" name="cluster_id">
+    <option value="">全部集群</option>
+    {% for c in clusters %}<option value="{{ c.id }}" {% if selected_cluster == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/containers/services">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">Service 列表</p>
+      <h3>所有网络服务</h3>
+    </div>
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>命名空间</th>
+          <th>类型</th>
+          <th>Cluster IP</th>
+          <th>端口</th>
+          <th>Selector</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in services %}
+        <tr>
+          <td><strong>{{ item.name }}</strong></td>
+          <td><span class="table-tag">{{ item.namespace }}</span></td>
+          <td><span class="table-tag">{{ item.service_type }}</span></td>
+          <td><code>{{ item.cluster_ip or '-' }}</code></td>
+          <td>{{ item.ports or '-' }}</td>
+          <td class="cell-muted">{{ item.selector or '-' }}</td>
+          <td>
+            {% if item.status == 'active' %}<span class="status-pill status-online">活跃</span>
+            {% else %}<span class="status-pill status-offline">{{ item.status }}</span>{% endif %}
+          </td>
+          <td>
+            <div class="action-row">
+              {% if can.get('containers.delete') %}
+              <form method="post" action="/containers/services/{{ item.id }}/delete" onsubmit="return confirm('确认删除此 Service？');"><button class="small-btn danger" type="submit">删除</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8"><div class="table-empty"><div class="empty-icon">🌐</div><strong>暂无 Service</strong></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

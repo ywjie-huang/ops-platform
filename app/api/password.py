@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_api_user
 from app.db.database import get_db
 from app.models.user import User
-from app.services_audit import write_log
-from app.services_users import change_password
+from app.services.audit import write_log
+from app.services.users import change_password
 
 router = APIRouter(prefix="/password", tags=["密码"])
 

@@ -1,13 +1,13 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-from app.config import DATA_DIR, DATABASE_URL
-
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+from app.core.config import DATABASE_URL
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

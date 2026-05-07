@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_containers import (
+from app.services.containers import (
     container_overview,
     create_cluster,
     create_deployment,
@@ -19,9 +19,9 @@ from app.services_containers import (
     get_pod,
     get_service,
     list_clusters,
-    list_container_pods,
-    list_container_services,
     list_deployments,
+    list_pods,
+    list_services,
     update_cluster,
     update_deployment,
 )
@@ -83,7 +83,7 @@ def api_delete_cluster(cluster_id: int, db: Session = Depends(get_db), _: User =
 
 @router.get("/pods")
 def api_list_pods(cluster_id: int | None = None, status: str = "", db: Session = Depends(get_db), _: User = Depends(api_permission_required("containers.view"))):
-    items = list_container_pods(db, cluster_id=cluster_id, status=status)
+    items = list_pods(db, cluster_id=cluster_id, status=status)
     return {
         "code": 0,
         "data": [
@@ -104,7 +104,7 @@ def api_delete_pod(pod_id: int, db: Session = Depends(get_db), _: User = Depends
 
 @router.get("/services")
 def api_list_services(cluster_id: int | None = None, db: Session = Depends(get_db), _: User = Depends(api_permission_required("containers.view"))):
-    items = list_container_services(db, cluster_id=cluster_id)
+    items = list_services(db, cluster_id=cluster_id)
     return {
         "code": 0,
         "data": [

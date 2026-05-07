@@ -4,7 +4,7 @@ from typing import Any
 
 from jose import JWTError, jwt
 
-from app.config import SECRET_KEY
+from app.core.config import SECRET_KEY
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 12

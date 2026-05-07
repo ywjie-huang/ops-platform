@@ -2,11 +2,11 @@
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.jwt import decode_access_token
+from app.core.jwt import decode_access_token
 from app.db.database import get_db
 from app.models.user import User
-from app.services_permissions import get_permission_codes, has_permission
-from app.services_users import get_user
+from app.services.permissions import get_permission_codes, has_permission
+from app.services.users import get_user
 
 
 def get_current_api_user(

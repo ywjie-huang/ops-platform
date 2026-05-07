@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+
+{% block title %}Pod 管理 | 容器管理{% endblock %}
+{% block page_title %}Pod 管理{% endblock %}
+{% block page_desc %}查看和管理所有 Pod / 容器实例{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">容器实例</p>
+    <h3>Pod / 容器资源一览</h3>
+  </div>
+  <div class="intro-meta">
+    <a class="ghost-btn" href="/containers">← 返回集群</a>
+    <a class="ghost-btn" href="/containers/services">Service</a>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/containers/pods">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索 Pod 名称…" value="{{ keyword }}" />
+    {% if keyword %}<a class="filter-search-clear visible" href="/containers/pods">✕</a>{% endif %}
+  </div>
+  <select class="filter-select {% if selected_cluster %}has-value{% endif %}" name="cluster_id">
+    <option value="">全部集群</option>
+    {% for c in clusters %}<option value="{{ c.id }}" {% if selected_cluster == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select class="filter-select {% if selected_status %}has-value{% endif %}" name="status">
+    <option value="">全部状态</option>
+    {% for s in ['Running', 'Pending', 'Succeeded', 'Failed', 'Unknown'] %}<option value="{{ s }}" {% if selected_status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/containers/pods">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">Pod 列表</p>
+      <h3>所有 Pod 实例</h3>
+    </div>
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>命名空间</th>
+          <th>状态</th>
+          <th>节点</th>
+          <th>Pod IP</th>
+          <th>镜像</th>
+          <th>重启次数</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in pods %}
+        <tr>
+          <td><strong>{{ item.name }}</strong></td>
+          <td><span class="table-tag">{{ item.namespace }}</span></td>
+          <td>
+            {% if item.status == 'Running' %}<span class="status-pill status-online">Running</span>
+            {% elif item.status == 'Pending' %}<span class="status-pill status-pending">Pending</span>
+            {% elif item.status == 'Succeeded' %}<span class="status-pill status-resolved">Succeeded</span>
+            {% elif item.status == 'Failed' %}<span class="status-pill" style="background:#fef0f0;color:#dc2626;">Failed</span>
+            {% else %}<span class="status-pill status-offline">{{ item.status }}</span>{% endif %}
+          </td>
+          <td>{{ item.node or '-' }}</td>
+          <td><code>{{ item.pod_ip or '-' }}</code></td>
+          <td class="cell-muted">{{ item.image or '-' }}</td>
+          <td>{% if item.restarts > 0 %}<span style="color:var(--warning);font-weight:600;">{{ item.restarts }}</span>{% else %}0{% endif %}</td>
+          <td>
+            <div class="action-row">
+              {% if can.get('containers.delete') %}
+              <form method="post" action="/containers/pods/{{ item.id }}/delete" onsubmit="return confirm('确认删除此 Pod？');"><button class="small-btn danger" type="submit">删除</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8"><div class="table-empty"><div class="empty-icon">🫛</div><strong>暂无 Pod</strong></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

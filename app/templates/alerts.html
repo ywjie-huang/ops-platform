@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+
+{% block title %}告警中心 | 运维管理系统{% endblock %}
+{% block page_title %}告警中心{% endblock %}
+{% block page_desc %}集中管理运维告警，快速响应异常事件{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">异常响应</p>
+    <h3>统一查看和处理系统告警</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ alerts|length }} 条告警</span>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/alerts">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索告警标题、来源…" value="{{ alert_filters.keyword }}" />
+    {% if alert_filters.keyword %}<a class="filter-search-clear visible" href="/alerts">✕</a>{% endif %}
+  </div>
+  <select class="filter-select {% if alert_filters.status %}has-value{% endif %}" name="status">
+    <option value="">全部状态</option>
+    {% for option in alert_status_options %}<option value="{{ option }}" {% if alert_filters.status == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <select class="filter-select {% if alert_filters.level %}has-value{% endif %}" name="level">
+    <option value="">全部级别</option>
+    {% for option in alert_level_options %}<option value="{{ option }}" {% if alert_filters.level == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/alerts">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">告警列表</p>
+      <h3>所有系统告警</h3>
+    </div>
+    {% if can.get('alerts.create') %}
+    <button class="filter-btn" type="button" onclick="Modal.open('alert-modal')">+ 新增告警</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>告警标题</th>
+          <th>级别</th>
+          <th>状态</th>
+          <th>来源</th>
+          <th>关联资产</th>
+          <th>创建时间</th>
+          <th data-sort="false">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in alerts %}
+        <tr>
+          <td>{{ item.id }}</td>
+          <td><a href="/alerts/{{ item.id }}"><strong>{{ item.title }}</strong></a></td>
+          <td>
+            {% if item.level == 'critical' %}<span class="status-pill" style="background:#fef0f0;color:#dc2626;">严重</span>
+            {% elif item.level == 'high' %}<span class="status-pill" style="background:#fff4df;color:#d97706;">高</span>
+            {% elif item.level == 'medium' %}<span class="status-pill" style="background:#e8f1ff;color:#2563eb;">中</span>
+            {% else %}<span class="status-pill" style="background:#f4f4f5;color:#6b7280;">低</span>{% endif %}
+          </td>
+          <td>
+            {% if item.status == 'pending' %}<span class="status-pill status-pending">待确认</span>
+            {% elif item.status == 'confirmed' %}<span class="status-pill status-confirmed">已确认</span>
+            {% elif item.status == 'resolved' %}<span class="status-pill status-resolved">已解决</span>
+            {% else %}<span class="status-pill status-closed">已忽略</span>{% endif %}
+          </td>
+          <td>{{ item.source or '-' }}</td>
+          <td>{{ item.asset.name if item.asset else '-' }}</td>
+          <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            <div class="action-row">
+              {% if can.get('alerts.update') %}
+              <button class="small-btn" type="button" onclick="editAlert({{ item.id }}, `{{ item.title }}`, `{{ item.description or '' }}`, '{{ item.level }}', '{{ item.status }}', '{{ item.source or '' }}', {{ item.asset_id or 'null' }})">编辑</button>
+              {% endif %}
+              {% if can.get('alerts.delete') %}
+              <form method="post" action="/alerts/{{ item.id }}/delete" onsubmit="return confirm('确认删除？');"><button class="small-btn danger" type="submit">删除</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8"><div class="table-empty"><div class="empty-icon">🔔</div><strong>暂无告警</strong></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if can.get('alerts.create') or can.get('alerts.update') %}
+<div class="modal" id="alert-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="alert-modal-title">新增告警</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      {% if alert_error %}<div class="alert error">{{ alert_error }}</div>{% endif %}
+      <form id="alert-form" class="form-grid" method="post" action="/alerts/create">
+        <label class="field-span-2"><span>告警标题</span><input name="title" required placeholder="简要描述告警" /></label>
+        <label class="field-span-2"><span>告警描述</span><textarea name="description" rows="3" placeholder="详细描述…"></textarea></label>
+        <label><span>告警级别</span><select name="level">{% for option in alert_level_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></label>
+        <label><span>状态</span><select name="status">{% for option in alert_status_options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select></label>
+        <label><span>告警来源</span><input name="source" placeholder="如：监控系统" /></label>
+        <label><span>关联资产</span><select name="asset_id"><option value="">不关联</option>{% for asset in assets %}<option value="{{ asset.id }}">{{ asset.name }}</option>{% endfor %}</select></label>
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('alert-modal')">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function editAlert(id, title, desc, level, status, source, assetId) {
+  var form = document.getElementById('alert-form');
+  form.action = '/alerts/' + id + '/update';
+  form.querySelector('[name=title]').value = title;
+  form.querySelector('[name=description]').value = desc;
+  form.querySelector('[name=level]').value = level;
+  form.querySelector('[name=status]').value = status;
+  form.querySelector('[name=source]').value = source;
+  form.querySelector('[name=asset_id]').value = assetId || '';
+  document.getElementById('alert-modal-title').textContent = '编辑告警';
+  Modal.open('alert-modal');
+}
+{% if editing_alert %}
+document.addEventListener('DOMContentLoaded', function() {
+  editAlert({{ editing_alert.id }}, `{{ editing_alert.title }}`, `{{ editing_alert.description or '' }}`, '{{ editing_alert.level }}', '{{ editing_alert.status }}', '{{ editing_alert.source or '' }}', {{ editing_alert.asset_id or 'null' }});
+});
+{% endif %}
+</script>
+{% endblock %}

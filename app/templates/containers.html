@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+
+{% block title %}容器管理 | 运维管理系统{% endblock %}
+{% block page_title %}容器管理{% endblock %}
+{% block page_desc %}K8s 集群、Docker 容器、Pod、Service 资源管理{% endblock %}
+
+{% block page_content %}
+{# ── 概览指标 ── #}
+<section class="dash-metrics" style="margin-bottom: 20px;">
+  <div class="metric-card accent-blue">
+    <div><span>集群数</span><strong>{{ overview.clusters }}</strong></div>
+    <div class="metric-icon">🏗️</div>
+  </div>
+  <div class="metric-card accent-green">
+    <div><span>Deployment</span><strong>{{ overview.deployments }}</strong></div>
+    <div class="metric-icon">📦</div>
+  </div>
+  <div class="metric-card accent-orange">
+    <div><span>Pod</span><strong>{{ overview.pods }}</strong></div>
+    <div class="metric-icon">🫛</div>
+  </div>
+  <div class="metric-card accent-violet">
+    <div><span>Service</span><strong>{{ overview.services }}</strong></div>
+    <div class="metric-icon">🌐</div>
+  </div>
+</section>
+
+{# ── 子导航 ── #}
+<div class="report-time-bar" style="margin-bottom: 16px;">
+  <a href="/containers" class="report-time-btn active">集群</a>
+  <a href="/containers/pods" class="report-time-btn">Pod</a>
+  <a href="/containers/services" class="report-time-btn">Service</a>
+</div>
+
+{# ── 筛选 ── #}
+<form class="filter-bar" method="get" action="/containers">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索集群名称、提供商…" value="{{ keyword }}" />
+    {% if keyword %}<a class="filter-search-clear visible" href="/containers">✕</a>{% endif %}
+  </div>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/containers">重置</a>
+</form>
+
+{# ── 集群列表 ── #}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">集群列表</p>
+      <h3>K8s / Docker 集群</h3>
+    </div>
+    {% if can.get('containers.create') %}
+    <button class="filter-btn" type="button" onclick="Modal.open('cluster-modal')">+ 新增集群</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>提供商</th>
+          <th>版本</th>
+          <th>节点数</th>
+          <th>状态</th>
+          <th>API 地址</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in clusters %}
+        <tr>
+          <td><strong>{{ item.name }}</strong></td>
+          <td><span class="table-tag">{{ item.provider }}</span></td>
+          <td>{{ item.version or '-' }}</td>
+          <td>{{ item.node_count }}</td>
+          <td>
+            {% if item.status == 'running' %}<span class="status-pill status-online">运行中</span>
+            {% elif item.status == 'stopped' %}<span class="status-pill status-offline">已停止</span>
+            {% else %}<span class="status-pill status-maintain">{{ item.status }}</span>{% endif %}
+          </td>
+          <td><code>{{ item.endpoint or '-' }}</code></td>
+          <td>
+            <div class="action-row">
+              {% if can.get('containers.update') %}
+              <button class="small-btn" type="button" onclick="editCluster({{ item.id }}, `{{ item.name }}`, '{{ item.provider }}', '{{ item.version }}', `{{ item.endpoint }}`, '{{ item.status }}', {{ item.node_count }}, `{{ item.description }}`)">编辑</button>
+              {% endif %}
+              {% if can.get('containers.delete') %}
+              <form method="post" action="/containers/clusters/{{ item.id }}/delete" onsubmit="return confirm('删除集群会同时删除关联的 Pod 和 Service，确认？');"><button class="small-btn danger" type="submit">删除</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7"><div class="table-empty"><div class="empty-icon">🏗️</div><strong>暂无集群</strong><p class="muted">点击右上角新增一个 K8s 或 Docker 集群</p></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── 新增/编辑集群弹窗 ── #}
+{% if can.get('containers.create') or can.get('containers.update') %}
+<div class="modal" id="cluster-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="cluster-modal-title">新增集群</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="cluster-form" class="form-grid" method="post" action="/containers/clusters/create">
+        <label><span>集群名称</span><input name="name" required placeholder="如：prod-k8s-01" /></label>
+        <label><span>提供商</span><select name="provider"><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option></select></label>
+        <label><span>版本</span><input name="version" placeholder="如：v1.28.2" /></label>
+        <label><span>节点数</span><input name="node_count" type="number" value="0" min="0" /></label>
+        <label class="field-span-2"><span>API 地址</span><input name="endpoint" placeholder="如：https://10.0.0.1:6443" /></label>
+        <label class="field-span-2"><span>描述</span><textarea name="description" rows="2" placeholder="集群描述…"></textarea></label>
+        <input type="hidden" name="status" value="running" />
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('cluster-modal')">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function editCluster(id, name, provider, version, endpoint, status, nodeCount, desc) {
+  var form = document.getElementById('cluster-form');
+  form.action = '/containers/clusters/' + id + '/update';
+  form.querySelector('[name=name]').value = name;
+  form.querySelector('[name=provider]').value = provider;
+  form.querySelector('[name=version]').value = version;
+  form.querySelector('[name=node_count]').value = nodeCount;
+  form.querySelector('[name=endpoint]').value = endpoint;
+  form.querySelector('[name=status]').value = status;
+  form.querySelector('[name=description]').value = desc;
+  document.getElementById('cluster-modal-title').textContent = '编辑集群';
+  Modal.open('cluster-modal');
+}
+</script>
+{% endblock %}

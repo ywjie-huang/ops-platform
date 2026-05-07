@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ alert.title }} | 告警详情{% endblock %}
+{% block page_title %}告警详情{% endblock %}
+{% block page_desc %}查看告警完整信息和处理状态。{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">告警中心</p>
+    <h3>{{ alert.title }}</h3>
+    <p class="muted">级别 {{ alert.level }} · 来源 {{ alert.source or '未知' }}</p>
+  </div>
+  <div class="intro-meta">
+    {% if alert.status == 'pending' %}
+    <span class="status-pill status-offline">待确认</span>
+    {% elif alert.status == 'confirmed' %}
+    <span class="status-pill status-maintain">已确认</span>
+    {% elif alert.status == 'resolved' %}
+    <span class="status-pill status-online">已解决</span>
+    {% else %}
+    <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">已忽略</span>
+    {% endif %}
+    {% if can.get('alerts.update') %}
+    <a class="small-btn" href="/alerts/{{ alert.id }}/edit">编辑</a>
+    {% endif %}
+    <a class="ghost-btn" href="/alerts">返回列表</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">告警信息</p>
+        <h3>详细内容</h3>
+      </div>
+    </div>
+    <div class="detail-fields">
+      <div class="detail-field">
+        <span class="detail-label">告警标题</span>
+        <strong>{{ alert.title }}</strong>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">告警级别</span>
+        {% if alert.level == 'critical' %}
+        <span class="status-pill" style="background:#fef0f0;color:#dc2626;">严重</span>
+        {% elif alert.level == 'high' %}
+        <span class="status-pill" style="background:#fff4df;color:#d97706;">高</span>
+        {% elif alert.level == 'medium' %}
+        <span class="status-pill" style="background:#e8f1ff;color:#2563eb;">中</span>
+        {% else %}
+        <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">低</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">状态</span>
+        {% if alert.status == 'pending' %}
+        <span class="status-pill status-offline">待确认</span>
+        {% elif alert.status == 'confirmed' %}
+        <span class="status-pill status-maintain">已确认</span>
+        {% elif alert.status == 'resolved' %}
+        <span class="status-pill status-online">已解决</span>
+        {% else %}
+        <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">已忽略</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">告警来源</span>
+        <span>{{ alert.source or '-' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">关联资产</span>
+        {% if alert.asset %}
+        <a href="/assets/{{ alert.asset.id }}" style="color:var(--primary);">{{ alert.asset.name }} ({{ alert.asset.ip_address }})</a>
+        {% else %}
+        <span>-</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">处理人</span>
+        <span>{{ alert.handler.full_name if alert.handler else '未指派' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">创建时间</span>
+        <span>{{ alert.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">更新时间</span>
+        <span>{{ alert.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+    </div>
+    {% if alert.description %}
+    <div style="margin-top:20px;">
+      <span class="detail-label">告警描述</span>
+      <p style="margin-top:8px;line-height:1.7;color:#475569;">{{ alert.description }}</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">快速操作</p>
+        <h3>状态流转</h3>
+      </div>
+    </div>
+    <div class="status-flow">
+      <div class="status-step {% if alert.status == 'pending' %}active{% elif alert.status not in ['pending'] %}done{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>待确认</span>
+      </div>
+      <div class="status-step {% if alert.status == 'confirmed' %}active{% elif alert.status in ['resolved'] %}done{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>已确认</span>
+      </div>
+      <div class="status-step {% if alert.status == 'resolved' %}active{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>已解决</span>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

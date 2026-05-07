@@ -1,0 +1,113 @@
+{% extends "layout.html" %}
+
+{% block title %}主机监控 | 监控告警{% endblock %}
+{% block page_title %}主机监控{% endblock %}
+{% block page_desc %}基于资产管理的主机资源监控{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">资源监控</p>
+    <h3>主机资源实时监控</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ hosts|length }} 台主机</span>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">监控列表</p>
+      <h3>所有主机资源概览</h3>
+    </div>
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>主机名</th>
+          <th style="text-align:center">IP</th>
+          <th style="text-align:center">状态</th>
+          <th style="text-align:center">CPU</th>
+          <th style="text-align:center">内存</th>
+          <th style="text-align:center">磁盘</th>
+          <th style="text-align:center">网络入/出</th>
+          <th style="text-align:center">负载</th>
+          <th style="text-align:center">负责人</th>
+          <th style="text-align:center" data-sort="false">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in hosts %}
+        <tr>
+          <td><strong>{{ h.name }}</strong></td>
+          <td style="text-align:center"><code>{{ h.ip }}</code></td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <span class="status-pill status-online">在线</span>
+            {% else %}
+            <span class="status-pill status-offline">离线</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <div class="metric-bar-cell">
+              <div class="metric-bar-pill {% if h.cpu >= 95 %}bar-danger{% elif h.cpu >= 80 %}bar-warning{% else %}bar-ok{% endif %}">
+                <div class="metric-bar-fill" style="width:{{ h.cpu }}%"></div>
+              </div>
+              <span class="metric-bar-text">{{ h.cpu }}%</span>
+            </div>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <div class="metric-bar-cell">
+              <div class="metric-bar-pill {% if h.memory >= 95 %}bar-danger{% elif h.memory >= 85 %}bar-warning{% else %}bar-ok{% endif %}">
+                <div class="metric-bar-fill" style="width:{{ h.memory }}%"></div>
+              </div>
+              <span class="metric-bar-text">{{ h.memory }}%</span>
+            </div>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <div class="metric-bar-cell">
+              <div class="metric-bar-pill {% if h.disk >= 95 %}bar-danger{% elif h.disk >= 85 %}bar-warning{% else %}bar-ok{% endif %}">
+                <div class="metric-bar-fill" style="width:{{ h.disk }}%"></div>
+              </div>
+              <span class="metric-bar-text">{{ h.disk }}%</span>
+            </div>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <span class="monitor-cell">{{ h.net_in }} / {{ h.net_out }} Mbps</span>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if h.status == 'online' %}
+            <span class="monitor-cell {% if h.load >= 8 %}text-danger{% elif h.load >= 4 %}text-warning{% else %}text-ok{% endif %}">{{ h.load }}</span>
+            {% else %}<span class="muted">-</span>{% endif %}
+          </td>
+          <td style="text-align:center">{{ h.owner or '-' }}</td>
+          <td style="text-align:center">
+            <a class="small-btn" href="/monitoring/host/{{ h.asset_id }}">详情</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10">
+            <div class="table-empty">
+              <div class="empty-icon">🖥️</div>
+              <strong>暂无主机</strong>
+              <p class="muted">请先在「主机管理」中添加资产</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

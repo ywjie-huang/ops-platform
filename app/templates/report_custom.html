@@ -1,0 +1,113 @@
+{% extends "layout.html" %}
+
+{% block title %}自定义报表 | 报表中心{% endblock %}
+{% block page_title %}自定义报表{% endblock %}
+{% block page_desc %}选择数据源和维度，自由组合分析{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">自定义分析</p>
+    <h3>按需组合数据源和维度</h3>
+  </div>
+  <div class="intro-meta">
+    <a class="ghost-btn" href="/reports">← 返回报表中心</a>
+  </div>
+</div>
+
+{# ── 查询配置 ── #}
+<section class="panel" style="margin-bottom: 20px;">
+  <div class="panel-head">
+    <h3>报表配置</h3>
+  </div>
+  <div style="padding: 20px;">
+    <form method="get" action="/reports/custom" class="report-config-form">
+      <div class="report-config-row">
+        <label>
+          <span>数据源</span>
+          <select name="source" id="source-select" onchange="this.form.submit()">
+            <option value="">请选择数据源</option>
+            {% for ds in data_sources %}
+            <option value="{{ ds.id }}" {% if selected_source == ds.id %}selected{% endif %}>{{ ds.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>统计维度</span>
+          <select name="dimension" id="dimension-select">
+            <option value="">请选择维度</option>
+            {% for dim in dimensions %}
+            <option value="{{ dim.id }}" {% if selected_dimension == dim.id %}selected{% endif %}>{{ dim.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>时间范围</span>
+          <select name="days">
+            {% for d in [7, 14, 30, 90, 180, 365] %}
+            <option value="{{ d }}" {% if days == d %}selected{% endif %}>{{ d }}天</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="filter-btn" type="submit">生成报表</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+{# ── 查询结果 ── #}
+{% if result %}
+<section class="panel">
+  <div class="panel-head">
+    <h3>{{ result.title or '查询结果' }}</h3>
+  </div>
+  {% if result.error %}
+  <div style="padding: 20px;">
+    <div class="alert error">{{ result.error }}</div>
+  </div>
+  {% elif result.columns and result.rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>{% for col in result.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in result.rows %}
+        <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if result.rows|length == 0 %}
+  <div style="padding: 40px 20px; text-align: center;">
+    <p class="muted">查询结果为空</p>
+  </div>
+  {% endif %}
+  {% else %}
+  <div style="padding: 40px 20px; text-align: center;">
+    <p class="muted">无数据</p>
+  </div>
+  {% endif %}
+</section>
+{% elif selected_source and selected_dimension %}
+<div class="panel">
+  <div style="padding: 40px 20px; text-align: center;">
+    <p class="muted">请选择数据源和维度后点击「生成报表」</p>
+  </div>
+</div>
+{% elif selected_source %}
+<div class="panel">
+  <div style="padding: 40px 20px; text-align: center;">
+    <p class="muted">请选择统计维度后点击「生成报表」</p>
+  </div>
+</div>
+{% else %}
+<div class="panel">
+  <div style="padding: 40px 20px; text-align: center;">
+    <p class="muted">👆 选择数据源开始创建报表</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

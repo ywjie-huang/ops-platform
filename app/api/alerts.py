@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_alerts import (
+from app.services.alerts import (
     create_alert,
     delete_alert,
     get_alert,
     list_alerts,
     update_alert,
 )
-from app.services_audit import write_log
+from app.services.audit import write_log
 
 router = APIRouter(prefix="/alerts", tags=["告警中心"])
 

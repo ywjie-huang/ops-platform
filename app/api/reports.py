@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_reports import (
+from app.services.reports import (
     export_csv,
     list_data_sources,
     list_dimensions,

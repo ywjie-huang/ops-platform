@@ -3,13 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.jwt import create_access_token
+from app.core.jwt import create_access_token
 from app.db.database import get_db
 from app.models.user import User
 from app.api.deps import get_current_api_user
-from app.services_auth import authenticate_user
-from app.services_audit import write_log
-from app.services_permissions import build_permission_map
+from app.services.auth import authenticate_user
+from app.services.audit import write_log
+from app.services.permissions import build_permission_map
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 

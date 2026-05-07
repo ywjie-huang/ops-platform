@@ -1,0 +1,303 @@
+{% extends "layout.html" %}
+
+{% block title %}角色权限 | 运维管理系统{% endblock %}
+{% block page_title %}角色权限{% endblock %}
+{% block page_desc %}维护角色和权限边界{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">角色治理</p>
+    <h3>统一维护角色和权限边界</h3>
+  </div>
+  <div class="intro-meta">
+    <span class="meta-pill">共 {{ roles|length }} 个角色</span>
+  </div>
+</div>
+
+<form class="filter-bar" method="get" action="/roles">
+  <div class="filter-search">
+    <svg class="filter-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input name="keyword" placeholder="搜索角色名、编码…" value="{{ role_filters.keyword }}" />
+    {% if role_filters.keyword %}<a class="filter-search-clear visible" href="/roles">✕</a>{% endif %}
+  </div>
+  <label class="filter-check"><input type="checkbox" name="system_only" value="true" {% if role_filters.system_only %}checked{% endif %} /><span>仅系统角色</span></label>
+  <button class="filter-btn" type="submit">筛选</button>
+  <a class="filter-reset" href="/roles">重置</a>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <p class="section-kicker">角色列表</p>
+      <h3>角色说明与权限数量</h3>
+    </div>
+    {% if can.get('roles.create') %}
+    <button class="filter-btn" type="button" onclick="Modal.open('role-modal')">+ 新增角色</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap" data-table="true" data-page-size="10">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>角色名称</th>
+          <th>角色编码</th>
+          <th>权限数</th>
+          <th>说明</th>
+          <th data-sort="false">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in roles %}
+        <tr>
+          <td>{{ item.id }}</td>
+          <td><strong>{{ item.name }}</strong>{% if item.is_system %} <span class="badge">系统</span>{% endif %}</td>
+          <td><code>{{ item.code }}</code></td>
+          <td>{{ item.permissions|length }}</td>
+          <td class="cell-muted">{{ item.description or '-' }}</td>
+          <td>
+            <div class="action-row">
+              {% if can.get('roles.update') %}
+              <a class="small-btn" href="/roles/{{ item.id }}/edit">修改</a>
+              {% if item.code == 'super_admin' %}
+              <button class="small-btn accent" disabled title="超级管理员不允许调整权限">分配菜单</button>
+              {% else %}
+              <button class="small-btn accent" type="button" onclick="openPermModal({{ item.id }}, '{{ item.name }}', [{% for p in item.permissions %}{{ p.id }}{% if not loop.last %},{% endif %}{% endfor %}])">分配菜单</button>
+              {% endif %}
+              {% endif %}
+              {% if can.get('roles.delete') and not item.is_system and not item.users %}
+              <form method="post" action="/roles/{{ item.id }}/delete" onsubmit="return confirm('确认删除？');"><button class="small-btn danger" type="submit">删除</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="table-empty"><div class="empty-icon">🛡️</div><strong>暂无角色</strong></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── 新增/修改角色弹窗 ── #}
+{% if can.get('roles.create') or can.get('roles.update') %}
+<div class="modal" id="role-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog" style="max-width: 480px;">
+    <div class="modal-header">
+      <h3 id="role-modal-title">新增角色</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      {% if role_error %}<div class="alert error">{{ role_error }}</div>{% endif %}
+      <form id="role-form" class="form-grid" method="post" action="/roles/create">
+        <label><span>角色名称</span><input name="name" required placeholder="如：运维工程师" /></label>
+        <label><span>角色编码</span><input name="code" required placeholder="如：ops_engineer" /></label>
+        <label class="field-span-2"><span>说明</span><textarea name="description" rows="2" placeholder="角色职责描述…"></textarea></label>
+        <div class="modal-actions field-span-2">
+          <button class="ghost-btn" type="button" onclick="Modal.close('role-modal')">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── 分配菜单弹窗 ── #}
+<div class="modal" id="perm-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog" style="max-width: 860px;">
+    <div class="modal-header">
+      <h3>分配菜单</h3>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body perm-modal-body">
+      <div class="perm-info-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span id="perm-info-text">菜单分配后需要用户手动刷新页面才会生效</span>
+      </div>
+
+      <div class="perm-batch-bar">
+        <div class="perm-batch-group">
+          <span class="perm-batch-label">全选操作</span>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('all', true)">全部</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('view', true)">查询</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('create', true)">新增</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('update', true)">修改</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('delete', true)">删除</button>
+        </div>
+        <div class="perm-batch-group">
+          <span class="perm-batch-label">反选操作</span>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('all', false)">全部</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('view', false)">查询</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('create', false)">新增</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('update', false)">修改</button>
+          <button type="button" class="perm-batch-btn" onclick="permBatch('delete', false)">删除</button>
+        </div>
+      </div>
+
+      <form id="perm-form" method="post" action="">
+        <div class="perm-tree-table">
+          <div class="perm-tree-header">
+            <div class="perm-col perm-col-parent">父页面</div>
+            <div class="perm-col perm-col-child">子页面</div>
+            <div class="perm-col perm-col-func">功能</div>
+          </div>
+          {% for group in perm_tree %}
+          <div class="perm-tree-group" data-parent="{{ group.parent }}">
+            {% for child in group.children %}
+            <div class="perm-tree-row" data-module="{{ child.module }}">
+              {% if loop.first %}
+              <div class="perm-col perm-col-parent">
+                <label class="perm-check perm-parent-check">
+                  <input type="checkbox" data-role="parent" data-parent="{{ group.parent }}" />
+                  <span>{{ group.parent }}</span>
+                </label>
+              </div>
+              {% else %}
+              <div class="perm-col perm-col-parent"></div>
+              {% endif %}
+              <div class="perm-col perm-col-child">
+                <label class="perm-check perm-child-check">
+                  <input type="checkbox" data-role="child" data-module="{{ child.module }}" data-parent="{{ group.parent }}" />
+                  <span>{{ child.label }}</span>
+                </label>
+              </div>
+              <div class="perm-col perm-col-func">
+                {% for perm in child.permissions %}
+                {% set action = perm.code.split('.')[1] if '.' in perm.code else 'other' %}
+                <label class="perm-func-check" data-action="{{ action }}">
+                  <input type="checkbox" name="permission_ids" value="{{ perm.id }}" data-action="{{ action }}" data-module="{{ child.module }}" data-parent="{{ group.parent }}" {% if perm.id in selected_permission_ids %}checked{% endif %} />
+                  <span>{{ perm.name }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+      </form>
+
+      <div class="perm-modal-actions">
+        <button class="ghost-btn" type="button" onclick="Modal.close('perm-modal')">取消</button>
+        <button class="filter-btn" type="button" onclick="document.getElementById('perm-form').submit()">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if editing_role %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('role-modal-title').textContent = '修改角色';
+  Modal.open('role-modal');
+});
+</script>
+{% endif %}
+
+<script>
+function openPermModal(roleId, roleName, permIds) {
+  var form = document.getElementById('perm-form');
+  form.action = '/roles/' + roleId + '/permissions';
+  document.getElementById('perm-info-text').textContent =
+    '普通用户 ' + roleName + ' - 菜单分配后需要用户手动刷新页面才会生效';
+  // 重置所有 checkbox
+  form.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+    cb.checked = permIds.indexOf(parseInt(cb.value)) !== -1;
+  });
+  updateAllParentStates();
+  Modal.open('perm-modal');
+}
+
+// 批量操作
+function permBatch(action, check) {
+  var form = document.getElementById('perm-form');
+  if (action === 'all') {
+    form.querySelectorAll('input[type="checkbox"][name="permission_ids"]').forEach(function(cb) {
+      cb.checked = check;
+    });
+  } else {
+    form.querySelectorAll('input[type="checkbox"][name="permission_ids"][data-action="' + action + '"]').forEach(function(cb) {
+      cb.checked = check;
+    });
+  }
+  updateAllParentStates();
+}
+
+// 子页面 checkbox：勾选 = 勾全部功能，取消 = 取消全部功能
+document.querySelectorAll('[data-role="child"]').forEach(function(childCb) {
+  childCb.addEventListener('change', function() {
+    var mod = childCb.dataset.module;
+    var checked = childCb.checked;
+    document.querySelectorAll('input[name="permission_ids"][data-module="' + mod + '"]').forEach(function(cb) {
+      cb.checked = checked;
+    });
+    updateChildStates(childCb.dataset.parent);
+    updateParentState(childCb.dataset.parent);
+  });
+});
+
+// 父页面 checkbox：勾选 = 勾全部子页面+功能，取消 = 取消全部
+document.querySelectorAll('[data-role="parent"]').forEach(function(parentCb) {
+  parentCb.addEventListener('change', function() {
+    var parent = parentCb.dataset.parent;
+    var checked = parentCb.checked;
+    document.querySelectorAll('input[name="permission_ids"][data-parent="' + parent + '"]').forEach(function(cb) {
+      cb.checked = checked;
+    });
+    document.querySelectorAll('[data-role="child"][data-parent="' + parent + '"]').forEach(function(cb) {
+      cb.checked = checked;
+    });
+  });
+});
+
+// 功能列 checkbox：勾选任一功能 → 子页面勾上，父页面勾上
+document.querySelectorAll('input[name="permission_ids"]').forEach(function(funcCb) {
+  funcCb.addEventListener('change', function() {
+    var mod = funcCb.dataset.module;
+    var parent = funcCb.dataset.parent;
+    // 只要该模块下有一个功能勾了，子页面就勾上
+    var anyInModule = Array.from(
+      document.querySelectorAll('input[name="permission_ids"][data-module="' + mod + '"]')
+    ).some(function(cb) { return cb.checked; });
+    var childCb = document.querySelector('[data-role="child"][data-module="' + mod + '"]');
+    if (childCb) childCb.checked = anyInModule;
+    updateParentState(parent);
+  });
+});
+
+// 更新子页面 checkbox 状态：只要该模块有一个功能勾了，子页面就勾上
+function updateChildStates(parent) {
+  document.querySelectorAll('[data-role="child"][data-parent="' + parent + '"]').forEach(function(childCb) {
+    var mod = childCb.dataset.module;
+    var anyChecked = Array.from(
+      document.querySelectorAll('input[name="permission_ids"][data-module="' + mod + '"]')
+    ).some(function(cb) { return cb.checked; });
+    childCb.checked = anyChecked;
+  });
+}
+
+// 更新父页面 checkbox 状态：只要有一个子页面勾了，父页面就勾上
+function updateParentState(parent) {
+  var anyChildChecked = Array.from(
+    document.querySelectorAll('[data-role="child"][data-parent="' + parent + '"]')
+  ).some(function(cb) { return cb.checked; });
+  var parentCb = document.querySelector('[data-role="parent"][data-parent="' + parent + '"]');
+  if (parentCb) parentCb.checked = anyChildChecked;
+}
+
+function updateAllParentStates() {
+  // 先更新所有子页面状态
+  document.querySelectorAll('[data-role="parent"]').forEach(function(parentCb) {
+    updateChildStates(parentCb.dataset.parent);
+  });
+  // 再更新所有父页面状态
+  document.querySelectorAll('[data-role="parent"]').forEach(function(parentCb) {
+    updateParentState(parentCb.dataset.parent);
+  });
+}
+</script>
+{% endblock %}

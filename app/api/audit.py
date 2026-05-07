@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services_audit import ACTION_LABELS, TARGET_LABELS, list_logs
+from app.services.audit import ACTION_LABELS, TARGET_LABELS, list_logs
 
 router = APIRouter(prefix="/audit", tags=["审计日志"])
 

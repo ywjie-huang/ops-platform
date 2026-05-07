@@ -1,54 +1,206 @@
 {% extends "layout.html" %}
 
 {% block title %}仪表盘 | 运维管理系统{% endblock %}
-{% block page_title %}运维管理系统仪表盘{% endblock %}
-{% block page_desc %}这里放总览数据，每个业务模块现在已经拆成独立页面。{% endblock %}
+{% block page_title %}仪表盘{% endblock %}
+{% block page_desc %}系统全局概览{% endblock %}
 
 {% block page_content %}
-<section class="stats-grid stats-grid-5">
-  <article class="stat-card">
-    <span>资产总数</span>
-    <strong>{{ stats.asset_total }}</strong>
-  </article>
-  <article class="stat-card">
-    <span>在线主机</span>
-    <strong>{{ stats.online_hosts }}</strong>
-  </article>
-  <article class="stat-card">
-    <span>当前告警</span>
-    <strong>{{ stats.open_alerts }}</strong>
-  </article>
-  <article class="stat-card">
-    <span>待处理工单</span>
-    <strong>{{ stats.pending_tickets }}</strong>
-  </article>
-  <article class="stat-card">
-    <span>用户总数</span>
-    <strong>{{ stats.user_total }}</strong>
-  </article>
+{# ── 4 metric cards (参考图样式) ── #}
+<section class="dash-metrics">
+  <div class="metric-card accent-blue">
+    <div>
+      <span>资产总数</span>
+      <strong>{{ stats.asset_total }}</strong>
+    </div>
+    <div class="metric-icon">🖥️</div>
+  </div>
+  <div class="metric-card accent-green">
+    <div>
+      <span>在线资产</span>
+      <strong>{{ stats.online_hosts }}</strong>
+    </div>
+    <div class="metric-icon">✅</div>
+  </div>
+  <div class="metric-card accent-orange">
+    <div>
+      <span>离线资产</span>
+      <strong>{{ stats.offline_assets }}</strong>
+    </div>
+    <div class="metric-icon">⚠️</div>
+  </div>
+  <div class="metric-card accent-violet">
+    <div>
+      <span>待处理工单</span>
+      <strong>{{ stats.open_tickets if stats.open_tickets is defined else 0 }}</strong>
+    </div>
+    <div class="metric-icon">📋</div>
+  </div>
 </section>
 
-<section class="panel">
-  <div class="panel-head">
-    <h3>当前系统结构</h3>
-    <span>已经调整为更像正式后台的结构</span>
+{# ── 下方分栏：资产 + 工单/告警 ── #}
+<section class="dash-grid-main">
+  <div class="dash-col-left">
+    {# 最近资产 #}
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">最近资产</p>
+          <h3>最新录入或调整</h3>
+        </div>
+        <a class="small-btn" href="/assets">查看全部</a>
+      </div>
+      {% if summary.recent_asset_changes %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>更新时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in summary.recent_asset_changes %}
+            <tr>
+              <td><a href="/assets"><strong>{{ item.title }}</strong></a></td>
+              <td><span class="table-tag">{{ item.detail }}</span></td>
+              <td><span class="status-tag tone-{{ item.tone }}">{{ item.tag }}</span></td>
+              <td class="cell-muted">{{ item.meta }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted" style="padding: 24px 18px;">暂无资产数据</p>
+      {% endif %}
+    </div>
+
+    {# 类型分布 #}
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">资产构成</p>
+          <h3>按类型分布</h3>
+        </div>
+      </div>
+      {% if summary.type_breakdown %}
+      <div class="type-chart">
+        {% for item in summary.type_breakdown %}
+        <div class="type-row">
+          <span class="type-label">{{ item.label }}</span>
+          <div class="type-bar-track">
+            <div class="type-bar-fill" style="width: {{ (item.value / summary.max_type_value * 100) if summary.max_type_value else 0 }}%; background: {{ item.color }};"></div>
+          </div>
+          <b class="type-value">{{ item.value }}</b>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted" style="padding: 24px 18px;">暂无数据</p>
+      {% endif %}
+    </div>
   </div>
-  <div class="card-grid">
-    <article class="mini-card">
-      <h4>资产管理</h4>
-      <p>独立页面，支持新增、编辑、删除资产。</p>
-      <a class="small-btn" href="/assets">进入资产管理</a>
-    </article>
-    <article class="mini-card">
-      <h4>用户管理</h4>
-      <p>独立页面，支持新增、编辑、删除用户。</p>
-      <a class="small-btn" href="/users">进入用户管理</a>
-    </article>
-    <article class="mini-card">
-      <h4>后续模块</h4>
-      <p>后面可以继续拆出工单、告警、审计日志页面。</p>
-      <span class="muted">下一步可继续扩展</span>
-    </article>
+
+  <div class="dash-col-right">
+    {# 工单动态 #}
+    {% if can.get('tickets.view') %}
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">工单动态</p>
+          <h3>最近工单</h3>
+        </div>
+        <a class="small-btn" href="/tickets">查看全部</a>
+      </div>
+      {% if summary.recent_tickets %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in summary.recent_tickets %}
+            <tr>
+              <td><strong>{{ item.title }}</strong></td>
+              <td><span class="status-tag tone-{{ item.tone }}">{{ item.tag }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted" style="padding: 24px 18px;">暂无工单</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# 告警动态 #}
+    {% if can.get('alerts.view') %}
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">告警动态</p>
+          <h3>最近告警</h3>
+        </div>
+        <a class="small-btn" href="/alerts">查看全部</a>
+      </div>
+      {% if summary.recent_alerts %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>级别</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in summary.recent_alerts %}
+            <tr>
+              <td><strong>{{ item.title }}</strong></td>
+              <td><span class="status-tag tone-{{ item.tone }}">{{ item.tag }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="muted" style="padding: 24px 18px;">暂无告警</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# 角色分布 #}
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="section-kicker">角色分布</p>
+          <h3>各角色用户数</h3>
+        </div>
+      </div>
+      {% if summary.role_distribution %}
+      {% set max_role = summary.role_distribution | map(attribute='value') | max if summary.role_distribution else 1 %}
+      <div class="role-chart">
+        {% for item in summary.role_distribution %}
+        <div class="role-row {{ item.tone }}">
+          <div class="role-row-head">
+            <span>{{ item.label }}</span>
+            <b>{{ item.value }}</b>
+          </div>
+          <div class="role-bar-track">
+            <div class="role-bar-fill {{ item.tone }}" style="width: {{ (item.value / max_role * 100) if max_role else 0 }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted" style="padding: 24px 18px;">暂无数据</p>
+      {% endif %}
+    </div>
   </div>
 </section>
 {% endblock %}

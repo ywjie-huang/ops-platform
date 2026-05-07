@@ -1,0 +1,128 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ ticket.title }} | 工单详情{% endblock %}
+{% block page_title %}工单详情{% endblock %}
+{% block page_desc %}查看工单完整信息和处理状态。{% endblock %}
+
+{% block page_content %}
+<div class="page-intro-card">
+  <div>
+    <p class="section-kicker">工单协作</p>
+    <h3>{{ ticket.title }}</h3>
+    <p class="muted">优先级 {{ ticket.priority }} · 负责人 {{ ticket.assignee or '未指派' }}</p>
+  </div>
+  <div class="intro-meta">
+    {% if ticket.status == 'open' %}
+    <span class="status-pill status-offline">待处理</span>
+    {% elif ticket.status == 'in_progress' %}
+    <span class="status-pill status-maintain">处理中</span>
+    {% elif ticket.status == 'resolved' %}
+    <span class="status-pill status-online">已解决</span>
+    {% else %}
+    <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">已关闭</span>
+    {% endif %}
+    {% if can.get('tickets.update') %}
+    <a class="small-btn" href="/tickets/{{ ticket.id }}/edit">编辑</a>
+    {% endif %}
+    <a class="ghost-btn" href="/tickets">返回列表</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">工单信息</p>
+        <h3>详细内容</h3>
+      </div>
+    </div>
+    <div class="detail-fields">
+      <div class="detail-field">
+        <span class="detail-label">工单标题</span>
+        <strong>{{ ticket.title }}</strong>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">优先级</span>
+        {% if ticket.priority == 'critical' %}
+        <span class="status-pill" style="background:#fef0f0;color:#dc2626;">紧急</span>
+        {% elif ticket.priority == 'high' %}
+        <span class="status-pill" style="background:#fff4df;color:#d97706;">高</span>
+        {% elif ticket.priority == 'normal' %}
+        <span class="status-pill" style="background:#e8f1ff;color:#2563eb;">普通</span>
+        {% else %}
+        <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">低</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">状态</span>
+        {% if ticket.status == 'open' %}
+        <span class="status-pill status-offline">待处理</span>
+        {% elif ticket.status == 'in_progress' %}
+        <span class="status-pill status-maintain">处理中</span>
+        {% elif ticket.status == 'resolved' %}
+        <span class="status-pill status-online">已解决</span>
+        {% else %}
+        <span class="status-pill" style="background:#f4f4f5;color:#6b7280;">已关闭</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">负责人</span>
+        <span>{{ ticket.assignee or '未指派' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">关联资产</span>
+        {% if ticket.asset %}
+        <a href="/assets/{{ ticket.asset.id }}" style="color:var(--primary);">{{ ticket.asset.name }} ({{ ticket.asset.ip_address }})</a>
+        {% else %}
+        <span>-</span>
+        {% endif %}
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">创建人</span>
+        <span>{{ ticket.creator.full_name if ticket.creator else '-' }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">创建时间</span>
+        <span>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">更新时间</span>
+        <span>{{ ticket.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+    </div>
+    {% if ticket.description %}
+    <div style="margin-top:20px;">
+      <span class="detail-label">问题描述</span>
+      <p style="margin-top:8px;line-height:1.7;color:#475569;">{{ ticket.description }}</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="section-kicker">快速操作</p>
+        <h3>状态流转</h3>
+      </div>
+    </div>
+    <div class="status-flow">
+      <div class="status-step {% if ticket.status == 'open' %}active{% elif ticket.status not in ['open'] %}done{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>待处理</span>
+      </div>
+      <div class="status-step {% if ticket.status == 'in_progress' %}active{% elif ticket.status in ['resolved', 'closed'] %}done{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>处理中</span>
+      </div>
+      <div class="status-step {% if ticket.status == 'resolved' %}active{% elif ticket.status == 'closed' %}done{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>已解决</span>
+      </div>
+      <div class="status-step {% if ticket.status == 'closed' %}active{% endif %}">
+        <div class="status-step-dot"></div>
+        <span>已关闭</span>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

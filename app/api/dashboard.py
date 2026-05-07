@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.routes_pages import build_dashboard_stats, build_dashboard_summary
+from app.routes.pages import build_dashboard_stats, build_dashboard_summary
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
 

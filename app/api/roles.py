@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.routes_pages import PERMISSION_LABELS, _build_permission_tree
-from app.services_audit import write_log
-from app.services_roles import (
+from app.routes.pages import PERMISSION_LABELS, _build_permission_tree
+from app.services.audit import write_log
+from app.services.roles import (
     _get_permissions_by_ids,
     create_role,
     delete_role,
