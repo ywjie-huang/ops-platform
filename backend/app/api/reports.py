@@ -28,7 +28,7 @@ def api_preset_reports(
     return {
         "code": 0,
         "data": [
-            {"id": r.id, "name": r.name, "description": r.description, "icon": r.icon}
+            {"id": r["id"], "name": r["name"], "description": r["description"], "icon": r.get("icon", "📊")}
             for r in reports
         ],
     }
@@ -44,7 +44,7 @@ def api_preset_detail(
     if report is None:
         return {"code": 1, "msg": "报表不存在"}
     data = query_report_data(db, report)
-    return {"code": 0, "data": {"report": {"id": report.id, "name": report.name, "description": report.description}, "data": data}}
+    return {"code": 0, "data": {"report": {"id": report["id"], "name": report["name"], "description": report["description"]}, "data": data}}
 
 
 @router.get("/data-sources")
