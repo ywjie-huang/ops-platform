@@ -4,8 +4,6 @@ from typing import Final
 # core/config.py 在 app/core/ 下，APP_DIR 需要上溯两级到 app/
 APP_DIR: Final = Path(__file__).resolve().parent.parent
 PROJECT_DIR: Final = APP_DIR.parent
-STATIC_DIR: Final = APP_DIR / "static"
-TEMPLATES_DIR: Final = APP_DIR / "templates"
 DATA_DIR: Final = PROJECT_DIR / "data"
 
 # MySQL 配置

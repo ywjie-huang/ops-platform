@@ -6,10 +6,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.routes.pages import PERMISSION_LABELS, _build_permission_tree
 from app.services.audit import write_log
 from app.services.roles import (
+    PERMISSION_LABELS,
     _get_permissions_by_ids,
+    build_permission_tree,
     create_role,
     delete_role,
     get_role,
@@ -174,5 +175,5 @@ def api_permission_tree(
 ):
     """获取权限树结构（给分配菜单弹窗用）。"""
     permissions = list_permissions(db)
-    tree = _build_permission_tree(permissions)
+    tree = build_permission_tree(permissions)
     return {"code": 0, "data": tree}

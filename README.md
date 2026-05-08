@@ -1,6 +1,6 @@
 # my-project · 运维管理系统
 
-基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，前后端分离架构，具备资产管理、容器管理、监控告警、报表分析、工单协作、审计日志、用户权限等核心能力。
+基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，纯前后端分离架构，具备资产管理、容器管理、监控告警、报表分析、工单协作、审计日志、用户权限等核心能力。
 
 ---
 
@@ -257,10 +257,7 @@ backend/app/
 │   └── jwt.py      # JWT 令牌工具
 ├── db/             # 数据库连接与初始化
 ├── models/         # SQLAlchemy 模型
-├── routes/         # SSR 页面路由（兼容旧版）
-├── services/       # 业务逻辑层
-├── templates/      # Jinja2 模板（兼容旧版）
-└── static/         # 静态资源（兼容旧版）
+└── services/       # 业务逻辑层
 ```
 
 ---
@@ -369,12 +366,11 @@ npx vite --host
 
 ## 架构说明
 
-当前为 **前后端分离架构**：
+**纯前后端分离架构**：
 - **前端**（`frontend/`）：Vue 3 + Element Plus SPA，端口 3000
-- **后端**（`backend/`）：FastAPI REST API + SSR 页面路由（兼容），端口 8000
+- **后端**（`backend/`）：FastAPI 纯 REST API，端口 8000
 - 前端通过 `/api/v1/*` 调用后端接口，Vite 开发服务器自动代理
-
-> 后端仍保留 SSR 页面路由作为降级方案，后续将移除 SSR，实现纯前后端分离。
+- 后端不再包含任何页面渲染逻辑，只提供 JSON API
 
 ---
 
@@ -386,7 +382,7 @@ npx vite --host
 - ✅ **JWT 认证** — 登录/鉴权/权限校验
 - ✅ **CORS** — 已配置，支持前端跨域开发
 - ✅ **前端 SPA** — Vue 3 + Element Plus 前端开发完成
-- 🔲 **纯前后端分离** — 移除后端 SSR 路由和模板，后端只保留 API
+- ✅ **纯前后端分离** — 已移除 SSR 路由和模板，后端纯 API
 
 ### 短期优化
 
