@@ -42,7 +42,7 @@ def api_dashboard_summary(
         "code": 0,
         "data": {
             "quick_stats": [
-                {"label": s.label, "value": s.value, "desc": s.desc, "tone": s.tone}
+                {"label": s.label, "value": s.value, "desc": s.hint, "tone": s.tone}
                 for s in summary.quick_stats
             ],
             "recent_asset_changes": [
