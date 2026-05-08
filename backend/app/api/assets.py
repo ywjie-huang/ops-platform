@@ -45,15 +45,21 @@ def api_list_assets(
     keyword: str = "",
     asset_type: str = "",
     status: str = "",
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("assets.view")),
 ):
     items = list_assets(db, keyword=keyword, asset_type=asset_type, status=status)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
-            "items": [_asset_dict(a) for a in items],
-            "total": len(items),
+            "items": [_asset_dict(a) for a in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 

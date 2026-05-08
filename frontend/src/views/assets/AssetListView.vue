@@ -39,9 +39,19 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="total"
+          :layout="paginationLayout"
+          @current-change="handleCurrentChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
     </div>
 
-    <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资产' : '新增资产'" width="520px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item>
@@ -70,6 +80,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { getAssets, createAsset, updateAsset, deleteAsset } from '@/api/assets'
+import { usePagination } from '@/hooks/usePagination'
 import { ElMessage, type FormInstance } from 'element-plus'
 
 const loading = ref(false)
@@ -78,6 +89,8 @@ const items = ref<any[]>([])
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
+
+const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange, resetPagination } = usePagination(fetchData)
 
 const filters = reactive({ keyword: '', asset_type: '', status: '' })
 const form = reactive({ name: '', asset_type: '云主机', ip_address: '', status: '在线', owner: '', description: '' })
@@ -88,16 +101,19 @@ const rules = {
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
 }
 
-async function fetchData() {
+async function fetchData(extra?: any) {
   loading.value = true
   try {
-    const res: any = await getAssets(filters)
+    const params = { ...filters, page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
+    const res: any = await getAssets(params)
     items.value = res.data.items
+    total.value = res.data.total
   } finally { loading.value = false }
 }
 
 function resetFilters() {
   Object.assign(filters, { keyword: '', asset_type: '', status: '' })
+  resetPagination()
   fetchData()
 }
 
@@ -132,3 +148,7 @@ async function handleDelete(id: number) {
 
 onMounted(fetchData)
 </script>
+
+<style scoped>
+.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+</style>

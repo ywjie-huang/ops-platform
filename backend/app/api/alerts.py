@@ -48,15 +48,21 @@ def api_list_alerts(
     keyword: str = "",
     status: str = "",
     level: str = "",
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("alerts.view")),
 ):
     items = list_alerts(db, keyword=keyword, status=status, level=level)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
-            "items": [_alert_dict(a) for a in items],
-            "total": len(items),
+            "items": [_alert_dict(a) for a in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 

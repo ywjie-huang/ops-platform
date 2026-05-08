@@ -57,15 +57,21 @@ def _role_dict(r) -> dict:
 def api_list_roles(
     keyword: str = "",
     system_only: bool = False,
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.view")),
 ):
     items = list_roles(db, keyword=keyword, system_only=system_only)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
-            "items": [_role_dict(r) for r in items],
-            "total": len(items),
+            "items": [_role_dict(r) for r in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 

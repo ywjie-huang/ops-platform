@@ -28,6 +28,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrap"><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10,20,50]" :total="total" :layout="paginationLayout" @current-change="handleCurrentChange" @size-change="handleSizeChange" /></div>
     </div>
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑告警' : '新增告警'" width="520px">
       <el-form :model="form" label-width="80px">
@@ -43,15 +44,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'; import { getAlerts, createAlert, updateAlert, deleteAlert } from '@/api/alerts'; import { ElMessage } from 'element-plus'
-const loading = ref(false); const items = ref<any[]>([]); const dialogVisible = ref(false); const editingId = ref<number | null>(null)
+import { ref, reactive, onMounted } from 'vue'
+import { getAlerts, createAlert, updateAlert, deleteAlert } from '@/api/alerts'
+import { usePagination } from '@/hooks/usePagination'
+import { ElMessage } from 'element-plus'
+
+const loading = ref(false); const items = ref<any[]>([])
+const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange } = usePagination(fetchData)
+const dialogVisible = ref(false); const editingId = ref<number | null>(null)
 const filters = reactive({ keyword: '', status: '', level: '' })
 const form = reactive({ title: '', description: '', level: 'medium', status: 'pending', source: '' })
 const levelType = (l: string) => ({ low: 'info', medium: 'warning', high: 'danger', critical: 'danger' }[l] || '') as any
 const statusType = (s: string) => ({ pending: 'warning', confirmed: 'primary', resolved: 'success', ignored: 'info' }[s] || '') as any
-async function fetchData() { loading.value = true; try { const res: any = await getAlerts(filters); items.value = res.data.items } finally { loading.value = false } }
+
+async function fetchData(extra?: any) {
+  loading.value = true
+  try {
+    const params = { ...filters, page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
+    const res: any = await getAlerts(params); items.value = res.data.items; total.value = res.data.total
+  } finally { loading.value = false }
+}
 function showDialog(row?: any) { editingId.value = row?.id || null; Object.assign(form, row || { title: '', description: '', level: 'medium', status: 'pending', source: '' }); dialogVisible.value = true }
 async function handleSave() { if (editingId.value) { await updateAlert(editingId.value, form); ElMessage.success('更新成功') } else { await createAlert(form); ElMessage.success('创建成功') }; dialogVisible.value = false; fetchData() }
 async function handleDelete(id: number) { await deleteAlert(id); ElMessage.success('删除成功'); fetchData() }
 onMounted(fetchData)
 </script>
+
+<style scoped>.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }</style>

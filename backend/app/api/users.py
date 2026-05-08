@@ -49,15 +49,21 @@ def _user_dict(u: User) -> dict:
 def api_list_users(
     keyword: str = "",
     role_id: int | None = None,
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("users.view")),
 ):
     items = list_users(db, keyword=keyword, role_id=role_id)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
-            "items": [_user_dict(u) for u in items],
-            "total": len(items),
+            "items": [_user_dict(u) for u in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 

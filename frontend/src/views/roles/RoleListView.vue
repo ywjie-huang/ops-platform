@@ -23,9 +23,11 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrap">
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10,20,50]" :total="total" :layout="paginationLayout" @current-change="handleCurrentChange" @size-change="handleSizeChange" />
+      </div>
     </div>
 
-    <!-- 角色弹窗 -->
     <el-dialog v-model="roleDialogVisible" :title="editingId ? '修改角色' : '新增角色'" width="480px">
       <el-form ref="roleFormRef" :model="roleForm" :rules="roleRules" label-width="80px">
         <el-form-item label="角色名称" prop="name"><el-input v-model="roleForm.name" /></el-form-item>
@@ -38,12 +40,8 @@
       </template>
     </el-dialog>
 
-    <!-- 分配菜单弹窗 -->
     <el-dialog v-model="permDialogVisible" title="分配菜单" width="860px">
-      <div class="perm-info">
-        <el-icon><InfoFilled /></el-icon>
-        <span>普通用户 {{ permRoleName }} - 菜单分配后需要用户手动刷新页面才会生效</span>
-      </div>
+      <div class="perm-info"><el-icon><InfoFilled /></el-icon><span>普通用户 {{ permRoleName }} - 菜单分配后需要用户手动刷新页面才会生效</span></div>
       <div class="perm-batch">
         <span class="batch-label">全选操作</span>
         <el-button size="small" @click="batchPerm('all', true)">全部</el-button>
@@ -61,20 +59,14 @@
       <div class="perm-tree">
         <div v-for="group in permTree" :key="group.parent" class="perm-group">
           <div class="perm-group-header">
-            <el-checkbox :model-value="isParentChecked(group)" :indeterminate="isParentIndeterminate(group)" @change="toggleParent(group, $event)">
-              <strong>{{ group.parent }}</strong>
-            </el-checkbox>
+            <el-checkbox :model-value="isParentChecked(group)" :indeterminate="isParentIndeterminate(group)" @change="toggleParent(group, $event)"><strong>{{ group.parent }}</strong></el-checkbox>
           </div>
           <div v-for="child in group.children" :key="child.module" class="perm-child-row">
             <div class="perm-child-label">
-              <el-checkbox :model-value="isChildChecked(child)" :indeterminate="isChildIndeterminate(child)" @change="toggleChild(child, $event)">
-                {{ child.label }}
-              </el-checkbox>
+              <el-checkbox :model-value="isChildChecked(child)" :indeterminate="isChildIndeterminate(child)" @change="toggleChild(child, $event)">{{ child.label }}</el-checkbox>
             </div>
             <div class="perm-func-list">
-              <el-checkbox v-for="p in child.permissions" :key="p.id" :model-value="permChecked.has(p.id)" @change="togglePerm(p, $event)">
-                {{ p.name }}
-              </el-checkbox>
+              <el-checkbox v-for="p in child.permissions" :key="p.id" :model-value="permChecked.has(p.id)" @change="togglePerm(p, $event)">{{ p.name }}</el-checkbox>
             </div>
           </div>
         </div>
@@ -90,30 +82,28 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { getRoles, createRole, updateRole, deleteRole, assignPermissions, getPermissionTree } from '@/api/roles'
+import { usePagination } from '@/hooks/usePagination'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 
 const loading = ref(false); const saving = ref(false)
 const items = ref<any[]>([])
+const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange } = usePagination(fetchData)
 const roleDialogVisible = ref(false); const editingId = ref<number | null>(null)
 const roleFormRef = ref<FormInstance>()
 const roleForm = reactive({ name: '', code: '', description: '' })
-const roleRules = {
-  name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入角色编码', trigger: 'blur' }],
-}
+const roleRules = { name: [{ required: true, message: '请输入角色名称', trigger: 'blur' }], code: [{ required: true, message: '请输入角色编码', trigger: 'blur' }] }
 
-// 权限分配
-const permDialogVisible = ref(false)
-const permRoleId = ref(0)
-const permRoleName = ref('')
-const permTree = ref<any[]>([])
-const permChecked = ref(new Set<number>())
-const permMap = new Map<number, any>() // id -> perm
+const permDialogVisible = ref(false); const permRoleId = ref(0); const permRoleName = ref('')
+const permTree = ref<any[]>([]); const permChecked = ref(new Set<number>()); const permMap = new Map<number, any>()
 
-async function fetchData() {
+async function fetchData(extra?: any) {
   loading.value = true
-  try { const res: any = await getRoles(); items.value = res.data.items } finally { loading.value = false }
+  try {
+    const params = { page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
+    const res: any = await getRoles(params)
+    items.value = res.data.items; total.value = res.data.total
+  } finally { loading.value = false }
 }
 
 function showRoleDialog(row?: any) {
@@ -123,10 +113,7 @@ function showRoleDialog(row?: any) {
 }
 
 async function handleSaveRole() {
-  if (!editingId.value) {
-    const valid = await roleFormRef.value?.validate().catch(() => false)
-    if (!valid) return
-  }
+  if (!editingId.value) { const valid = await roleFormRef.value?.validate().catch(() => false); if (!valid) return }
   saving.value = true
   try {
     if (editingId.value) { await updateRole(editingId.value, roleForm); ElMessage.success('更新成功') }
@@ -138,74 +125,38 @@ async function handleSaveRole() {
 async function handleDeleteRole(id: number) { await deleteRole(id); ElMessage.success('删除成功'); fetchData() }
 
 async function showPermDialog(row: any) {
-  permRoleId.value = row.id
-  permRoleName.value = row.name
+  permRoleId.value = row.id; permRoleName.value = row.name
   permChecked.value = new Set(row.permissions.map((p: any) => p.id))
   permMap.clear()
-  if (!permTree.value.length) {
-    const res: any = await getPermissionTree()
-    permTree.value = res.data
-  }
+  if (!permTree.value.length) { const res: any = await getPermissionTree(); permTree.value = res.data }
   permTree.value.forEach(g => g.children.forEach((c: any) => c.permissions.forEach((p: any) => permMap.set(p.id, p))))
   permDialogVisible.value = true
 }
 
-function isParentChecked(group: any) {
-  return group.children.every((c: any) => c.permissions.every((p: any) => permChecked.value.has(p.id)))
-}
-function isParentIndeterminate(group: any) {
-  const ids = group.children.flatMap((c: any) => c.permissions.map((p: any) => p.id))
-  const checked = ids.filter((id: number) => permChecked.value.has(id)).length
-  return checked > 0 && checked < ids.length
-}
-function toggleParent(group: any, val: boolean) {
-  group.children.forEach((c: any) => c.permissions.forEach((p: any) => {
-    if (val) permChecked.value.add(p.id); else permChecked.value.delete(p.id)
-  }))
-}
+function isParentChecked(group: any) { return group.children.every((c: any) => c.permissions.every((p: any) => permChecked.value.has(p.id))) }
+function isParentIndeterminate(group: any) { const ids = group.children.flatMap((c: any) => c.permissions.map((p: any) => p.id)); const checked = ids.filter((id: number) => permChecked.value.has(id)).length; return checked > 0 && checked < ids.length }
+function toggleParent(group: any, val: boolean) { group.children.forEach((c: any) => c.permissions.forEach((p: any) => { if (val) permChecked.value.add(p.id); else permChecked.value.delete(p.id) })) }
 function isChildChecked(child: any) { return child.permissions.every((p: any) => permChecked.value.has(p.id)) }
-function isChildIndeterminate(child: any) {
-  const checked = child.permissions.filter((p: any) => permChecked.value.has(p.id)).length
-  return checked > 0 && checked < child.permissions.length
-}
-function toggleChild(child: any, val: boolean) {
-  child.permissions.forEach((p: any) => { if (val) permChecked.value.add(p.id); else permChecked.value.delete(p.id) })
-}
-function togglePerm(perm: any, val: boolean) {
-  if (val) permChecked.value.add(perm.id); else permChecked.value.delete(perm.id)
-}
-
+function isChildIndeterminate(child: any) { const checked = child.permissions.filter((p: any) => permChecked.value.has(p.id)).length; return checked > 0 && checked < child.permissions.length }
+function toggleChild(child: any, val: boolean) { child.permissions.forEach((p: any) => { if (val) permChecked.value.add(p.id); else permChecked.value.delete(p.id) }) }
+function togglePerm(perm: any, val: boolean) { if (val) permChecked.value.add(perm.id); else permChecked.value.delete(perm.id) }
 function batchPerm(action: string, check: boolean) {
-  const ids = action === 'all'
-    ? Array.from(permMap.keys())
-    : Array.from(permMap.values()).filter((p: any) => p.code.split('.')[1] === action).map((p: any) => p.id)
+  const ids = action === 'all' ? Array.from(permMap.keys()) : Array.from(permMap.values()).filter((p: any) => p.code.split('.')[1] === action).map((p: any) => p.id)
   ids.forEach(id => { if (check) permChecked.value.add(id); else permChecked.value.delete(id) })
 }
 
 async function handleSavePerm() {
   saving.value = true
-  try {
-    await assignPermissions(permRoleId.value, Array.from(permChecked.value))
-    ElMessage.success('权限分配成功')
-    permDialogVisible.value = false
-    fetchData()
-  } finally { saving.value = false }
+  try { await assignPermissions(permRoleId.value, Array.from(permChecked.value)); ElMessage.success('权限分配成功'); permDialogVisible.value = false; fetchData() } finally { saving.value = false }
 }
 
 onMounted(fetchData)
 </script>
 
 <style lang="scss" scoped>
-.perm-info {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; background: var(--primary-bg); color: #1d4ed8;
-  font-size: 13px; border-radius: 6px; margin-bottom: 12px;
-}
-.perm-batch {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 10px 0; margin-bottom: 12px;
-  .batch-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
-}
+.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+.perm-info { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--primary-bg); color: #1d4ed8; font-size: 13px; border-radius: 6px; margin-bottom: 12px; }
+.perm-batch { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 0; margin-bottom: 12px; .batch-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); } }
 .perm-tree { max-height: 50vh; overflow-y: auto; }
 .perm-group { margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
 .perm-group-header { padding: 10px 14px; background: #f8fafc; border-bottom: 1px solid var(--border-color); }

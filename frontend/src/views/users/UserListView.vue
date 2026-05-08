@@ -32,10 +32,13 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrap">
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10,20,50]" :total="total" :layout="paginationLayout" @current-change="handleCurrentChange" @size-change="handleSizeChange" />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '修改用户' : '新增用户'" width="500px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+      <el-form ref="formRef" :model="form" :rules="userRules" label-width="80px">
         <el-form-item label="用户名" prop="username"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="姓名" prop="full_name"><el-input v-model="form.full_name" /></el-form-item>
         <el-form-item :label="editingId ? '新密码' : '密码'" :prop="editingId ? '' : 'password'">
@@ -58,27 +61,30 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { getUsers, createUser, updateUser, deleteUser, getUserRoles } from '@/api/users'
+import { usePagination } from '@/hooks/usePagination'
 import { ElMessage, type FormInstance } from 'element-plus'
 
 const loading = ref(false); const saving = ref(false)
 const items = ref<any[]>([]); const roles = ref<any[]>([])
 const dialogVisible = ref(false); const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
+const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange, resetPagination } = usePagination(fetchData)
 const filters = reactive({ keyword: '', role_id: null as number | null })
 const form = reactive({ username: '', full_name: '', password: '', role_ids: [] as number[] })
-const rules = {
+const userRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   full_name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-async function fetchData() {
+async function fetchData(extra?: any) {
   loading.value = true
   try {
-    const params: any = { keyword: filters.keyword }
+    const params: any = { keyword: filters.keyword, page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
     if (filters.role_id) params.role_id = filters.role_id
     const res: any = await getUsers(params)
     items.value = res.data.items
+    total.value = res.data.total
   } finally { loading.value = false }
 }
 
@@ -89,10 +95,7 @@ function showDialog(row?: any) {
 }
 
 async function handleSave() {
-  if (!editingId.value) {
-    const valid = await formRef.value?.validate().catch(() => false)
-    if (!valid) return
-  }
+  if (!editingId.value) { const valid = await formRef.value?.validate().catch(() => false); if (!valid) return }
   saving.value = true
   try {
     if (editingId.value) { await updateUser(editingId.value, form); ElMessage.success('更新成功') }
@@ -103,10 +106,7 @@ async function handleSave() {
 
 async function handleDelete(id: number) { await deleteUser(id); ElMessage.success('删除成功'); fetchData() }
 
-onMounted(async () => {
-  const res: any = await getUserRoles(); roles.value = res.data
-  fetchData()
-})
+onMounted(async () => { const res: any = await getUserRoles(); roles.value = res.data; fetchData() })
 </script>
 
-<style scoped>.text-muted { color: var(--text-muted); font-size: 13px; }</style>
+<style scoped>.text-muted { color: var(--text-muted); font-size: 13px; } .pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }</style>

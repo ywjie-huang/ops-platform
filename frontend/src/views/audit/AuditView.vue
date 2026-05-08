@@ -22,14 +22,28 @@
         <el-table-column prop="ip_address" label="IP" width="120" />
         <el-table-column prop="created_at" label="时间" width="170" />
       </el-table>
+      <div class="pagination-wrap"><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10,20,50]" :total="total" :layout="paginationLayout" @current-change="handleCurrentChange" @size-change="handleSizeChange" /></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'; import { getAuditLogs } from '@/api/audit'
+import { ref, reactive, onMounted } from 'vue'
+import { getAuditLogs } from '@/api/audit'
+import { usePagination } from '@/hooks/usePagination'
+
 const loading = ref(false); const items = ref<any[]>([])
+const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange } = usePagination(fetchData)
 const filters = reactive({ keyword: '', action: '', target_type: '' })
-async function fetchData() { loading.value = true; try { const res: any = await getAuditLogs(filters); items.value = res.data.items } finally { loading.value = false } }
+
+async function fetchData(extra?: any) {
+  loading.value = true
+  try {
+    const params = { ...filters, page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
+    const res: any = await getAuditLogs(params); items.value = res.data.items; total.value = res.data.total
+  } finally { loading.value = false }
+}
 onMounted(fetchData)
 </script>
+
+<style scoped>.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }</style>

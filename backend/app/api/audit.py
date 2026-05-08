@@ -16,10 +16,14 @@ def api_list_logs(
     action: str = "",
     target_type: str = "",
     days: int = 0,
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("audit.view")),
 ):
     items = list_logs(db, keyword=keyword, action=action, target_type=target_type, days=days)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
@@ -35,9 +39,11 @@ def api_list_logs(
                     "ip_address": log.ip_address,
                     "created_at": log.created_at.isoformat(),
                 }
-                for log in items
+                for log in items[start:start + page_size]
             ],
-            "total": len(items),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 

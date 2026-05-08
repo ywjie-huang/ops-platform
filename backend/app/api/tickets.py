@@ -48,15 +48,21 @@ def api_list_tickets(
     keyword: str = "",
     status: str = "",
     priority: str = "",
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("tickets.view")),
 ):
     items = list_tickets(db, keyword=keyword, status=status, priority=priority)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
     return {
         "code": 0,
         "data": {
-            "items": [_ticket_dict(t) for t in items],
-            "total": len(items),
+            "items": [_ticket_dict(t) for t in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         },
     }
 
