@@ -26,7 +26,7 @@ def api_list_logs(
             "items": [
                 {
                     "id": log.id,
-                    "user": log.user_name,
+                    "user": log.username,
                     "action": log.action,
                     "target_type": log.target_type,
                     "target_id": log.target_id,
