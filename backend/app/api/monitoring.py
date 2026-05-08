@@ -83,14 +83,16 @@ def api_delete_metric(metric_id: int, db: Session = Depends(get_db), _: User = D
 
 @router.get("/hosts")
 def api_host_list(db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.view"))):
-    items = get_host_monitoring_list(db)
+    from app.services.assets import list_assets
+    assets = list_assets(db)
+    items = get_host_monitoring_list(assets)
     return {
         "code": 0,
         "data": [
             {
-                "id": h.id, "name": h.name, "ip_address": h.ip_address, "owner": h.owner,
-                "cpu": h.cpu_percent, "memory": h.memory_percent, "disk": h.disk_percent,
-                "network_in": h.network_in, "network_out": h.network_out, "load": h.load_avg,
+                "id": h["asset_id"], "name": h["name"], "ip_address": h["ip"], "owner": h["owner"],
+                "cpu": h["cpu"], "memory": h["memory"], "disk": h["disk"],
+                "network_in": h["net_in"], "network_out": h["net_out"], "load": h["load"],
             }
             for h in items
         ],
@@ -99,7 +101,9 @@ def api_host_list(db: Session = Depends(get_db), _: User = Depends(api_permissio
 
 @router.get("/hosts/{host_id}")
 def api_host_detail(host_id: int, db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.view"))):
-    detail = get_host_detail(db, host_id)
-    if detail is None:
+    from app.services.assets import get_asset
+    asset = get_asset(db, host_id)
+    if asset is None:
         raise HTTPException(status_code=404, detail="主机不存在")
+    detail = get_host_detail(asset.id, asset.name, asset.ip_address)
     return {"code": 0, "data": detail}
