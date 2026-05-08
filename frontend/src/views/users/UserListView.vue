@@ -64,7 +64,7 @@ const loading = ref(false); const saving = ref(false)
 const items = ref<any[]>([]); const roles = ref<any[]>([])
 const dialogVisible = ref(false); const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const filters = reactive({ keyword: '', role_id: '' })
+const filters = reactive({ keyword: '', role_id: null as number | null })
 const form = reactive({ username: '', full_name: '', password: '', role_ids: [] as number[] })
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -74,7 +74,12 @@ const rules = {
 
 async function fetchData() {
   loading.value = true
-  try { const res: any = await getUsers(filters); items.value = res.data.items } finally { loading.value = false }
+  try {
+    const params: any = { keyword: filters.keyword }
+    if (filters.role_id) params.role_id = filters.role_id
+    const res: any = await getUsers(params)
+    items.value = res.data.items
+  } finally { loading.value = false }
 }
 
 function showDialog(row?: any) {
