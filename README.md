@@ -9,7 +9,7 @@
 | 一级分组 | 二级菜单 | 说明 |
 |---------|---------|------|
 | **报表大屏** | 仪表盘 / 报表中心 | 系统概览 + 预置报表/自定义报表/CSV导出 |
-| **资产管理** | 主机管理 / 容器管理 / Docker 监控 | 资产台账 + SSH 终端 + K8s 集群自动发现 + Docker Agent 主机监控 |
+| **资产管理** | 主机管理 / 主机密钥 / 容器管理 / Docker 监控 | 资产台账 + SSH 密钥管理 + SSH 终端(含SFTP) + K8s 集群自动发现 + Docker Agent 主机监控 |
 | **监控告警** | 主机监控 / 告警规则 / 告警事件 / 告警管理 | Prometheus 实时数据 + 告警规则 + Alertmanager 事件 + 告警处理 |
 | **工单协作** | 工单协作 | 工单流转 |
 | **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
@@ -38,15 +38,43 @@
 - 资产状态：**使用中** / **已关机** / **已删除**
 - SSH 配置：端口、用户名、密码（详情页编辑，留空不修改）
 
-### 3. SSH Web 终端
+### 3. 主机密钥管理
 
-- 基于 **xterm.js + paramiko + WebSocket** 的网页 SSH 终端
-- 支持交互式 Shell，实时输入输出
-- Catppuccin 暗色主题
-- 独立页面，从主机列表或主机详情点击 SSH 按钮进入
-- WebSocket 端点：`/api/v1/ws/ssh/{asset_id}`
+- 统一管理 SSH 密钥凭据，支持多台主机复用同一密钥
+- **密码认证**：保存 SSH 密码，适合公司统一密码场景
+- **私钥认证**：粘贴 RSA / Ed25519 私钥内容，支持私钥密码保护
+- 每个密钥可设置用户名、端口、备注
+- **默认密钥**：设为默认后 SSH 连接自动优先使用
+- 密钥列表不显示敏感字段原文，编辑时才展示
 
-### 4. 容器管理（K8s 自动发现）
+### 4. SSH Web 终端（增强版）
+
+基于 **xterm.js + paramiko + WebSocket** 的全功能网页 SSH 终端：
+
+**工具栏：**
+- 复制 / 粘贴（选中文字自动复制到剪贴板）
+- 清屏、字体缩放（10~24px）、全屏模式
+- 断开连接 / 重新连接
+
+**终端特性：**
+- Tokyo Night 暗色主题
+- 连接状态实时指示（绿色圆点 + 连接时长计时）
+- 底部状态栏：主机 IP、用户名、终端尺寸、已连接时长
+- 登录时可选择认证方式：资产自带凭据 / 已保存的 SSH 密钥
+- 有默认密钥时自动选中
+
+**文件管理器（SFTP）：**
+- 右侧面板，点击工具栏文件夹图标打开
+- 目录浏览：文件名、大小、修改时间、权限
+- 路径导航栏 + 快捷路径（/、~、/tmp、/etc、/var/log）
+- **上传文件**：选择本地文件上传到当前目录
+- **下载文件**：右键菜单直接下载到本地
+- **在线编辑**：双击文本文件打开编辑器，修改后直接保存
+- **新建目录** / **重命名** / **删除**（右键菜单操作）
+
+**部署方式：** xterm.js + paramiko + WebSocket，WebSocket 端点：`/api/v1/ws/ssh/{asset_id}`
+
+### 5. 容器管理（K8s 自动发现）
 
 - 对接 **Kubernetes API**，输入 API Server 地址 + ServiceAccount Token 即可接入集群
 - **连接测试**：接入前自动测试 K8s API 连通性，显示集群版本
@@ -60,7 +88,7 @@
 - **Service 管理**：类型（ClusterIP/NodePort/LoadBalancer）、Cluster IP、端口、Selector；支持分页
 - **命名空间 / 节点**：概览表格均支持分页（10/20/50 条/页）
 
-### 5. Docker 监控（Agent 拉取模式）
+### 6. Docker 监控（Agent 拉取模式）
 
 - 采用 **Portainer 风格**：目标主机部署轻量 Agent 容器，平台主动拉取数据
 - **一键部署**：注册主机时直接显示 `docker run` 命令，复制即可
@@ -91,7 +119,7 @@ docker run -d -p 9001:9001 \
 | `GET /containers` | 容器列表及指标 |
 | `GET /snapshot` | 一次性返回全部数据 |
 
-### 6. 主机监控（Prometheus）
+### 7. 主机监控（Prometheus）
 
 - 对接 **Prometheus + node_exporter**，实时采集主机指标
 - 主机列表展示：CPU、内存、磁盘、网络、负载（颜色阈值：🟢→🟡→🔴）
@@ -109,13 +137,13 @@ docker run -d -p 9001:9001 \
 | 网络流量 | `rate(node_network_receive/transmit_bytes_total[5m]) * 8` |
 | 系统负载 | `node_load1 / node_load5 / node_load15` |
 
-### 7. 告警规则（Prometheus）
+### 8. 告警规则（Prometheus）
 
 - 从 Prometheus `/api/v1/rules` 拉取告警规则
 - 展示：规则名称、PromQL 表达式、严重程度、状态（inactive/pending/firing）、持续时间、健康状态
 - 支持按 severity 和 state 筛选
 
-### 8. 告警事件（Alertmanager Webhook）
+### 9. 告警事件（Alertmanager Webhook）
 
 - Alertmanager 通过 **webhook** 推送告警事件到后端，自动存入数据库
 - 告警事件表格：ID、来源信息、告警名称、严重程度、状态、告警值、告警摘要、连续触发次数、触发时间、恢复时间
@@ -123,20 +151,20 @@ docker run -d -p 9001:9001 \
 - 每行可展开查看原始 labels/annotations JSON
 - 告警值自动从 description 中提取百分比数值
 
-### 9. 告警管理
+### 10. 告警管理
 
 - 告警新增、编辑、删除（弹窗表单）
 - 告警状态：待确认 → 已确认 → 已解决 / 已忽略
 - 告警级别：低 / 中 / 高 / 严重
 
-### 10. 工单协作
+### 11. 工单协作
 
 - 工单新增、编辑、删除（弹窗表单）
 - 工单状态：待处理 → 处理中 → 已解决 → 已关闭
 - 工单优先级：低 / 普通 / 高 / 紧急
 - 支持关联资产
 
-### 11. 批量执行
+### 12. 批量执行
 
 - 从资产列表中**勾选多台主机**，输入命令，并发执行
 - 基于 **WebSocket + paramiko**，实时返回每台主机的输出
@@ -144,7 +172,7 @@ docker run -d -p 9001:9001 \
 - **执行历史**：记录每次执行的命令、主机、结果，支持搜索和删除
 - WebSocket 端点：`/api/v1/batch-exec/ws/exec`
 
-### 12. 巡检中心
+### 13. 巡检中心
 
 - **一键巡检**：手动触发，自动检查主机、K8s 集群、资产状态
 - **主机巡检**（Prometheus）：CPU、内存、磁盘、负载各项指标独立检查，阈值可自定义
@@ -155,31 +183,31 @@ docker run -d -p 9001:9001 \
 - **巡检阈值配置**：独立配置页面，2×2 卡片网格布局，每项指标支持滑块调节 + 三色预览条（绿/黄/红），提供「严格 / 标准 / 宽松」三档快捷预设，支持恢复默认
 - 报告列表 + 详情弹窗 + **导出 Excel**（状态自动着色、中文分类、支持中文文件名）+ 删除
 
-### 13. 报表中心
+### 14. 报表中心
 
 - **预置报表**：8 种内置报表（资产统计、工单统计、告警统计等）
 - **自定义报表**：选择数据源 + 维度 + 时间范围
 - **CSV 导出**：一键导出报表数据
 
-### 14. 用户与权限
+### 15. 用户与权限
 
 - 用户管理：CRUD + 分配角色
 - 角色权限（RBAC）：三级权限树（页面 → 子页面 → 功能），支持批量全选/反选
 - 页面级 + 接口级权限校验，侧边栏按权限动态显示
 
-### 15. 审计日志
+### 16. 审计日志
 
-- 自动记录关键操作：增删改 + 登录登出 + SSH 连接 + 配置变更 + 批量执行
+- 自动记录关键操作：增删改 + 登录登出 + SSH 连接 + SFTP 上传/下载/删除 + 配置变更 + 批量执行
 - **真实客户端 IP 采集**：优先读取 `X-Forwarded-For` / `X-Real-IP`（反向代理场景），回退到直连 IP；开发环境下 Vite 代理自动透传客户端 IP
 - 搜索栏：关键词 + 操作类型 + 对象类型 + 时间范围
 
-### 16. 仪表盘
+### 17. 仪表盘
 
 - 4 张指标卡片：资产总数 / 在线 / 离线 / 待处理工单
 - 快捷统计条：在线率、待处理工单、待处理告警
 - 左右分栏：资产变更 + 最近工单 | 告警 + 角色分布 + 资产类型分布
 
-### 17. 配置中心
+### 18. 配置中心
 
 - 通过 UI 管理 Prometheus / Alertmanager 服务地址，无需改代码重启
 - **连接测试**：一键测试 Prometheus / Alertmanager 是否可达
@@ -192,8 +220,10 @@ docker run -d -p 9001:9001 \
 
 - 深色海军蓝侧边栏 + 白色内容区，蓝色主色调（#3b82f6）
 - 登录页：暗色渐变背景 + 玻璃拟态卡片 + 浮动几何装饰动画
+- SSH 终端：Tokyo Night 暗色主题，工具栏 + 文件管理器
 - 弹窗表单、圆形进度条、药丸形状态标签、迷你进度条
 - 响应式：1100px / 860px / 600px 三档断点
+- **图标按需加载**：只打包实际使用的 Element Plus 图标（26 个 vs 300+），减小打包体积
 
 ---
 
@@ -208,7 +238,7 @@ docker run -d -p 9001:9001 \
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Vue 3 + TypeScript + Element Plus + Pinia + Vite |
+| 前端 | Vue 3 + TypeScript + Element Plus + Pinia + Vite 8 |
 | 后端 | FastAPI + SQLAlchemy + Pydantic |
 | 数据库 | MySQL 8 |
 | 监控 | Prometheus + node_exporter |
@@ -216,7 +246,7 @@ docker run -d -p 9001:9001 \
 | 容器 | Kubernetes API（httpx 直连） |
 | Docker | Agent（HTTP 拉取模式） |
 | 部署 | Docker Compose（一键部署 MySQL + 后端 + 前端） |
-| SSH | xterm.js + paramiko + WebSocket |
+| SSH | xterm.js + paramiko + WebSocket（终端 + SFTP 文件管理） |
 | 认证 | JWT (pbkdf2_sha256) + 图形验证码 (captcha) |
 
 ---
@@ -230,13 +260,14 @@ my-project/
 │       ├── api/                # REST API
 │       │   ├── auth.py         # 认证
 │       │   ├── assets.py       # 资产管理
-│       │   ├── ssh.py          # SSH WebSocket
+│       │   ├── ssh.py          # SSH WebSocket + SFTP 文件管理
+│       │   ├── ssh_keys.py     # SSH 密钥管理
 │       │   ├── monitoring.py   # 主机监控（Prometheus）
 │       │   ├── alertmanager.py # Alertmanager（告警规则/事件/Webhook）
 │       │   ├── alerts.py       # 告警管理
 │       │   ├── tickets.py      # 工单
 │       │   ├── containers.py   # 容器（K8s API 自动发现）
-│       │   ├── docker_mgmt.py   # Docker 监控（主机管理 + 容器查询）
+│       │   ├── docker_mgmt.py  # Docker 监控（主机管理 + 容器查询）
 │       │   ├── batch_exec.py   # 批量执行（WebSocket）
 │       │   ├── patrol.py       # 巡检中心
 │       │   ├── settings.py     # 配置中心
@@ -257,6 +288,7 @@ my-project/
 │       │   ├── container.py    # 容器（集群/Pod/Service/Deployment）
 │       │   ├── patrol.py       # 巡检报告 + 巡检项
 │       │   ├── rbac.py         # 角色权限
+│       │   ├── ssh_key.py      # SSH 密钥
 │       │   ├── system_config.py # 系统配置
 │       │   ├── ticket.py       # 工单
 │       │   └── user.py         # 用户
@@ -272,14 +304,19 @@ my-project/
 ├── frontend/
 │   └── src/
 │       ├── api/                # API 请求层
+│       │   ├── request.ts      # Axios 封装
+│       │   ├── sshKeys.ts      # SSH 密钥 API
+│       │   └── sftp.ts         # SFTP 文件管理 API
 │       ├── layouts/            # 布局组件
 │       ├── router/             # 路由 + 守卫
 │       ├── stores/             # Pinia 状态管理
+│       ├── utils/
+│       │   └── icons.ts        # Element Plus 图标按需注册
 │       └── views/
 │           ├── login/          # 登录页（玻璃拟态）
 │           ├── dashboard/      # 仪表盘
-│           ├── assets/         # 资产管理
-│           ├── monitoring/     # 监控告警（主机监控 + 告警规则 + 告警事件 + 告警管理）
+│           ├── assets/         # 资产管理 + 主机密钥
+│           ├── monitoring/     # 监控告警 + SSH 终端（含 SFTP）
 │           ├── containers/     # 容器（集群列表 + 资源详情 + Docker 监控 + 主机详情）
 │           ├── batch/          # 批量执行
 │           ├── patrol/         # 巡检中心
@@ -511,7 +548,16 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 认证 | `POST /auth/login` | 登录（需验证码） |
 | 认证 | `GET /auth/captcha` | 获取图形验证码 |
 | 资产 | `GET/POST/PUT/DELETE /assets/` | 资产 CRUD |
-| SSH | `WS /ws/ssh/{asset_id}` | SSH 终端 |
+| SSH 密钥 | `GET/POST/PUT/DELETE /ssh-keys/` | SSH 密钥 CRUD |
+| SSH 终端 | `WS /ws/ssh/{asset_id}` | SSH 终端（WebSocket） |
+| SFTP | `GET /ssh/{id}/sftp/list` | 列出目录内容 |
+| SFTP | `GET /ssh/{id}/sftp/read` | 读取文件内容 |
+| SFTP | `POST /ssh/{id}/sftp/write` | 写入文件 |
+| SFTP | `POST /ssh/{id}/sftp/upload` | 上传文件 |
+| SFTP | `GET /ssh/{id}/sftp/download` | 下载文件 |
+| SFTP | `POST /ssh/{id}/sftp/mkdir` | 创建目录 |
+| SFTP | `POST /ssh/{id}/sftp/remove` | 删除文件/目录 |
+| SFTP | `POST /ssh/{id}/sftp/rename` | 重命名 |
 | 监控 | `GET /monitoring/hosts` | 主机监控列表（Prometheus） |
 | 监控 | `GET /monitoring/hosts/{id}` | 主机详情 |
 | 告警规则 | `GET /alertmanager/rules` | Prometheus 告警规则 |
