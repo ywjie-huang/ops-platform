@@ -295,12 +295,10 @@ my-project/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── README.md
-├── docker/                   # Docker 构建文件
-│   ├── Dockerfile.backend    # 后端镜像
-│   ├── Dockerfile.frontend   # 前端镜像（node 构建 + nginx）
+├── docker/                   # Docker 部署
+│   ├── docker-compose.yml    # 一键部署编排
+│   ├── .env.example          # 环境变量模板
 │   └── nginx.conf            # nginx 配置（SPA + API 反代）
-├── docker-compose.yml        # 一键部署编排
-├── .env.example              # 环境变量模板
 ├── .dockerignore
 └── README.md
 ```
@@ -312,6 +310,7 @@ my-project/
 一键启动整个项目：MySQL + 后端 + 前端 + 可选 Agent。
 
 ```bash
+cd docker
 cp .env.example .env
 # 按需修改 .env 中的密码和端口
 docker compose up -d
@@ -347,6 +346,7 @@ docker compose --profile agent up -d
 **常用命令：**
 
 ```bash
+cd docker
 docker compose up -d              # 启动
 docker compose down               # 停止
 docker compose logs -f backend    # 查看后端日志
