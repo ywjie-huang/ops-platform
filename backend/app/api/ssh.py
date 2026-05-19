@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.asset import Asset
+from app.models.ssh_key import SSHKey
 from app.services.audit import write_log
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,30 @@ def _get_asset_sync(asset_id: int) -> Asset | None:
         db.close()
 
 
+def _get_ssh_key_sync(key_id: int) -> SSHKey | None:
+    """同步获取 SSH 密钥。"""
+    db = SessionLocal()
+    try:
+        return db.query(SSHKey).filter(SSHKey.id == key_id).first()
+    finally:
+        db.close()
+
+
+def _get_default_ssh_key_sync() -> SSHKey | None:
+    """获取默认 SSH 密钥。"""
+    db = SessionLocal()
+    try:
+        return db.query(SSHKey).filter(SSHKey.is_default == True).first()
+    finally:
+        db.close()
+
+
 @router.websocket("/ws/ssh/{asset_id}")
 async def ws_ssh(websocket: WebSocket, asset_id: int):
     """WebSocket → SSH 桥接。"""
     await websocket.accept()
 
-    # 等待客户端发送认证信息（用户名/密码），或使用资产自带凭据
+    # 等待客户端发送认证信息（用户名/密码/key_id），或使用资产自带凭据
     auth_msg = await websocket.receive_text()
     try:
         auth = json.loads(auth_msg)
@@ -47,12 +66,58 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
         return
 
     host = asset.ip_address
-    port = int(auth.get("port", asset.ssh_port or 22))
-    username = auth.get("username", asset.ssh_username or "root")
-    password = auth.get("password", asset.ssh_password or "")
 
-    if not password:
-        await websocket.send_text("\r\n\x1b[31m错误：未配置 SSH 密码\x1b[0m\r\n")
+    # 解析认证方式：优先使用客户端指定的 key_id，其次用默认密钥，最后用资产自带密码
+    key_id = auth.get("key_id")
+    ssh_key = None
+
+    if key_id:
+        ssh_key = _get_ssh_key_sync(key_id)
+    elif "key_id" not in auth:
+        # 客户端没有传 key_id 字段时，尝试使用默认密钥
+        ssh_key = _get_default_ssh_key_sync()
+
+    if ssh_key:
+        # 使用密钥认证
+        port = ssh_key.port or int(asset.ssh_port or 22)
+        username = ssh_key.username or asset.ssh_username or "root"
+
+        if ssh_key.auth_type == "key" and ssh_key.private_key:
+            # 私钥认证
+            try:
+                from io import StringIO
+                key_file = StringIO(ssh_key.private_key)
+                if ssh_key.passphrase:
+                    pkey = paramiko.RSAKey.from_private_key(key_file, password=ssh_key.passphrase)
+                else:
+                    pkey = paramiko.RSAKey.from_private_key(key_file)
+            except paramiko.SSHException:
+                # 尝试 Ed25519
+                try:
+                    key_file = StringIO(ssh_key.private_key)
+                    if ssh_key.passphrase:
+                        pkey = paramiko.Ed25519Key.from_private_key(key_file, password=ssh_key.passphrase)
+                    else:
+                        pkey = paramiko.Ed25519Key.from_private_key(key_file)
+                except Exception as e:
+                    await websocket.send_text(f"\r\n\x1b[31m私钥解析失败：{e}\x1b[0m\r\n")
+                    await websocket.close()
+                    return
+
+            password = None
+        else:
+            # 密码认证
+            pkey = None
+            password = ssh_key.password or ""
+    else:
+        # 使用资产自带凭据
+        port = int(auth.get("port", asset.ssh_port or 22))
+        username = auth.get("username", asset.ssh_username or "root")
+        password = auth.get("password", asset.ssh_password or "")
+        pkey = None
+
+    if not password and not pkey:
+        await websocket.send_text("\r\n\x1b[31m错误：未配置 SSH 密码或密钥\x1b[0m\r\n")
         await websocket.close()
         return
 
@@ -61,15 +126,20 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        ssh.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            password=password,
-            timeout=10,
-            allow_agent=False,
-            look_for_keys=False,
-        )
+        connect_kwargs: dict[str, Any] = {
+            "hostname": host,
+            "port": port,
+            "username": username,
+            "timeout": 10,
+            "allow_agent": False,
+            "look_for_keys": False,
+        }
+        if pkey:
+            connect_kwargs["pkey"] = pkey
+        else:
+            connect_kwargs["password"] = password
+
+        ssh.connect(**connect_kwargs)
     except Exception as e:
         await websocket.send_text(f"\r\n\x1b[31mSSH 连接失败：{e}\x1b[0m\r\n")
         await websocket.close()
@@ -88,9 +158,10 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
     # 记录审计日志
     db = SessionLocal()
     try:
+        auth_method = f"密钥[{ssh_key.name}]" if ssh_key else "密码"
         write_log(db, user=None, action="ssh_connect", target_type="asset",
                   target_id=asset.id, target_name=asset.name,
-                  ip_address=client_ip, detail=f"SSH 连接到 {host}")
+                  ip_address=client_ip, detail=f"SSH 连接到 {host} (认证方式: {auth_method})")
         db.commit()
     finally:
         db.close()

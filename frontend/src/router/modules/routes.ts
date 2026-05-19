@@ -48,6 +48,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '主机管理', icon: 'Platform', permission: 'assets.view' },
       },
       {
+        path: 'ssh-keys',
+        name: 'SSHKeyList',
+        component: () => import('@/views/assets/SSHKeyListView.vue'),
+        meta: { title: '主机密钥', icon: 'Key', permission: 'assets.view' },
+      },
+      {
         path: 'containers',
         name: 'Containers',
         component: () => import('@/views/containers/ContainerView.vue'),

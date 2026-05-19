@@ -12,7 +12,7 @@
       </div>
     </div>
 
-    <!-- 登录表单（当资产没有保存密码时显示） -->
+    <!-- 登录表单 -->
     <div v-if="showLoginForm" class="login-form">
       <el-card shadow="hover">
         <template #header><span>SSH 登录</span></template>
@@ -20,11 +20,25 @@
           <el-form-item label="主机">
             <el-input :model-value="`${hostIp}:${loginForm.port}`" disabled />
           </el-form-item>
-          <el-form-item label="用户名">
-            <el-input v-model="loginForm.username" placeholder="root" />
+
+          <!-- 密钥选择 -->
+          <el-form-item label="认证方式">
+            <el-select v-model="loginForm.authMode" style="width:100%" @change="onAuthModeChange">
+              <el-option label="使用资产自带凭据" value="asset" />
+              <el-option v-for="key in sshKeys" :key="key.id" :label="`${key.auth_type === 'key' ? '🔑' : '🔒'} ${key.name} (${key.username})`" :value="`key-${key.id}`" />
+            </el-select>
           </el-form-item>
-          <el-form-item label="密码">
+
+          <el-form-item label="用户名">
+            <el-input v-model="loginForm.username" placeholder="root" :disabled="loginForm.authMode !== 'asset'" />
+          </el-form-item>
+          <el-form-item v-if="loginForm.authMode === 'asset'" label="密码">
             <el-input v-model="loginForm.password" type="password" show-password placeholder="请输入 SSH 密码" @keyup.enter="connectSSH" />
+          </el-form-item>
+          <el-form-item v-else label="凭据">
+            <span class="credential-hint">
+              {{ selectedKeyHint }}
+            </span>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="connectSSH" :loading="connecting">连接</el-button>
@@ -39,10 +53,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onActivated, onDeactivated, nextTick } from 'vue'
+import { ref, computed, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { getAsset } from '@/api/assets'
+import { getSSHKeys } from '@/api/sshKeys'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
@@ -55,17 +70,39 @@ const hostIp = ref('')
 const connected = ref(false)
 const connecting = ref(false)
 const showLoginForm = ref(false)
+const sshKeys = ref<any[]>([])
 
 const loginForm = ref({
   username: 'root',
   password: '',
   port: 22,
+  authMode: 'asset' as string,  // 'asset' | 'key-{id}'
+})
+
+const selectedKeyHint = computed(() => {
+  if (loginForm.value.authMode === 'asset') return ''
+  const keyId = Number(loginForm.value.authMode.replace('key-', ''))
+  const key = sshKeys.value.find(k => k.id === keyId)
+  if (!key) return '未知密钥'
+  return key.auth_type === 'key'
+    ? `使用私钥认证，用户名: ${key.username}，端口: ${key.port}`
+    : `使用密码认证，用户名: ${key.username}，端口: ${key.port}`
 })
 
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
+
+function onAuthModeChange(val: string) {
+  if (val === 'asset') return
+  const keyId = Number(val.replace('key-', ''))
+  const key = sshKeys.value.find(k => k.id === keyId)
+  if (key) {
+    loginForm.value.username = key.username
+    loginForm.value.port = key.port
+  }
+}
 
 async function initTerminal() {
   terminal = new Terminal({
@@ -135,12 +172,22 @@ function connectSSH() {
     showLoginForm.value = false
     nextTick(() => fitAddon?.fit())
 
-    // 发送认证信息
-    ws!.send(JSON.stringify({
+    // 构建认证信息
+    const authData: any = {
       username: loginForm.value.username,
-      password: loginForm.value.password,
       port: loginForm.value.port,
-    }))
+    }
+
+    if (loginForm.value.authMode === 'asset') {
+      // 使用资产自带密码
+      authData.password = loginForm.value.password
+    } else {
+      // 使用指定密钥
+      const keyId = Number(loginForm.value.authMode.replace('key-', ''))
+      authData.key_id = keyId
+    }
+
+    ws!.send(JSON.stringify(authData))
   }
 
   ws.onmessage = (event) => {
@@ -185,14 +232,30 @@ function cleanup() {
 
 // keep-alive 下用 onActivated/onDeactivated 管理生命周期
 onActivated(async () => {
-  // 获取资产信息
   const assetId = route.params.id
+
+  // 并行获取资产信息和密钥列表
   try {
-    const res: any = await getAsset(Number(assetId))
-    hostName.value = res.data.name
-    hostIp.value = res.data.ip_address
-    loginForm.value.username = res.data.ssh_username || 'root'
-    loginForm.value.port = res.data.ssh_port || 22
+    const [assetRes, keysRes]: any[] = await Promise.all([
+      getAsset(Number(assetId)),
+      getSSHKeys({ page_size: 100 }),
+    ])
+    hostName.value = assetRes.data.name
+    hostIp.value = assetRes.data.ip_address
+    loginForm.value.username = assetRes.data.ssh_username || 'root'
+    loginForm.value.port = assetRes.data.ssh_port || 22
+
+    sshKeys.value = keysRes.data.items || []
+
+    // 如果有默认密钥，自动选中
+    const defaultKey = sshKeys.value.find(k => k.is_default)
+    if (defaultKey) {
+      loginForm.value.authMode = `key-${defaultKey.id}`
+      loginForm.value.username = defaultKey.username
+      loginForm.value.port = defaultKey.port
+    } else {
+      loginForm.value.authMode = 'asset'
+    }
   } catch {
     hostName.value = '未知'
     hostIp.value = '未知'
@@ -241,8 +304,13 @@ onDeactivated(cleanup)
   padding: 40px;
 
   .el-card {
-    width: 400px;
+    width: 440px;
   }
+}
+
+.credential-hint {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .terminal-container {
