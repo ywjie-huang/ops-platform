@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
     <div class="sidebar-logo">
       <el-icon :size="22"><Cpu /></el-icon>
       <span v-show="!appStore.sidebarCollapsed" class="logo-text">OPS 运维平台</span>
@@ -120,6 +120,10 @@ function getMenuTitle(route: any) {
   flex-direction: column;
   transition: width 0.3s;
   overflow: hidden;
+
+  &.collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
 }
 
 .sidebar-logo {
