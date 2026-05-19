@@ -774,9 +774,11 @@ onDeactivated(cleanup)
 .ssh-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 80px);
+  // 撑满 app-main 可用空间：100vh - header(56px)，用负 margin 抵消 app-main 的 padding:20px
+  height: calc(100vh - 56px);
+  margin: -20px;
   background: #1a1b26;
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
 }
 
