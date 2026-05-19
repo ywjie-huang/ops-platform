@@ -36,7 +36,7 @@ def _get_asset_sync(asset_id: int) -> Asset | None:
         db.close()
 
 
-def _get_ssh_key_sync(key_id: int) | None:
+def _get_ssh_key_sync(key_id: int) -> SSHKey | None:
     db = SessionLocal()
     try:
         return db.query(SSHKey).filter(SSHKey.id == key_id).first()
@@ -44,7 +44,7 @@ def _get_ssh_key_sync(key_id: int) | None:
         db.close()
 
 
-def _get_default_ssh_key_sync() | None:
+def _get_default_ssh_key_sync() -> SSHKey | None:
     db = SessionLocal()
     try:
         return db.query(SSHKey).filter(SSHKey.is_default == True).first()
