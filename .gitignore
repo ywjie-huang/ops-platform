@@ -3,7 +3,9 @@ __pycache__/
 .venv/
 venv/
 venv-linux/
+venv_linux/
 *.db
+backend/data/
 .env
 .env.*
 !.env.example
@@ -22,3 +24,6 @@ frontend/dist/
 .vscode/
 .idea/
 *.swp
+
+# Backup files
+*.bak
