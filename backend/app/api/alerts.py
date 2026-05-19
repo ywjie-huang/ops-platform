@@ -1,9 +1,9 @@
 """告警中心 API。"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import api_permission_required
+from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.alerts import (
@@ -70,6 +70,7 @@ def api_list_alerts(
 @router.post("/")
 def api_create_alert(
     body: AlertCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("alerts.create")),
 ):
@@ -83,7 +84,7 @@ def api_create_alert(
         asset_id=body.asset_id,
         handler_id=None,
     )
-    write_log(db, user=current_user, action="create", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address="")
+    write_log(db, user=current_user, action="create", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _alert_dict(alert)}
 
@@ -104,6 +105,7 @@ def api_get_alert(
 def api_update_alert(
     alert_id: int,
     body: AlertCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("alerts.update")),
 ):
@@ -122,7 +124,7 @@ def api_update_alert(
         asset_id=body.asset_id,
         handler_id=handler_id,
     )
-    write_log(db, user=current_user, action="update", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address="")
+    write_log(db, user=current_user, action="update", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "更新成功", "data": _alert_dict(alert)}
 
@@ -130,6 +132,7 @@ def api_update_alert(
 @router.delete("/{alert_id}")
 def api_delete_alert(
     alert_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("alerts.delete")),
 ):
@@ -137,7 +140,7 @@ def api_delete_alert(
     if alert is None:
         raise HTTPException(status_code=404, detail="告警不存在")
 
-    write_log(db, user=current_user, action="delete", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address="")
+    write_log(db, user=current_user, action="delete", target_type="alert", target_id=alert.id, target_name=alert.title, ip_address=get_client_ip(request))
     delete_alert(db, alert)
     db.commit()
     return {"code": 0, "msg": "删除成功"}

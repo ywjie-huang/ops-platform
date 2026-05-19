@@ -164,6 +164,9 @@ PERMISSION_LABELS = {
     "users": "用户管理",
     "roles": "角色权限",
     "audit": "审计日志",
+    "settings": "配置中心",
+    "batch_exec": "批量执行",
+    "patrol": "巡检中心",
 }
 
 
@@ -180,8 +183,11 @@ def build_permission_tree(permissions):
         "users": ("用户管理", 6),
         "roles": ("用户管理", 6),
         "audit": ("系统管理", 7),
+        "settings": ("系统管理", 7),
+        "batch_exec": ("批量执行", 8),
+        "patrol": ("巡检中心", 9),
     }
-    PARENT_ORDER = {"报表大屏": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "告警中心": 5, "用户管理": 6, "系统管理": 7}
+    PARENT_ORDER = {"报表大屏": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "告警中心": 5, "用户管理": 6, "系统管理": 7, "批量执行": 8, "巡检中心": 9}
 
     children: dict[str, dict[str, list]] = {}
     child_order: dict[str, list[str]] = {}

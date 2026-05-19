@@ -1,9 +1,9 @@
 """工单协作 API。"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import api_permission_required
+from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -70,6 +70,7 @@ def api_list_tickets(
 @router.post("/")
 def api_create_ticket(
     body: TicketCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("tickets.create")),
 ):
@@ -83,7 +84,7 @@ def api_create_ticket(
         asset_id=body.asset_id,
         creator_id=current_user.id,
     )
-    write_log(db, user=current_user, action="create", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address="")
+    write_log(db, user=current_user, action="create", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _ticket_dict(ticket)}
 
@@ -104,6 +105,7 @@ def api_get_ticket(
 def api_update_ticket(
     ticket_id: int,
     body: TicketCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("tickets.update")),
 ):
@@ -120,7 +122,7 @@ def api_update_ticket(
         assignee=body.assignee.strip(),
         asset_id=body.asset_id,
     )
-    write_log(db, user=current_user, action="update", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address="")
+    write_log(db, user=current_user, action="update", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "更新成功", "data": _ticket_dict(ticket)}
 
@@ -128,6 +130,7 @@ def api_update_ticket(
 @router.delete("/{ticket_id}")
 def api_delete_ticket(
     ticket_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("tickets.delete")),
 ):
@@ -135,7 +138,7 @@ def api_delete_ticket(
     if ticket is None:
         raise HTTPException(status_code=404, detail="工单不存在")
 
-    write_log(db, user=current_user, action="delete", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address="")
+    write_log(db, user=current_user, action="delete", target_type="ticket", target_id=ticket.id, target_name=ticket.title, ip_address=get_client_ip(request))
     delete_ticket(db, ticket)
     db.commit()
     return {"code": 0, "msg": "删除成功"}

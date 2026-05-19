@@ -28,6 +28,10 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response: AxiosResponse) => {
     const { data } = response
+    // blob 响应（如验证码图片）直接返回完整 response，保留 headers
+    if (data instanceof Blob) {
+      return response
+    }
     // 后端返回 { code, msg, data }
     if (data.code !== undefined && data.code !== 0) {
       ElMessage.error(data.msg || '请求失败')
@@ -38,9 +42,14 @@ service.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     if (status === 401) {
-      removeToken()
-      router.push('/login')
-      ElMessage.error('登录已过期，请重新登录')
+      const isLoginPage = router.currentRoute.value.path === '/login'
+      if (isLoginPage) {
+        ElMessage.error(error.response?.data?.detail || '账号或密码不正确')
+      } else {
+        removeToken()
+        router.push('/login')
+        ElMessage.error('登录已过期，请重新登录')
+      }
     } else if (status === 403) {
       ElMessage.error('没有权限执行该操作')
     } else if (status === 404) {

@@ -9,6 +9,23 @@ from app.services.permissions import get_permission_codes, has_permission
 from app.services.users import get_user
 
 
+def get_client_ip(request: Request) -> str:
+    """提取客户端真实 IP，优先读取反向代理 header。"""
+    # 优先 X-Forwarded-For（Nginx / LB 透传）
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        # 取第一个 IP（客户端原始 IP）
+        return forwarded.split(",")[0].strip()
+    # 其次 X-Real-IP（Nginx proxy_set_header）
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    # 最后回退到直接连接 IP
+    if request.client:
+        return request.client.host
+    return ""
+
+
 def get_current_api_user(
     request: Request,
     db: Session = Depends(get_db),

@@ -27,6 +27,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/reports/ReportView.vue'),
         meta: { title: '报表中心', icon: 'PieChart', permission: 'reports.view' },
       },
+      {
+        path: 'reports/:id',
+        name: 'ReportDetail',
+        component: () => import('@/views/reports/ReportDetailView.vue'),
+        meta: { title: '报表详情', hidden: true, permission: 'reports.view' },
+      },
     ],
   },
   {
@@ -45,7 +51,25 @@ const routes: RouteRecordRaw[] = [
         path: 'containers',
         name: 'Containers',
         component: () => import('@/views/containers/ContainerView.vue'),
-        meta: { title: '容器管理', icon: 'Box', permission: 'containers.view' },
+        meta: { title: 'K8s 集群', icon: 'Box', permission: 'containers.view' },
+      },
+      {
+        path: 'containers/:id',
+        name: 'ContainerDetail',
+        component: () => import('@/views/containers/ContainerDetailView.vue'),
+        meta: { title: '集群详情', hidden: true, permission: 'containers.view' },
+      },
+      {
+        path: 'docker',
+        name: 'DockerMonitor',
+        component: () => import('@/views/containers/DockerView.vue'),
+        meta: { title: 'Docker 监控', icon: 'Connection', permission: 'containers.view' },
+      },
+      {
+        path: 'docker/:id',
+        name: 'DockerDetail',
+        component: () => import('@/views/containers/DockerDetailView.vue'),
+        meta: { title: '主机详情', hidden: true, permission: 'containers.view' },
       },
       {
         path: ':id',
@@ -58,15 +82,9 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/monitoring',
     component: Layout,
-    redirect: '/monitoring/metrics',
+    redirect: '/monitoring/hosts',
     meta: { title: '监控告警', icon: 'DataLine' },
     children: [
-      {
-        path: 'metrics',
-        name: 'MetricList',
-        component: () => import('@/views/monitoring/MetricListView.vue'),
-        meta: { title: '监控指标', icon: 'TrendCharts', permission: 'monitoring.view' },
-      },
       {
         path: 'hosts',
         name: 'HostList',
@@ -74,11 +92,42 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '主机监控', icon: 'Cpu', permission: 'monitoring.view' },
       },
       {
+        path: 'rules',
+        name: 'AlertRuleList',
+        component: () => import('@/views/monitoring/AlertRuleListView.vue'),
+        meta: { title: '告警规则', icon: 'Warning', permission: 'alerts.view' },
+      },
+      {
+        path: 'events',
+        name: 'AlertEventList',
+        component: () => import('@/views/alerts/AlertEventListView.vue'),
+        meta: { title: '告警事件', icon: 'Bell', permission: 'alerts.view' },
+      },
+      {
+        path: 'alerts',
+        name: 'AlertList',
+        component: () => import('@/views/alerts/AlertListView.vue'),
+        meta: { title: '告警管理', icon: 'BellFilled', permission: 'alerts.view' },
+      },
+      {
+        path: 'alerts/:id',
+        name: 'AlertDetail',
+        component: () => import('@/views/alerts/AlertDetailView.vue'),
+        meta: { title: '告警详情', hidden: true, permission: 'alerts.view' },
+      },
+      {
+        path: 'hosts/:id/ssh',
+        name: 'SSHTerminal',
+        component: () => import('@/views/monitoring/SSHTerminalView.vue'),
+        meta: { title: 'SSH 终端', hidden: true, permission: 'monitoring.view' },
+      },
+      {
         path: 'hosts/:id',
         name: 'HostDetail',
         component: () => import('@/views/monitoring/HostDetailView.vue'),
         meta: { title: '主机详情', hidden: true, permission: 'monitoring.view' },
       },
+
     ],
   },
   {
@@ -96,24 +145,6 @@ const routes: RouteRecordRaw[] = [
         name: 'TicketDetail',
         component: () => import('@/views/tickets/TicketDetailView.vue'),
         meta: { title: '工单详情', hidden: true, permission: 'tickets.view' },
-      },
-    ],
-  },
-  {
-    path: '/alerts',
-    component: Layout,
-    children: [
-      {
-        path: '',
-        name: 'AlertList',
-        component: () => import('@/views/alerts/AlertListView.vue'),
-        meta: { title: '告警中心', icon: 'Bell', permission: 'alerts.view' },
-      },
-      {
-        path: ':id',
-        name: 'AlertDetail',
-        component: () => import('@/views/alerts/AlertDetailView.vue'),
-        meta: { title: '告警详情', hidden: true, permission: 'alerts.view' },
       },
     ],
   },
@@ -138,32 +169,72 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/audit',
+    path: '/batch-exec',
     component: Layout,
     children: [
       {
         path: '',
-        name: 'Audit',
-        component: () => import('@/views/audit/AuditView.vue'),
-        meta: { title: '审计日志', icon: 'Notebook', permission: 'audit.view' },
+        name: 'BatchExec',
+        component: () => import('@/views/batch/BatchExecView.vue'),
+        meta: { title: '批量执行', icon: 'Promotion', permission: 'batch_exec.view' },
       },
     ],
   },
   {
-    path: '/password',
+    path: '/patrol',
+    component: Layout,
+    meta: { title: '巡检中心', icon: 'Finished' },
+    children: [
+      {
+        path: '',
+        name: 'Patrol',
+        component: () => import('@/views/patrol/PatrolView.vue'),
+        meta: { title: '巡检报告', icon: 'Finished', permission: 'patrol.view' },
+      },
+      {
+        path: 'settings',
+        name: 'PatrolSettings',
+        component: () => import('@/views/patrol/PatrolSettingsView.vue'),
+        meta: { title: '阈值配置', icon: 'Setting', permission: 'patrol.view' },
+      },
+    ],
+  },
+  {
+    path: '/ai',
     component: Layout,
     children: [
       {
         path: '',
-        name: 'Password',
-        component: () => import('@/views/password/PasswordView.vue'),
-        meta: { title: '修改密码', hidden: true },
+        name: 'AiAssistant',
+        component: () => import('@/views/ai/AiView.vue'),
+        meta: { title: 'AI 助手', icon: 'ChatDotRound' },
+      },
+    ],
+  },
+  {
+    path: '/system',
+    component: Layout,
+    redirect: '/system/audit',
+    meta: { title: '系统管理', icon: 'Setting' },
+    children: [
+      {
+        path: 'audit',
+        name: 'Audit',
+        component: () => import('@/views/audit/AuditView.vue'),
+        meta: { title: '审计日志', icon: 'Notebook', permission: 'audit.view' },
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/settings/SettingsView.vue'),
+        meta: { title: '配置中心', icon: 'Tools', permission: 'settings.view' },
       },
     ],
   },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/dashboard',
+    meta: { hidden: true },
   },
 ]
 

@@ -43,7 +43,7 @@ def api_preset_detail(
     report = get_preset_report(report_id)
     if report is None:
         return {"code": 1, "msg": "报表不存在"}
-    data = query_report_data(db, report)
+    data = query_report_data(db, report_id)
     return {"code": 0, "data": {"report": {"id": report["id"], "name": report["name"], "description": report["description"]}, "data": data}}
 
 
@@ -53,8 +53,11 @@ def api_data_sources(_: User = Depends(api_permission_required("reports.view")))
 
 
 @router.get("/dimensions")
-def api_dimensions(_: User = Depends(api_permission_required("reports.view"))):
-    return {"code": 0, "data": list_dimensions()}
+def api_dimensions(
+    source_id: str = "",
+    _: User = Depends(api_permission_required("reports.view")),
+):
+    return {"code": 0, "data": list_dimensions(source_id)}
 
 
 @router.post("/custom")
@@ -66,7 +69,7 @@ def api_custom_report(
     data_source = body.get("data_source", "")
     dimension = body.get("dimension", "")
     days = body.get("days", 30)
-    result = query_custom_report(db, data_source=data_source, dimension=dimension, days=days)
+    result = query_custom_report(db, source_id=data_source, dimension=dimension, days=days)
     return {"code": 0, "data": result}
 
 
@@ -79,8 +82,8 @@ def api_export_csv(
     report = get_preset_report(report_id)
     if report is None:
         return {"code": 1, "msg": "报表不存在"}
-    data = query_report_data(db, report)
-    csv_content = export_csv(report, data)
+    data = query_report_data(db, report_id)
+    csv_content = export_csv(db, report_id)
     return StreamingResponse(
         iter([csv_content]),
         media_type="text/csv",

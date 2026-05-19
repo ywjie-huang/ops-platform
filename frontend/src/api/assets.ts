@@ -1,6 +1,6 @@
 import request from './request'
 
-export function getAssets(params?: { keyword?: string; asset_type?: string; status?: string }) {
+export function getAssets(params?: { keyword?: string; asset_type?: string; status?: string; page?: number; page_size?: number }) {
   return request.get('/assets/', { params })
 }
 

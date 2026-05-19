@@ -81,7 +81,7 @@
         <div class="panel">
           <div class="panel-header">
             <h3>🔔 最近告警</h3>
-            <el-button text size="small" @click="$router.push('/alerts')">查看全部 →</el-button>
+            <el-button text size="small" @click="$router.push('/monitoring/events')">查看全部 →</el-button>
           </div>
           <div class="compact-list">
             <div v-for="item in summary.recent_alerts" :key="item.title" class="compact-item">

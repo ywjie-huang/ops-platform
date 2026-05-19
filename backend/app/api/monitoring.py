@@ -1,109 +1,121 @@
-"""监控 API。"""
+"""监控 API — 主机监控（Prometheus 数据源）。"""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services.monitoring import (
-    create_metric,
-    delete_metric,
-    get_host_detail,
-    get_host_monitoring_list,
-    get_metric,
-    get_metric_categories,
-    list_metrics,
-    update_metric,
+from app.services.prometheus import (
+    check_prometheus_health,
+    get_host_metrics,
+    get_targets,
 )
 
 router = APIRouter(prefix="/monitoring", tags=["监控"])
 
 
-class MetricCreate(BaseModel):
-    name: str
-    code: str
-    unit: str = ""
-    category: str = ""
-    warning_threshold: str = ""
-    critical_threshold: str = ""
-
-
-@router.get("/metrics")
-def api_list_metrics(
-    keyword: str = "", category: str = "",
+@router.get("/hosts")
+async def api_host_list(
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("monitoring.view")),
 ):
-    items = list_metrics(db, keyword=keyword, category=category)
-    return {
-        "code": 0,
-        "data": [
-            {
-                "id": m.id, "name": m.name, "code": m.code, "unit": m.unit,
-                "category": m.category, "is_system": m.is_system,
-                "warning_threshold": m.warning_threshold, "critical_threshold": m.critical_threshold,
-            }
-            for m in items
-        ],
-    }
-
-
-@router.get("/metrics/categories")
-def api_metric_categories(db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.view"))):
-    cats = get_metric_categories(db)
-    return {"code": 0, "data": cats}
-
-
-@router.post("/metrics")
-def api_create_metric(body: MetricCreate, db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.create"))):
-    m = create_metric(db, name=body.name.strip(), code=body.code.strip(), unit=body.unit.strip(), category=body.category.strip(), warning_threshold=body.warning_threshold.strip(), critical_threshold=body.critical_threshold.strip())
-    return {"code": 0, "msg": "创建成功", "data": {"id": m.id, "name": m.name}}
-
-
-@router.put("/metrics/{metric_id}")
-def api_update_metric(metric_id: int, body: MetricCreate, db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.update"))):
-    m = get_metric(db, metric_id)
-    if m is None:
-        raise HTTPException(status_code=404, detail="指标不存在")
-    update_metric(db, m, name=body.name.strip(), unit=body.unit.strip(), category=body.category.strip(), warning_threshold=body.warning_threshold.strip(), critical_threshold=body.critical_threshold.strip())
-    return {"code": 0, "msg": "更新成功"}
-
-
-@router.delete("/metrics/{metric_id}")
-def api_delete_metric(metric_id: int, db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.delete"))):
-    m = get_metric(db, metric_id)
-    if m is None:
-        raise HTTPException(status_code=404, detail="指标不存在")
-    if m.is_system:
-        raise HTTPException(status_code=400, detail="系统内置指标不可删除")
-    delete_metric(db, m)
-    return {"code": 0, "msg": "删除成功"}
-
-
-@router.get("/hosts")
-def api_host_list(db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.view"))):
+    """主机监控列表 — 从 Prometheus 批量获取真实数据。"""
     from app.services.assets import list_assets
+    from app.services.prometheus import get_hosts_summary
     assets = list_assets(db)
-    items = get_host_monitoring_list(assets)
-    return {
-        "code": 0,
-        "data": [
-            {
-                "id": h["asset_id"], "name": h["name"], "ip_address": h["ip"], "owner": h["owner"],
-                "cpu": h["cpu"], "memory": h["memory"], "disk": h["disk"],
-                "network_in": h["net_in"], "network_out": h["net_out"], "load": h["load"],
-            }
-            for h in items
-        ],
-    }
+    results = await get_hosts_summary(assets, db)
+    return {"code": 0, "data": results}
 
 
 @router.get("/hosts/{host_id}")
-def api_host_detail(host_id: int, db: Session = Depends(get_db), _: User = Depends(api_permission_required("monitoring.view"))):
+async def api_host_detail(
+    host_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("monitoring.view")),
+):
+    """主机详情 — 从 Prometheus 获取真实数据。"""
     from app.services.assets import get_asset
     asset = get_asset(db, host_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="主机不存在")
-    detail = get_host_detail(asset.id, asset.name, asset.ip_address)
-    return {"code": 0, "data": detail}
+
+    try:
+        metrics = await get_host_metrics(asset.ip_address, asset.name, db)
+        return {
+            "code": 0,
+            "data": {
+                "asset_id": asset.id,
+                "hostname": asset.name,
+                "ip": asset.ip_address,
+                "status": asset.status,
+                "owner": asset.owner or "",
+                "spec": asset.spec or "",
+                "os_info": asset.os or "",
+                "prometheus_ok": True,
+                **metrics,
+            },
+        }
+    except Exception as e:
+        return {
+            "code": 0,
+            "data": {
+                "asset_id": asset.id,
+                "hostname": asset.name,
+                "ip": asset.ip_address,
+                "status": asset.status,
+                "owner": asset.owner or "",
+                "spec": asset.spec or "",
+                "os_info": asset.os or "",
+                "prometheus_ok": False,
+                "error": str(e),
+                "cpu": {"usage": 0, "cores": 0},
+                "memory": {"usage": 0, "total_gb": 0, "used_gb": 0, "available_gb": 0},
+                "disk": {"usage": 0, "total_gb": 0, "read_mb_s": 0, "write_mb_s": 0},
+                "network": {"in_mbps": 0, "out_mbps": 0},
+                "load": {"1m": 0, "5m": 0, "15m": 0},
+                "tcp_connections": 0,
+                "processes": {"running": 0},
+                "uptime_hours": 0,
+            },
+        }
+
+
+@router.get("/prometheus/health")
+async def api_prometheus_health(
+    db: Session = Depends(get_db),
+):
+    """检查 Prometheus 连接状态。"""
+    ok = await check_prometheus_health(db)
+    return {"code": 0, "data": {"connected": ok}}
+
+
+@router.get("/prometheus/targets")
+async def api_prometheus_targets(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("monitoring.view")),
+):
+    """获取 Prometheus 采集目标列表。"""
+    targets = await get_targets(db)
+    return {"code": 0, "data": targets}
+
+
+@router.get("/prometheus/instances")
+async def api_prometheus_instances(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("monitoring.view")),
+):
+    """调试：显示资产与 Prometheus instance 的匹配情况。"""
+    from app.services.assets import list_assets
+    from app.services.prometheus import _discover_instances, _find_instance
+    assets = list_assets(db)
+    instances = await _discover_instances()
+    results = []
+    for asset in assets:
+        matched = _find_instance(asset.ip_address, asset.name, instances)
+        results.append({
+            "asset_name": asset.name,
+            "asset_ip": asset.ip_address,
+            "prometheus_instance": matched,
+            "matched": matched is not None,
+        })
+    return {"code": 0, "data": {"prometheus_instances": list(instances.keys()), "asset_matching": results}}

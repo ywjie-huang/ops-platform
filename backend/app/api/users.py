@@ -1,9 +1,9 @@
 """用户管理 API。"""
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import api_permission_required, get_current_api_user
+from app.api.deps import api_permission_required, get_client_ip, get_current_api_user
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -71,6 +71,7 @@ def api_list_users(
 @router.post("/")
 def api_create_user(
     body: UserCreate,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("users.create")),
 ):
@@ -80,7 +81,7 @@ def api_create_user(
         raise HTTPException(status_code=400, detail="用户名已存在")
 
     user = create_user(db, username=username, full_name=full_name, password=body.password, role_ids=body.role_ids)
-    write_log(db, user=_, action="create", target_type="user", target_id=user.id, target_name=user.username, ip_address="")
+    write_log(db, user=_, action="create", target_type="user", target_id=user.id, target_name=user.username, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _user_dict(user)}
 
@@ -101,6 +102,7 @@ def api_get_user(
 def api_update_user(
     user_id: int,
     body: UserUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("users.update")),
 ):
@@ -115,7 +117,7 @@ def api_update_user(
         raise HTTPException(status_code=400, detail="用户名已存在")
 
     update_user(db, user, username=username, full_name=full_name, password=body.password, role_ids=body.role_ids)
-    write_log(db, user=_, action="update", target_type="user", target_id=user.id, target_name=user.username, ip_address="")
+    write_log(db, user=_, action="update", target_type="user", target_id=user.id, target_name=user.username, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "更新成功", "data": _user_dict(user)}
 
@@ -123,6 +125,7 @@ def api_update_user(
 @router.delete("/{user_id}")
 def api_delete_user(
     user_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("users.delete")),
 ):
@@ -132,7 +135,7 @@ def api_delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能删除自己")
 
-    write_log(db, user=current_user, action="delete", target_type="user", target_id=user.id, target_name=user.username, ip_address="")
+    write_log(db, user=current_user, action="delete", target_type="user", target_id=user.id, target_name=user.username, ip_address=get_client_ip(request))
     delete_user(db, user)
     db.commit()
     return {"code": 0, "msg": "删除成功"}

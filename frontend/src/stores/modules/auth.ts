@@ -22,8 +22,8 @@ export const useAuthStore = defineStore('auth', {
     permissions: (state) => state.userInfo?.permissions || {},
   },
   actions: {
-    async login(username: string, password: string) {
-      const res: any = await loginApi({ username, password })
+    async login(username: string, password: string, captchaId: string, captchaCode: string) {
+      const res: any = await loginApi({ username, password, captcha_id: captchaId, captcha_code: captchaCode })
       const token = res.data.access_token
       this.token = token
       setToken(token)

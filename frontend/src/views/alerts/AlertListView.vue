@@ -20,7 +20,7 @@
         <el-table-column prop="source" label="来源" width="100" />
         <el-table-column label="操作" width="180">
           <template #default="{row}">
-            <el-button size="small" text type="primary" @click="$router.push(`/alerts/${row.id}`)">详情</el-button>
+            <el-button size="small" text type="primary" @click="$router.push(`/monitoring/alerts/${row.id}`)">详情</el-button>
             <el-button size="small" text type="primary" @click="showDialog(row)">编辑</el-button>
             <el-popconfirm title="确认删除？" @confirm="handleDelete(row.id)">
               <template #reference><el-button size="small" text type="danger">删除</el-button></template>

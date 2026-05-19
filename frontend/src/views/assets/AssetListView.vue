@@ -7,10 +7,10 @@
     <div class="filter-bar">
       <el-input v-model="filters.keyword" placeholder="搜索名称/IP…" clearable style="width:220px" @keyup.enter="fetchData" />
       <el-select v-model="filters.asset_type" placeholder="类型" clearable style="width:120px" @change="fetchData">
-        <el-option v-for="t in ['云主机','数据库','网络设备','中间件','其他']" :key="t" :label="t" :value="t" />
+        <el-option v-for="t in assetTypes" :key="t" :label="t" :value="t" />
       </el-select>
       <el-select v-model="filters.status" placeholder="状态" clearable style="width:120px" @change="fetchData">
-        <el-option v-for="s in ['在线','离线','维护中']" :key="s" :label="s" :value="s" />
+        <el-option v-for="s in statusList" :key="s.value" :label="s.label" :value="s.value" />
       </el-select>
       <el-button @click="fetchData">筛选</el-button>
       <el-button text @click="resetFilters">重置</el-button>
@@ -18,24 +18,46 @@
     <div class="data-card">
       <el-table :data="items" stripe v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="name" label="名称">
-          <template #default="{ row }"><strong>{{ row.name }}</strong></template>
-        </el-table-column>
-        <el-table-column prop="asset_type" label="类型" />
-        <el-table-column prop="ip_address" label="IP" />
-        <el-table-column prop="status" label="状态">
+
+        <el-table-column label="主机信息" min-width="180">
           <template #default="{ row }">
-            <el-tag :type="row.status === '在线' ? 'success' : row.status === '离线' ? 'danger' : 'warning'" size="small">{{ row.status }}</el-tag>
+            <div class="cell-stack">
+              <span class="cell-primary">{{ row.name }}</span>
+              <span class="cell-secondary">{{ row.ip_address }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="owner" label="负责人" />
-        <el-table-column label="操作" width="180">
+
+        <el-table-column label="主机规格" min-width="150">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="$router.push(`/assets/${row.id}`)">详情</el-button>
-            <el-button size="small" text type="primary" @click="showDialog(row)">编辑</el-button>
-            <el-popconfirm title="确认删除？" @confirm="handleDelete(row.id)">
-              <template #reference><el-button size="small" text type="danger">删除</el-button></template>
-            </el-popconfirm>
+            <div class="cell-stack">
+              <span class="cell-primary">{{ row.spec || '-' }}</span>
+              <span class="cell-secondary">{{ row.os || '-' }}</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="status" label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="statusTagType(row.status)" size="small" round>{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip />
+
+        <el-table-column label="操作" width="240" fixed="right">
+          <template #default="{ row }">
+            <div class="action-cell">
+              <el-button size="small" type="primary" link @click="$router.push(`/monitoring/hosts/${row.id}/ssh`)">
+                <el-icon><Monitor /></el-icon> SSH
+              </el-button>
+              <el-button size="small" type="info" link @click="$router.push(`/assets/${row.id}`)">详情</el-button>
+              <el-popconfirm title="确认删除该资产？" @confirm="handleDelete(row.id)">
+                <template #reference>
+                  <el-button size="small" type="danger" link>删除</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -52,22 +74,28 @@
       </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资产' : '新增资产'" width="520px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+    <el-dialog v-model="dialogVisible" title="新增资产" width="580px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="类型" prop="asset_type">
           <el-select v-model="form.asset_type" style="width:100%">
-            <el-option v-for="t in ['云主机','数据库','网络设备','中间件','其他']" :key="t" :label="t" :value="t" />
+            <el-option v-for="t in assetTypes" :key="t" :label="t" :value="t" />
           </el-select>
         </el-form-item>
         <el-form-item label="IP" prop="ip_address"><el-input v-model="form.ip_address" /></el-form-item>
+        <el-form-item label="规格"><el-input v-model="form.spec" placeholder="如 4C8G" /></el-form-item>
+        <el-form-item label="系统"><el-input v-model="form.os" placeholder="如 Ubuntu 22.04" /></el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="form.status" style="width:100%">
-            <el-option v-for="s in ['在线','离线','维护中']" :key="s" :label="s" :value="s" />
+            <el-option v-for="s in statusList" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="负责人"><el-input v-model="form.owner" /></el-form-item>
-        <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
+        <el-divider content-position="left">SSH 配置</el-divider>
+        <el-form-item label="SSH 端口"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" style="width:100%" /></el-form-item>
+        <el-form-item label="SSH 用户名"><el-input v-model="form.ssh_username" placeholder="root" /></el-form-item>
+        <el-form-item label="SSH 密码"><el-input v-model="form.ssh_password" type="password" show-password placeholder="请输入 SSH 密码" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -79,21 +107,38 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { getAssets, createAsset, updateAsset, deleteAsset } from '@/api/assets'
+import { useRouter } from 'vue-router'
+import { getAssets, createAsset, deleteAsset } from '@/api/assets'
 import { usePagination } from '@/hooks/usePagination'
-import { ElMessage, type FormInstance } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
+import { Monitor } from '@element-plus/icons-vue'
 
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const items = ref<any[]>([])
 const dialogVisible = ref(false)
-const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
+
+const assetTypes = ['云主机', '数据库', '网络设备', '中间件', '其他']
+const statusList = [
+  { label: '使用中', value: '使用中' },
+  { label: '已关机', value: '已关机' },
+  { label: '已删除', value: '已删除' },
+]
+
+function statusTagType(status: string) {
+  const map: Record<string, string> = { '使用中': 'success', '已关机': 'warning', '已删除': 'info' }
+  return map[status] || 'info'
+}
 
 const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange, resetPagination } = usePagination(fetchData)
 
 const filters = reactive({ keyword: '', asset_type: '', status: '' })
-const form = reactive({ name: '', asset_type: '云主机', ip_address: '', status: '在线', owner: '', description: '' })
+const form = reactive({
+  name: '', asset_type: '云主机', ip_address: '', status: '使用中', owner: '', description: '',
+  spec: '', os: '', ssh_port: 22, ssh_username: 'root', ssh_password: '',
+})
 const rules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
   asset_type: [{ required: true, message: '请选择类型', trigger: 'change' }],
@@ -117,9 +162,11 @@ function resetFilters() {
   fetchData()
 }
 
-function showDialog(row?: any) {
-  editingId.value = row?.id || null
-  Object.assign(form, row || { name: '', asset_type: '云主机', ip_address: '', status: '在线', owner: '', description: '' })
+function showDialog() {
+  Object.assign(form, {
+    name: '', asset_type: '云主机', ip_address: '', status: '使用中', owner: '', description: '',
+    spec: '', os: '', ssh_port: 22, ssh_username: 'root', ssh_password: '',
+  })
   dialogVisible.value = true
 }
 
@@ -128,19 +175,15 @@ async function handleSave() {
   if (!valid) return
   saving.value = true
   try {
-    if (editingId.value) {
-      await updateAsset(editingId.value, form)
-      ElMessage.success('更新成功')
-    } else {
-      await createAsset(form)
-      ElMessage.success('创建成功')
-    }
+    await createAsset(form)
+    ElMessage.success('创建成功')
     dialogVisible.value = false
     fetchData()
   } finally { saving.value = false }
 }
 
 async function handleDelete(id: number) {
+  await ElMessageBox.confirm('确认删除该资产？删除后关联的告警和工单将解除关联。', '确认删除', { type: 'warning' })
   await deleteAsset(id)
   ElMessage.success('删除成功')
   fetchData()
@@ -150,5 +193,24 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cell-primary {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.cell-secondary {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.action-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
 </style>

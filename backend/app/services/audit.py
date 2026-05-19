@@ -87,4 +87,5 @@ TARGET_LABELS = {
     "ticket": "工单",
     "alert": "告警",
     "auth": "认证",
+    "settings": "配置",
 }

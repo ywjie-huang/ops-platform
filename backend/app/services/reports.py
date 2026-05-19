@@ -33,7 +33,7 @@ PRESET_REPORTS = [
     {
         "id": "asset_status_trend",
         "name": "资产状态趋势",
-        "description": "近 30 天资产在线/离线/维护状态变化",
+        "description": "近 30 天资产使用中/已关机/已删除状态变化",
         "icon": "📈",
         "category": "资产",
     },

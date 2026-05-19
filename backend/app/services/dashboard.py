@@ -29,13 +29,13 @@ def build_dashboard_stats(db: Session) -> DashboardStats:
     status_counts = count_assets_by_status(db)
     return DashboardStats(
         asset_total=len(assets),
-        online_hosts=status_counts.get("在线", 0),
+        online_hosts=status_counts.get("使用中", 0),
         open_alerts=count_pending_alerts(db),
         pending_tickets=count_open_tickets(db),
         user_total=len(users),
         role_total=len(roles),
-        offline_assets=status_counts.get("离线", 0),
-        maintenance_assets=status_counts.get("维护中", 0),
+        offline_assets=status_counts.get("已删除", 0),
+        maintenance_assets=status_counts.get("已关机", 0),
         user_growth_7d=count_new_users_since(db, 7),
     )
 
@@ -52,7 +52,7 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
     pending_alerts = count_pending_alerts(db)
 
     quick_stats = [
-        DashboardQuickStat("在线率", _format_ratio(status_counts.get("在线", 0), total_assets), "按资产状态实时统计", "green"),
+        DashboardQuickStat("在线率", _format_ratio(status_counts.get("使用中", 0), total_assets), "按资产状态实时统计", "green"),
         DashboardQuickStat("待处理工单", str(open_tickets), "包含 open 和 in_progress 状态", "blue" if open_tickets == 0 else "orange"),
         DashboardQuickStat("待处理告警", str(pending_alerts), "包含待确认和已确认告警", "green" if pending_alerts == 0 else "red"),
     ]
@@ -70,7 +70,7 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
     ]
     max_type_value = max((item.value for item in type_breakdown), default=0)
 
-    STATUS_TONES = {"在线": "green", "离线": "red", "维护中": "orange"}
+    STATUS_TONES = {"使用中": "green", "已关机": "orange", "已删除": "red"}
     asset_changes = [
         DashboardActivityItem(
             title=asset.name,

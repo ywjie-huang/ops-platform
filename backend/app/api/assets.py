@@ -1,9 +1,9 @@
 """资产管理 API。"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import api_permission_required
+from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.assets import (
@@ -22,9 +22,14 @@ class AssetCreate(BaseModel):
     name: str
     asset_type: str
     ip_address: str
-    status: str = "在线"
+    status: str = "使用中"
     owner: str = ""
     description: str = ""
+    spec: str = ""
+    os: str = ""
+    ssh_port: int = 22
+    ssh_username: str = "root"
+    ssh_password: str = ""
 
 
 def _asset_dict(a) -> dict:
@@ -36,6 +41,10 @@ def _asset_dict(a) -> dict:
         "status": a.status,
         "owner": a.owner,
         "description": a.description,
+        "spec": a.spec,
+        "os": a.os,
+        "ssh_port": a.ssh_port,
+        "ssh_username": a.ssh_username,
         "created_at": a.created_at.isoformat(),
     }
 
@@ -67,6 +76,7 @@ def api_list_assets(
 @router.post("/")
 def api_create_asset(
     body: AssetCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("assets.create")),
 ):
@@ -75,11 +85,16 @@ def api_create_asset(
         name=body.name.strip(),
         asset_type=body.asset_type.strip(),
         ip_address=body.ip_address.strip(),
-        status=body.status.strip() or "在线",
+        status=body.status.strip() or "使用中",
         owner=body.owner.strip(),
         description=body.description.strip(),
+        spec=body.spec.strip(),
+        os=body.os.strip(),
+        ssh_port=body.ssh_port,
+        ssh_username=body.ssh_username.strip(),
+        ssh_password=body.ssh_password,
     )
-    write_log(db, user=current_user, action="create", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address="")
+    write_log(db, user=current_user, action="create", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _asset_dict(asset)}
 
@@ -100,6 +115,7 @@ def api_get_asset(
 def api_update_asset(
     asset_id: int,
     body: AssetCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("assets.update")),
 ):
@@ -115,8 +131,13 @@ def api_update_asset(
         status=body.status.strip(),
         owner=body.owner.strip(),
         description=body.description.strip(),
+        spec=body.spec.strip(),
+        os=body.os.strip(),
+        ssh_port=body.ssh_port,
+        ssh_username=body.ssh_username.strip(),
+        ssh_password=body.ssh_password,
     )
-    write_log(db, user=current_user, action="update", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address="")
+    write_log(db, user=current_user, action="update", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "更新成功", "data": _asset_dict(asset)}
 
@@ -124,6 +145,7 @@ def api_update_asset(
 @router.delete("/{asset_id}")
 def api_delete_asset(
     asset_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("assets.delete")),
 ):
@@ -131,7 +153,7 @@ def api_delete_asset(
     if asset is None:
         raise HTTPException(status_code=404, detail="资产不存在")
 
-    write_log(db, user=current_user, action="delete", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address="")
+    write_log(db, user=current_user, action="delete", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     delete_asset(db, asset)
     db.commit()
     return {"code": 0, "msg": "删除成功"}

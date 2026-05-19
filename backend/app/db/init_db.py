@@ -43,9 +43,152 @@ def _ensure_database() -> None:
         conn.close()
 
 
+def _ensure_asset_ssh_columns() -> None:
+    """为 assets 表补充 SSH 相关字段（兼容旧库）。"""
+    conn = pymysql.connect(
+        host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SHOW COLUMNS FROM assets LIKE 'ssh_port'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE assets ADD COLUMN ssh_port INT NOT NULL DEFAULT 22")
+                cur.execute("ALTER TABLE assets ADD COLUMN ssh_username VARCHAR(100) NOT NULL DEFAULT 'root'")
+                cur.execute("ALTER TABLE assets ADD COLUMN ssh_password VARCHAR(200) NOT NULL DEFAULT ''")
+            cur.execute("SHOW COLUMNS FROM assets LIKE 'spec'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE assets ADD COLUMN spec VARCHAR(100) NOT NULL DEFAULT ''")
+                cur.execute("ALTER TABLE assets ADD COLUMN os VARCHAR(100) NOT NULL DEFAULT ''")
+            # 修复外键约束：删除资产时自动置空关联的告警/工单
+            for tbl, fk_name in [('alerts', 'alerts_ibfk_1'), ('tickets', 'tickets_ibfk_1')]:
+                try:
+                    cur.execute(f"SHOW CREATE TABLE {tbl}")
+                    create_sql = cur.fetchone()[1]
+                    if 'ON DELETE SET NULL' not in create_sql and fk_name in create_sql:
+                        cur.execute(f"ALTER TABLE {tbl} DROP FOREIGN KEY {fk_name}")
+                        cur.execute(f"ALTER TABLE {tbl} ADD CONSTRAINT {fk_name} FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE SET NULL")
+                except Exception:
+                    pass
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def _ensure_container_token_column() -> None:
+    """为 container_clusters 表补充 token / status_message 字段（兼容旧库）。"""
+    try:
+        conn = pymysql.connect(
+            host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
+        )
+        with conn.cursor() as cur:
+            cur.execute("SHOW TABLES LIKE 'container_clusters'")
+            if cur.fetchone() is None:
+                conn.commit()
+                return  # 表还不存在，create_all 会按新模型创建
+            cur.execute("SHOW COLUMNS FROM container_clusters LIKE 'token'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE container_clusters ADD COLUMN token VARCHAR(4000) NOT NULL DEFAULT ''")
+                print('[init_db] Added token column to container_clusters')
+            cur.execute("SHOW COLUMNS FROM container_clusters LIKE 'status_message'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE container_clusters ADD COLUMN status_message VARCHAR(512) NOT NULL DEFAULT ''")
+                print('[init_db] Added status_message column to container_clusters')
+            conn.commit()
+    except Exception as e:
+        print(f'[init_db] _ensure_container_token_column error: {e}')
+    finally:
+        conn.close()
+
+
+def _ensure_docker_columns() -> None:
+    """为 container_clusters 表补充 Docker Agent 字段 + 创建 docker_containers 表（兼容旧库）。"""
+    try:
+        conn = pymysql.connect(
+            host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
+        )
+        with conn.cursor() as cur:
+            # container_clusters 新增字段
+            cur.execute("SHOW TABLES LIKE 'container_clusters'")
+            if cur.fetchone() is not None:
+                for col, col_def in [
+                    ('agent_key', "VARCHAR(1024) NOT NULL DEFAULT ''"),
+                    ('last_heartbeat', 'DATETIME NULL'),
+                    ('host_os', "VARCHAR(128) NOT NULL DEFAULT ''"),
+                    ('host_ip', "VARCHAR(64) NOT NULL DEFAULT ''"),
+                    ('docker_version', "VARCHAR(32) NOT NULL DEFAULT ''"),
+                ]:
+                    cur.execute(f"SHOW COLUMNS FROM container_clusters LIKE '{col}'")
+                    if cur.fetchone() is None:
+                        cur.execute(f"ALTER TABLE container_clusters ADD COLUMN {col} {col_def}")
+                        print(f'[init_db] Added {col} column to container_clusters')
+
+                # 兼容旧库：agent_key 列可能被早期版本创建为较小的 VARCHAR，扩容到 1024
+                cur.execute("SHOW COLUMNS FROM container_clusters LIKE 'agent_key'")
+                row = cur.fetchone()
+                if row and 'varchar' in (row[1] or '').lower():
+                    cur.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS "
+                                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='container_clusters' AND COLUMN_NAME='agent_key'",
+                                (MYSQL_DATABASE,))
+                    size_row = cur.fetchone()
+                    if size_row and (size_row[0] or 0) < 1024:
+                        cur.execute("ALTER TABLE container_clusters MODIFY COLUMN agent_key VARCHAR(1024) NOT NULL DEFAULT ''")
+                        print(f'[init_db] Expanded agent_key column from {size_row[0]} to VARCHAR(1024)')
+
+            # 创建 docker_containers 表
+            cur.execute("SHOW TABLES LIKE 'docker_containers'")
+            if cur.fetchone() is None:
+                cur.execute("""
+                    CREATE TABLE docker_containers (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        host_id INT NOT NULL,
+                        container_id VARCHAR(64) NOT NULL,
+                        name VARCHAR(256) NOT NULL DEFAULT '',
+                        image VARCHAR(512) NOT NULL DEFAULT '',
+                        status VARCHAR(32) NOT NULL DEFAULT 'running',
+                        state VARCHAR(32) NOT NULL DEFAULT '',
+                        ports VARCHAR(512) NOT NULL DEFAULT '',
+                        cpu_percent FLOAT NOT NULL DEFAULT 0,
+                        memory_usage BIGINT NOT NULL DEFAULT 0,
+                        memory_limit BIGINT NOT NULL DEFAULT 0,
+                        memory_percent FLOAT NOT NULL DEFAULT 0,
+                        net_rx_bytes BIGINT NOT NULL DEFAULT 0,
+                        net_tx_bytes BIGINT NOT NULL DEFAULT 0,
+                        block_read BIGINT NOT NULL DEFAULT 0,
+                        block_write BIGINT NOT NULL DEFAULT 0,
+                        restart_count INT NOT NULL DEFAULT 0,
+                        started_at VARCHAR(64) NOT NULL DEFAULT '',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (host_id) REFERENCES container_clusters(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """)
+                print('[init_db] Created docker_containers table')
+
+            # 兼容旧库：INT 字段扩容为 BIGINT（容器内存/网络/磁盘字节可能超过 INT 上限）
+            cur.execute("SHOW TABLES LIKE 'docker_containers'")
+            if cur.fetchone() is not None:
+                for col in ['memory_usage', 'memory_limit', 'net_rx_bytes', 'net_tx_bytes', 'block_read', 'block_write']:
+                    cur.execute("SELECT DATA_TYPE FROM information_schema.COLUMNS "
+                                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='docker_containers' AND COLUMN_NAME=%s",
+                                (MYSQL_DATABASE, col))
+                    row = cur.fetchone()
+                    if row and row[0] == 'int':
+                        cur.execute(f"ALTER TABLE docker_containers MODIFY COLUMN {col} BIGINT NOT NULL DEFAULT 0")
+                        print(f'[init_db] Expanded {col} from INT to BIGINT')
+
+            conn.commit()
+    except Exception as e:
+        print(f'[init_db] _ensure_docker_columns error: {e}')
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     _ensure_database()
     Base.metadata.create_all(bind=engine)
+    _ensure_asset_ssh_columns()
+    _ensure_container_token_column()
+    _ensure_docker_columns()
 
     with Session(engine) as db:
         _seed_permissions(db)
@@ -134,10 +277,15 @@ def _seed_permissions(db: Session) -> None:
         ("创建容器", "containers.create", "containers", "创建容器/集群"),
         ("编辑容器", "containers.update", "containers", "编辑容器配置"),
         ("删除容器", "containers.delete", "containers", "删除容器/集群"),
-        ("查看监控", "monitoring.view", "monitoring", "查看监控指标和主机监控"),
-        ("创建监控指标", "monitoring.create", "monitoring", "创建自定义监控指标"),
-        ("编辑监控指标", "monitoring.update", "monitoring", "编辑监控指标配置"),
-        ("删除监控指标", "monitoring.delete", "monitoring", "删除自定义监控指标"),
+        ("查看监控", "monitoring.view", "monitoring", "查看主机监控和告警规则"),
+        ("查看配置", "settings.view", "settings", "查看系统配置"),
+        ("编辑配置", "settings.update", "settings", "修改系统配置"),
+        ("查看批量执行", "batch_exec.view", "batch_exec", "查看批量执行和历史"),
+        ("执行批量命令", "batch_exec.execute", "batch_exec", "执行批量命令"),
+        ("删除执行记录", "batch_exec.delete", "batch_exec", "删除批量执行记录"),
+        ("查看巡检", "patrol.view", "patrol", "查看巡检报告"),
+        ("执行巡检", "patrol.execute", "patrol", "手动触发巡检"),
+        ("删除巡检报告", "patrol.delete", "patrol", "删除巡检报告"),
     ]
 
     for name, code, module, description in permission_specs:
@@ -166,24 +314,30 @@ def _seed_assets(db: Session) -> None:
                 name="web-prod-01",
                 asset_type="云主机",
                 ip_address="10.10.1.12",
-                status="在线",
+                status="使用中",
                 owner="平台组",
+                spec="4C8G",
+                os="Ubuntu 22.04",
                 description="核心业务 Web 节点",
             ),
             Asset(
                 name="db-prod-01",
                 asset_type="数据库",
                 ip_address="10.10.1.21",
-                status="在线",
+                status="使用中",
                 owner="DBA",
+                spec="8C16G",
+                os="CentOS 7.9",
                 description="主数据库实例",
             ),
             Asset(
                 name="waf-gateway",
                 asset_type="网络设备",
                 ip_address="10.10.1.2",
-                status="维护中",
+                status="已关机",
                 owner="安全组",
+                spec="2C4G",
+                os="Debian 11",
                 description="统一入口网关",
             ),
         ]

@@ -62,6 +62,11 @@ def create_asset(
     status: str,
     owner: str,
     description: str,
+    spec: str = "",
+    os: str = "",
+    ssh_port: int = 22,
+    ssh_username: str = "root",
+    ssh_password: str = "",
 ) -> Asset:
     asset = Asset(
         name=name,
@@ -70,6 +75,11 @@ def create_asset(
         status=status,
         owner=owner,
         description=description,
+        spec=spec,
+        os=os,
+        ssh_port=ssh_port,
+        ssh_username=ssh_username,
+        ssh_password=ssh_password,
     )
     db.add(asset)
     db.commit()
@@ -87,6 +97,11 @@ def update_asset(
     status: str,
     owner: str,
     description: str,
+    spec: str = "",
+    os: str = "",
+    ssh_port: int = 22,
+    ssh_username: str = "root",
+    ssh_password: str = "",
 ) -> Asset:
     asset.name = name
     asset.asset_type = asset_type
@@ -94,6 +109,12 @@ def update_asset(
     asset.status = status
     asset.owner = owner
     asset.description = description
+    asset.spec = spec
+    asset.os = os
+    asset.ssh_port = ssh_port
+    asset.ssh_username = ssh_username
+    if ssh_password:  # 只在提供新密码时更新
+        asset.ssh_password = ssh_password
     db.commit()
     db.refresh(asset)
     return asset

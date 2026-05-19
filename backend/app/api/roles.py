@@ -1,9 +1,9 @@
 """角色权限 API。"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import api_permission_required
+from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -79,6 +79,7 @@ def api_list_roles(
 @router.post("/")
 def api_create_role(
     body: RoleCreate,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.create")),
 ):
@@ -90,7 +91,7 @@ def api_create_role(
         raise HTTPException(status_code=400, detail="角色编码已存在")
 
     role = create_role(db, name=name, code=code, description=body.description.strip(), permission_ids=[])
-    write_log(db, user=_, action="create", target_type="role", target_id=role.id, target_name=role.name, ip_address="")
+    write_log(db, user=_, action="create", target_type="role", target_id=role.id, target_name=role.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _role_dict(role)}
 
@@ -111,6 +112,7 @@ def api_get_role(
 def api_update_role(
     role_id: int,
     body: RoleUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.update")),
 ):
@@ -130,7 +132,7 @@ def api_update_role(
         raise HTTPException(status_code=400, detail="系统内置角色不允许修改编码")
 
     update_role(db, role, name=name, code=code, description=body.description.strip(), permission_ids=[p.id for p in role.permissions])
-    write_log(db, user=_, action="update", target_type="role", target_id=role.id, target_name=role.name, ip_address="")
+    write_log(db, user=_, action="update", target_type="role", target_id=role.id, target_name=role.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "更新成功", "data": _role_dict(role)}
 
@@ -138,6 +140,7 @@ def api_update_role(
 @router.delete("/{role_id}")
 def api_delete_role(
     role_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.delete")),
 ):
@@ -149,7 +152,7 @@ def api_delete_role(
     if role.users:
         raise HTTPException(status_code=400, detail="该角色下还有用户，无法删除")
 
-    write_log(db, user=_, action="delete", target_type="role", target_id=role.id, target_name=role.name, ip_address="")
+    write_log(db, user=_, action="delete", target_type="role", target_id=role.id, target_name=role.name, ip_address=get_client_ip(request))
     delete_role(db, role)
     db.commit()
     return {"code": 0, "msg": "删除成功"}
@@ -159,6 +162,7 @@ def api_delete_role(
 def api_assign_permissions(
     role_id: int,
     body: PermissionAssign,
+    request: Request,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.update")),
 ):
@@ -169,7 +173,7 @@ def api_assign_permissions(
         raise HTTPException(status_code=400, detail="超级管理员不允许调整权限")
 
     role.permissions = _get_permissions_by_ids(db, body.permission_ids)
-    write_log(db, user=_, action="update", target_type="role", target_id=role.id, target_name=role.name, detail="分配菜单权限", ip_address="")
+    write_log(db, user=_, action="update", target_type="role", target_id=role.id, target_name=role.name, detail="分配菜单权限", ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "权限分配成功", "data": _role_dict(role)}
 

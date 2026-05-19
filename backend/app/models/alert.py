@@ -16,7 +16,7 @@ class Alert(Base):
     level: Mapped[str] = mapped_column(String(20), default="medium")      # low / medium / high / critical
     status: Mapped[str] = mapped_column(String(20), default="pending")    # pending / confirmed / resolved / ignored
     source: Mapped[str] = mapped_column(String(100), default="")
-    asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id"), nullable=True)
+    asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
     handler_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

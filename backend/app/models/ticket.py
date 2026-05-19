@@ -16,7 +16,7 @@ class Ticket(Base):
     priority: Mapped[str] = mapped_column(String(20), default="normal")   # low / normal / high / critical
     status: Mapped[str] = mapped_column(String(20), default="open")       # open / in_progress / resolved / closed
     assignee: Mapped[str] = mapped_column(String(100), default="")
-    asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id"), nullable=True)
+    asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
     creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -17,24 +17,28 @@ from app.models.container import (
     ContainerPod,
     ContainerService,
 )
+from app.services.k8s import get_cluster_info, test_connection
 
 
 # ─── Clusters ───────────────────────────────────────────────
 
 
 def list_clusters(db: Session, *, keyword: str = "") -> list[ContainerCluster]:
-    stmt = select(ContainerCluster)
+    stmt = select(ContainerCluster).where(ContainerCluster.provider == "kubernetes")
     if keyword:
         like = f"%{keyword}%"
         stmt = stmt.where(
-            or_(ContainerCluster.name.ilike(like), ContainerCluster.provider.ilike(like))
+            or_(ContainerCluster.name.ilike(like), ContainerCluster.endpoint.ilike(like))
         )
     stmt = stmt.order_by(ContainerCluster.id.desc())
     return list(db.scalars(stmt).all())
 
 
 def get_cluster(db: Session, cluster_id: int) -> ContainerCluster | None:
-    return db.scalar(select(ContainerCluster).where(ContainerCluster.id == cluster_id))
+    return db.scalar(
+        select(ContainerCluster)
+        .where(ContainerCluster.id == cluster_id, ContainerCluster.provider == "kubernetes")
+    )
 
 
 def create_cluster(db: Session, **kwargs) -> ContainerCluster:
@@ -59,7 +63,9 @@ def delete_cluster(db: Session, obj: ContainerCluster) -> None:
 
 
 def count_clusters(db: Session) -> int:
-    return db.scalar(select(func.count(ContainerCluster.id))) or 0
+    return db.scalar(
+        select(func.count(ContainerCluster.id)).where(ContainerCluster.provider == "kubernetes")
+    ) or 0
 
 
 # ─── Deployments ────────────────────────────────────────────
@@ -159,6 +165,14 @@ def get_service(db: Session, svc_id: int) -> ContainerService | None:
 def create_service(db: Session, **kwargs) -> ContainerService:
     obj = ContainerService(**kwargs)
     db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def update_service(db: Session, obj: ContainerService, **kwargs) -> ContainerService:
+    for k, v in kwargs.items():
+        setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
     return obj
