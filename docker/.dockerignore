@@ -1,0 +1,11 @@
+backend/venv/
+backend/venv-linux/
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+frontend/node_modules/
+frontend/dist/
+agent/venv/
+.git/
+*.md
