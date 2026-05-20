@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pymysql
@@ -13,6 +14,7 @@ from app.models.rbac import Permission, Role
 from app.models.ticket import Ticket
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
@@ -67,8 +69,8 @@ def _ensure_asset_ssh_columns() -> None:
                     if 'ON DELETE SET NULL' not in create_sql and fk_name in create_sql:
                         cur.execute(f"ALTER TABLE {tbl} DROP FOREIGN KEY {fk_name}")
                         cur.execute(f"ALTER TABLE {tbl} ADD CONSTRAINT {fk_name} FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE SET NULL")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug('FK alter skipped: %s', e)
             conn.commit()
     finally:
         conn.close()

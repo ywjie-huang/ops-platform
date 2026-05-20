@@ -1,5 +1,5 @@
 """SSH 密钥管理 API。"""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -159,7 +159,7 @@ def update_ssh_key(key_id: int, body: SSHKeyUpdate, db: Session = Depends(get_db
     for field, value in update_data.items():
         setattr(key, field, value)
 
-    key.updated_at = datetime.utcnow()
+    key.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(key)
 

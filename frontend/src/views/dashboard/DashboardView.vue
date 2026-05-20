@@ -92,6 +92,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { getDashboardStats, getSparkline, getActivities, getAlertTrend, getDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/modules/auth'
 import { Box, Monitor, Warning, Tickets } from '@element-plus/icons-vue'
@@ -204,7 +205,7 @@ onMounted(async () => {
     activities.value = actRes.data?.items || []
     alertTrend.value = trendRes.data
     summary.value = sumRes.data
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 })
 </script>
 

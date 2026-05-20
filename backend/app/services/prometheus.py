@@ -244,7 +244,8 @@ async def check_prometheus_health(db=None) -> bool:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{prom_url}/api/v1/status/config")
             return resp.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.warning('Prometheus health check failed: %s', e)
         return False
 
 

@@ -184,7 +184,7 @@ async function fetchOverview() {
   try {
     const res: any = await getDockerOverview()
     overview.value = res.data
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 async function fetchHosts() {

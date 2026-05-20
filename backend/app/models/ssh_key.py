@@ -1,5 +1,5 @@
 """SSH 密钥模型 —— 存储 SSH 密钥对 / 密码凭据，供主机 SSH 连接复用。"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,5 +20,5 @@ class SSHKey(Base):
     port: Mapped[int] = mapped_column(Integer, default=22, comment="默认 SSH 端口")
     description: Mapped[str] = mapped_column(Text, default="", comment="备注说明")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否为默认密钥")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

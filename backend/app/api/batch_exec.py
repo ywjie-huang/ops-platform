@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
@@ -51,7 +51,7 @@ def _save_execution(command: str, asset_ids: list[int], asset_names: list[str],
             failed_hosts=failed,
             status=status,
             operator=operator,
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(timezone.utc),
         )
         db.add(record)
         db.commit()
@@ -126,8 +126,8 @@ async def ws_batch_exec(websocket: WebSocket):
     async def send_message(data: dict):
         try:
             await websocket.send_text(json.dumps(data, ensure_ascii=False))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug('WS send failed: %s', e)
 
     result = await execute_on_hosts(hosts, command, send_message, timeout)
 
@@ -144,8 +144,8 @@ async def ws_batch_exec(websocket: WebSocket):
 
     try:
         await websocket.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug('WS close failed: %s', e)
 
 
 # ─── REST：执行历史 ────────────────────────────────────────

@@ -1,5 +1,5 @@
 """仪表盘数据构建服务。"""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select, cast, Date
 from sqlalchemy.orm import Session
@@ -159,7 +159,7 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
 
 def build_sparkline_data(db: Session) -> dict:
     """返回近 7 天每日统计，用于 Sparkline 趋势图。"""
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     dates = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
     date_strs = [d.strftime("%m-%d") for d in dates]
 
@@ -288,7 +288,7 @@ def build_activities(db: Session, limit: int = 20, activity_type: str | None = N
 
 def build_alert_trend(db: Session) -> dict:
     """返回近 7 天每日告警数量。"""
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     dates = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
     date_strs = [d.strftime("%m-%d") for d in dates]
 

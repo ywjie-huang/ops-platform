@@ -1,5 +1,5 @@
 """批量执行模型 — 记录执行历史。"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,5 +19,5 @@ class BatchExecution(Base):
     failed_hosts: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="running")  # running / completed / failed
     operator: Mapped[str] = mapped_column(String(100), default="")  # 操作人
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)

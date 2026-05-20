@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models.container import ContainerCluster, DockerContainer
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Agent 拉取超时（秒）
 PULL_TIMEOUT = 10
@@ -85,7 +85,7 @@ def is_host_online(host: ContainerCluster) -> bool:
     """判断主机是否在线（基于最后成功拉取时间）。"""
     if not host.last_heartbeat:
         return False
-    return (datetime.utcnow() - host.last_heartbeat).total_seconds() < OFFLINE_TIMEOUT
+    return (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds() < OFFLINE_TIMEOUT
 
 
 # ─── 从 Agent 拉取数据 ────────────────────────────────────
@@ -109,7 +109,7 @@ def pull_from_agent(host: ContainerCluster) -> dict[str, Any] | None:
         if resp.status_code == 200:
             return resp.json()
     except requests.RequestException as e:
-        log.debug("拉取 Agent %s 失败: %s", host.name, e)
+        logger.debug("拉取 Agent %s 失败: %s", host.name, e)
 
     return None
 
@@ -124,7 +124,7 @@ def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
     if not data:
         return False
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     host_info = data.get("host_info", {})
     containers_data = data.get("containers", [])
 
@@ -158,7 +158,7 @@ def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
 
 def _sync_containers(db: Session, host_id: int, containers_data: list[dict]) -> None:
     """同步容器列表到数据库。"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     reported_ids = {c["id"][:12] for c in containers_data if c.get("id")}
 
     # 删除已不存在的容器
@@ -216,13 +216,13 @@ def sync_all_hosts(db: Session) -> None:
             ok = sync_host_from_agent(db, host)
             if not ok:
                 # 拉取失败，标记离线
-                if host.last_heartbeat and (datetime.utcnow() - host.last_heartbeat).total_seconds() > OFFLINE_TIMEOUT:
+                if host.last_heartbeat and (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds() > OFFLINE_TIMEOUT:
                     if host.status != "stopped":
                         host.status = "stopped"
                         host.status_message = "Agent 连接失败"
                         db.commit()
         except Exception as e:
-            log.error("同步主机 %s 失败: %s", host.name, e)
+            logger.error("同步主机 %s 失败: %s", host.name, e)
 
 
 # ─── 容器查询 ──────────────────────────────────────────────

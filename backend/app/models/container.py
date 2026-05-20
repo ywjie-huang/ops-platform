@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,8 +31,8 @@ class ContainerCluster(Base):
     host_os: Mapped[str] = mapped_column(String(128), default="")  # 主机系统信息
     host_ip: Mapped[str] = mapped_column(String(64), default="")  # 主机 IP
     docker_version: Mapped[str] = mapped_column(String(32), default="")  # Docker 版本
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     deployments: Mapped[list["ContainerDeployment"]] = relationship(back_populates="cluster", cascade="all, delete-orphan")
     pods: Mapped[list["ContainerPod"]] = relationship(back_populates="cluster", cascade="all, delete-orphan")
@@ -53,7 +53,7 @@ class ContainerDeployment(Base):
     ready_replicas: Mapped[int] = mapped_column(Integer, default=0)
     image: Mapped[str] = mapped_column(String(256), default="")
     status: Mapped[str] = mapped_column(String(32), default="running")  # running / stopped / updating / error
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     cluster: Mapped["ContainerCluster"] = relationship(back_populates="deployments")
 
@@ -72,7 +72,7 @@ class ContainerPod(Base):
     pod_ip: Mapped[str] = mapped_column(String(64), default="")
     restarts: Mapped[int] = mapped_column(Integer, default=0)
     image: Mapped[str] = mapped_column(String(256), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     cluster: Mapped["ContainerCluster"] = relationship(back_populates="pods")
 
@@ -91,7 +91,7 @@ class ContainerService(Base):
     ports: Mapped[str] = mapped_column(String(128), default="")  # 如 "80:30080/TCP,443:30443/TCP"
     selector: Mapped[str] = mapped_column(String(256), default="")  # label selector
     status: Mapped[str] = mapped_column(String(32), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     cluster: Mapped["ContainerCluster"] = relationship(back_populates="services")
 
@@ -119,7 +119,7 @@ class DockerContainer(Base):
     block_write: Mapped[int] = mapped_column(BigInteger, default=0)  # 磁盘写字节
     restart_count: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[str] = mapped_column(String(64), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     host: Mapped["ContainerCluster"] = relationship(back_populates="docker_containers")

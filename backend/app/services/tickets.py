@@ -1,5 +1,5 @@
 """Ticket service — CRUD + status queries."""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -87,7 +87,7 @@ def update_ticket(
     ticket.status = status
     ticket.assignee = assignee
     ticket.asset_id = asset_id
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(ticket)
     return get_ticket(db, ticket.id) or ticket

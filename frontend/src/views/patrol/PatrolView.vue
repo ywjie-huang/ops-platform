@@ -288,7 +288,7 @@ async function handleRowClick(row: any) {
     detailReport.value = res.data.report
     detailItems.value = res.data.items
     detailVisible.value = true
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 async function handleExport(row: any) {

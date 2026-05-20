@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select, and_
@@ -100,7 +100,7 @@ def get_preset_report(report_id: str) -> dict[str, Any] | None:
 
 def query_report_data(db: Session, report_id: str, days: int = 30) -> dict[str, Any]:
     """查询预置报表数据，返回结构化结果。"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
 
     if report_id == "asset_summary":
@@ -174,7 +174,7 @@ def query_custom_report(
     days: int = 30,
 ) -> dict[str, Any]:
     """执行自定义报表查询。"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)
 
     if source_id == "assets":
@@ -339,7 +339,7 @@ def _user_activity(db: Session, since: datetime) -> dict[str, Any]:
 
     return {
         "title": "用户活跃度报表",
-        "period": f"最近 { (datetime.utcnow() - since).days } 天",
+        "period": f"最近 { (datetime.now(timezone.utc) - since).days } 天",
         "columns": ["用户", "操作次数"],
         "rows": [[r[0], r[1]] for r in rows],
     }
@@ -363,7 +363,7 @@ def _audit_overview(db: Session, since: datetime) -> dict[str, Any]:
 
     return {
         "title": "审计概览报表",
-        "period": f"最近 { (datetime.utcnow() - since).days } 天",
+        "period": f"最近 { (datetime.now(timezone.utc) - since).days } 天",
         "by_action": {"columns": ["操作类型", "次数"], "rows": [[r[0], r[1]] for r in action_rows]},
         "by_target": {"columns": ["对象类型", "次数"], "rows": [[r[0], r[1]] for r in target_rows]},
     }

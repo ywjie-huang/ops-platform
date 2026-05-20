@@ -30,7 +30,8 @@ async def check_alertmanager_health(db=None) -> bool:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{am_url}/api/v2/status")
             return resp.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.warning('Alertmanager health check failed: %s', e)
         return False
 
 
@@ -105,7 +106,8 @@ def _parse_iso(ts: str) -> datetime | None:
         if dt.year < 2000:
             return None
         return dt
-    except Exception:
+    except Exception as e:
+        logger.warning('Timestamp parse failed: %s', e)
         return None
 
 

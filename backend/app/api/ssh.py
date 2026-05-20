@@ -217,13 +217,14 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
                 if data:
                     await websocket.send_text(data)
                 await asyncio.sleep(0.02)
-            except Exception:
+            except Exception as e:
+                logger.debug('SSH channel read failed: %s', e)
                 break
         try:
             await websocket.send_text("\r\n\x1b[33mSSH 连接已断开\x1b[0m\r\n")
             await websocket.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug('WS close after SSH disconnect failed: %s', e)
 
     async def ws_to_ssh():
         while True:
@@ -240,7 +241,8 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
                 channel.send(msg)
             except WebSocketDisconnect:
                 break
-            except Exception:
+            except Exception as e:
+                logger.debug('WS-to-SSH channel failed: %s', e)
                 break
 
     try:

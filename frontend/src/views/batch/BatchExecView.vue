@@ -290,7 +290,7 @@ async function fetchAssets() {
   try {
     const res: any = await getAssets({ page: 1, page_size: 1000 })
     allAssets.value = res.data.items.filter((a: any) => a.status === '使用中')
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 onMounted(() => { fetchAssets(); fetchHistory() })

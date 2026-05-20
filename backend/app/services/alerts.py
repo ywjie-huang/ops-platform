@@ -1,5 +1,5 @@
 """Alert service — CRUD + status queries."""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -89,7 +89,7 @@ def update_alert(
     alert.source = source
     alert.asset_id = asset_id
     alert.handler_id = handler_id
-    alert.updated_at = datetime.utcnow()
+    alert.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(alert)
     return get_alert(db, alert.id) or alert

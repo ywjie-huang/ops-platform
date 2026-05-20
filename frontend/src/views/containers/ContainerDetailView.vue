@@ -440,7 +440,7 @@ async function confirmDeletePod(row: any) {
     await deleteClusterPod(clusterId.value, row.namespace, row.name)
     ElMessage.success('Pod 删除成功')
     await fetchResources()
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '操作失败') }
 }
 
 async function confirmRestartDeployment(row: any) {
@@ -453,12 +453,12 @@ async function confirmRestartDeployment(row: any) {
     await restartClusterDeployment(clusterId.value, row.namespace, row.name)
     ElMessage.success('Deployment 重启已触发')
     await fetchDeployments()
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '操作失败') }
 }
 
 // Fetch
 async function fetchCluster() {
-  try { const res: any = await getCluster(clusterId.value); cluster.value = res.data } catch {}
+  try { const res: any = await getCluster(clusterId.value); cluster.value = res.data } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 async function fetchResources() {
@@ -471,28 +471,28 @@ async function fetchResources() {
     cluster.value.status_message = res.data.connected ? '' : (res.data.error || '连接失败')
     cluster.value.version = res.data.version || cluster.value.version
     cluster.value.node_count = res.data.node_count ?? cluster.value.node_count
-  } catch {} finally { refreshing.value = false }
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') } finally { refreshing.value = false }
 }
 
 async function fetchPods() {
   try {
     const res: any = await getClusterPods(clusterId.value, { namespace: podNamespace.value })
     resources.value.pods = res.data
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 async function fetchDeployments() {
   try {
     const res: any = await getClusterDeployments(clusterId.value, { namespace: depNamespace.value })
     resources.value.deployments = res.data
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 async function fetchServices() {
   try {
     const res: any = await getClusterServices(clusterId.value, { namespace: svcNamespace.value })
     resources.value.services = res.data
-  } catch {}
+  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
 onMounted(() => { fetchCluster(); fetchResources() })

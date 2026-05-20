@@ -1,5 +1,5 @@
 """告警事件模型 — 记录 Alertmanager 推送的每一次告警。"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -28,4 +28,4 @@ class AlertEvent(Base):
     raw_annotations: Mapped[str] = mapped_column(Text, default="{}")         # JSON
     starts_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     ends_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
