@@ -284,3 +284,26 @@ def build_activities(db: Session, limit: int = 20, activity_type: str | None = N
         })
 
     return items
+
+
+def build_alert_trend(db: Session) -> dict:
+    """返回近 7 天每日告警数量。"""
+    today = datetime.utcnow().date()
+    dates = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
+    date_strs = [d.strftime("%m-%d") for d in dates]
+
+    rows = db.execute(
+        select(
+            cast(AlertEvent.received_at, Date).label("day"),
+            func.count(AlertEvent.id),
+        )
+        .where(AlertEvent.received_at >= datetime.combine(dates[0], datetime.min.time()))
+        .group_by(cast(AlertEvent.received_at, Date))
+        .order_by(cast(AlertEvent.received_at, Date))
+    ).all()
+    count_map = {str(row[0]): row[1] for row in rows}
+
+    return {
+        "dates": date_strs,
+        "counts": [count_map.get(str(d), 0) for d in dates],
+    }

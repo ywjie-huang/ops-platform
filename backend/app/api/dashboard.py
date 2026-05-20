@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services.dashboard import build_activities, build_dashboard_stats, build_dashboard_summary, build_sparkline_data
+from app.services.dashboard import build_activities, build_alert_trend, build_dashboard_stats, build_dashboard_summary, build_sparkline_data
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
 
@@ -92,3 +92,12 @@ def api_dashboard_activities(
 ):
     items = build_activities(db, limit=limit, activity_type=type)
     return {"code": 0, "data": {"items": items}}
+
+
+@router.get("/alert-trend")
+def api_dashboard_alert_trend(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("dashboard.view")),
+):
+    data = build_alert_trend(db)
+    return {"code": 0, "data": data}
