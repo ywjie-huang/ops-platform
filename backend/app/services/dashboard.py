@@ -1,6 +1,12 @@
 """仪表盘数据构建服务。"""
+from datetime import datetime, timedelta
+
+from sqlalchemy import func, select, cast, Date
 from sqlalchemy.orm import Session
 
+from app.models.alert_event import AlertEvent
+from app.models.asset import Asset
+from app.models.ticket import Ticket
 from app.models.dashboard import (
     DashboardActivityItem,
     DashboardDistributionItem,
@@ -148,3 +154,58 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         recent_tickets=ticket_items,
         recent_alerts=alert_items,
     )
+
+
+def build_sparkline_data(db: Session) -> dict:
+    """返回近 7 天每日统计，用于 Sparkline 趋势图。"""
+    today = datetime.utcnow().date()
+    dates = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
+    date_strs = [d.strftime("%m-%d") for d in dates]
+
+    # 资产总数（取每天的总量，无 created_at 按天分组则用当前总量）
+    asset_total = db.scalar(select(func.count(Asset.id))) or 0
+
+    # 在线主机数（状态为"使用中"）
+    online_total = db.scalar(
+        select(func.count(Asset.id)).where(Asset.status == "使用中")
+    ) or 0
+
+    # 告警：近 7 天每日新增告警数（alert_events 表）
+    alert_rows = db.scalars(
+        select(
+            cast(AlertEvent.received_at, Date).label("day"),
+            func.count(AlertEvent.id),
+        )
+        .where(AlertEvent.received_at >= datetime.combine(dates[0], datetime.min.time()))
+        .group_by(cast(AlertEvent.received_at, Date))
+        .order_by(cast(AlertEvent.received_at, Date))
+    ).all()
+    alert_map = {str(row[0]): row[1] for row in alert_rows}
+
+    # 工单：近 7 天每日新增工单数
+    ticket_rows = db.scalars(
+        select(
+            cast(Ticket.created_at, Date).label("day"),
+            func.count(Ticket.id),
+        )
+        .where(Ticket.created_at >= datetime.combine(dates[0], datetime.min.time()))
+        .group_by(cast(Ticket.created_at, Date))
+        .order_by(cast(Ticket.created_at, Date))
+    ).all()
+    ticket_map = {str(row[0]): row[1] for row in ticket_rows}
+
+    # 对于资产和在线数，无历史快照，用常量填充（后续可接入时序数据库）
+    assets_series = [asset_total] * 7
+    online_series = [online_total] * 7
+    alerts_series = [alert_map.get(str(d), 0) for d in dates]
+    tickets_series = [ticket_map.get(str(d), 0) for d in dates]
+
+    return {
+        "dates": date_strs,
+        "series": {
+            "assets": assets_series,
+            "online": online_series,
+            "alerts": alerts_series,
+            "tickets": tickets_series,
+        },
+    }
