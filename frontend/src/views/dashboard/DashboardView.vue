@@ -180,7 +180,7 @@ function typePct(val: number) { return Math.round((val / maxTypeValue.value) * 1
 
 async function fetchActivities(type?: string) {
   try {
-    const res: any = await getActivities(20, type)
+    const res: any = await getActivities(10, type)
     activities.value = res.data?.items || []
   } catch { activities.value = [] }
 }
@@ -195,7 +195,7 @@ onMounted(async () => {
     const [statsRes, sparkRes, actRes, trendRes, sumRes]: any = await Promise.all([
       getDashboardStats(),
       getSparkline(),
-      getActivities(20),
+      getActivities(10),
       getAlertTrend(),
       getDashboardSummary(),
     ])
@@ -353,6 +353,8 @@ onMounted(async () => {
 .activity-list {
   display: flex;
   flex-direction: column;
+  max-height: 480px;
+  overflow-y: auto;
 }
 .activity-item {
   display: flex;
