@@ -30,20 +30,20 @@
           <!-- 子菜单（多个可见子菜单） -->
           <el-sub-menu v-else :index="item.route.path">
             <template #title>
-              <el-icon v-if="item.route.meta?.icon">
-                <component :is="item.route.meta.icon" />
+              <el-icon v-if="item.menuIcon">
+                <component :is="item.menuIcon" />
               </el-icon>
-              <span>{{ item.route.meta?.title }}</span>
+              <span>{{ item.menuTitle }}</span>
             </template>
             <el-menu-item
               v-for="child in item.children"
               :key="child.path"
               :index="`${item.route.path}/${child.path}`.replace('//', '/')"
             >
-              <el-icon v-if="child.meta?.icon">
-                <component :is="child.meta.icon" />
+              <el-icon v-if="child.icon">
+                <component :is="child.icon" />
               </el-icon>
-              <template #title>{{ child.meta?.title }}</template>
+              <template #title>{{ child.title }}</template>
             </el-menu-item>
           </el-sub-menu>
         </template>
@@ -53,11 +53,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
-import { Cpu } from '@element-plus/icons-vue'
+import {
+  Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
+  DataAnalysis, DataLine, Document, Finished, Key, Monitor,
+  Notebook, Odometer, PieChart, Platform, Promotion, Setting,
+  Tools, User, Warning,
+} from '@element-plus/icons-vue'
+
+const iconMap: Record<string, Component> = {
+  Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
+  DataAnalysis, DataLine, Document, Finished, Key, Monitor,
+  Notebook, Odometer, PieChart, Platform, Promotion, Setting,
+  Tools, User, Warning,
+}
+
+function resolveIcon(name?: string): Component | undefined {
+  return name ? iconMap[name] : undefined
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -85,13 +101,18 @@ const processedRoutes = computed(() => {
     const menuPath = isSingle
       ? `${route.path}/${children[0]?.path || ''}`.replace('//', '/')
       : route.path
-    const menuIcon = isSingle
+    const menuIcon = resolveIcon(isSingle
       ? (children[0]?.meta?.icon || route.meta?.icon)
-      : route.meta?.icon
+      : route.meta?.icon)
     const menuTitle = isSingle
       ? (children[0]?.meta?.title || route.meta?.title)
       : route.meta?.title
-    return { route, children, isSingle, menuPath, menuIcon, menuTitle }
+    const resolvedChildren = children.map((c: any) => ({
+      path: c.path,
+      title: c.meta?.title,
+      icon: resolveIcon(c.meta?.icon),
+    }))
+    return { route, children: resolvedChildren, isSingle, menuPath, menuIcon, menuTitle }
   })
 })
 </script>
@@ -143,5 +164,14 @@ const processedRoutes = computed(() => {
 
 :deep(.el-sub-menu .el-menu-item) {
   padding-left: 50px !important;
+}
+
+:deep(.el-sub-menu__title),
+:deep(.el-menu-item) {
+  will-change: transform;
+}
+
+:deep(.el-sub-menu .el-menu) {
+  overflow: hidden;
 }
 </style>
