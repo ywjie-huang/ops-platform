@@ -238,18 +238,11 @@ const groupedItems = computed(() => {
         else if (item.status === 'warning') hostMap[key].warning++
         else hostMap[key].normal++
       }
-      // 有异常的主机默认展开
       const hosts = Object.values(hostMap).sort((a, b) => {
         if (a.critical !== b.critical) return b.critical - a.critical
         if (a.warning !== b.warning) return b.warning - a.warning
         return a.name.localeCompare(b.name)
       })
-      // 自动展开有异常的主机
-      for (const h of hosts) {
-        if ((h.critical > 0 || h.warning > 0) && !expandedHosts.value.has(h.name)) {
-          expandedHosts.value.add(h.name)
-        }
-      }
       return { ...base, hosts }
     }
     return base
@@ -287,6 +280,7 @@ async function handleRowClick(row: any) {
     const res: any = await getPatrolReportDetail(row.id)
     detailReport.value = res.data.report
     detailItems.value = res.data.items
+    expandedHosts.value = new Set()
     detailVisible.value = true
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
