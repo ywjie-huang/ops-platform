@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.alert_event import AlertEvent
 from app.models.asset import Asset
+from app.models.audit import AuditLog
 from app.models.ticket import Ticket
 from app.models.dashboard import (
     DashboardActivityItem,
@@ -209,3 +210,75 @@ def build_sparkline_data(db: Session) -> dict:
             "tickets": tickets_series,
         },
     }
+
+
+# target_type 到前端分类的映射
+_ACTIVITY_TYPE_MAP = {
+    "asset": "asset",
+    "ssh_key": "asset",
+    "container": "asset",
+    "ticket": "ticket",
+    "alert": "alert",
+    "alert_event": "alert",
+    "patrol": "patrol",
+    "user": "user",
+    "role": "user",
+    "auth": "user",
+    "settings": "system",
+    "batch_exec": "system",
+}
+
+_ACTIVITY_LABEL_MAP = {
+    "asset": "资产",
+    "ticket": "工单",
+    "alert": "告警",
+    "patrol": "巡检",
+    "user": "用户",
+    "system": "系统",
+}
+
+_ACTION_MAP = {
+    "create": "新增",
+    "update": "更新",
+    "delete": "删除",
+    "login": "登录",
+    "logout": "登出",
+}
+
+_TONE_MAP = {
+    "asset": "blue",
+    "ticket": "orange",
+    "alert": "red",
+    "patrol": "green",
+    "user": "purple",
+    "system": "default",
+}
+
+
+def build_activities(db: Session, limit: int = 20, activity_type: str | None = None) -> list[dict]:
+    """从审计日志构建活动时间线数据。"""
+    stmt = select(AuditLog).order_by(AuditLog.created_at.desc())
+
+    if activity_type and activity_type != "all":
+        # 反查 target_type
+        target_types = [k for k, v in _ACTIVITY_TYPE_MAP.items() if v == activity_type]
+        if target_types:
+            stmt = stmt.where(AuditLog.target_type.in_(target_types))
+
+    stmt = stmt.limit(limit)
+    rows = db.scalars(stmt).all()
+
+    items = []
+    for row in rows:
+        act_type = _ACTIVITY_TYPE_MAP.get(row.target_type, "system")
+        action_label = _ACTION_MAP.get(row.action, row.action)
+        items.append({
+            "time": row.created_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "description": f"{action_label} — {row.target_name}" if row.target_name else action_label,
+            "detail": row.detail or "",
+            "type": act_type,
+            "type_label": _ACTIVITY_LABEL_MAP.get(act_type, "其他"),
+            "username": row.username or "",
+        })
+
+    return items
