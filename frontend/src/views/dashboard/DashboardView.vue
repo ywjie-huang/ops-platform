@@ -171,7 +171,11 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
-.dashboard { max-width: 1400px; }
+.dashboard {
+  width: 100%;
+  max-width: 100%;
+  padding-right: 16px;
+}
 
 // ── 欢迎栏 ──
 .welcome-bar {
@@ -313,6 +317,25 @@ onMounted(async () => {
 .bar-value { width: 30px; font-size: 12px; font-weight: 700; color: var(--text-primary); text-align: right; }
 
 // ── 响应式 ──
+@media (min-width: 1600px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 420px;
+  }
+  .stat-card-value { font-size: 36px; }
+}
+
+@media (min-width: 1920px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 480px;
+    gap: 20px;
+  }
+  .stat-grid { gap: 20px; }
+  .stat-card { padding: 24px; }
+  .stat-card-value { font-size: 40px; }
+  .panel { padding: 20px 24px; }
+  .quick-bar { gap: 32px; padding: 16px 24px; }
+}
+
 @media (max-width: 1100px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .dashboard-grid { grid-template-columns: 1fr; }

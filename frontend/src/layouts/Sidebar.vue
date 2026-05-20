@@ -15,30 +15,30 @@
         active-text-color="#60a5fa"
         router
       >
-        <template v-for="route in menuRoutes" :key="route.path">
+        <template v-for="item in processedRoutes" :key="item.route.path">
           <!-- 单个菜单项（无子菜单或只有一个可见子菜单） -->
           <el-menu-item
-            v-if="getVisibleChildren(route).length <= 1"
-            :index="getMenuPath(route)"
+            v-if="item.isSingle"
+            :index="item.menuPath"
           >
-            <el-icon v-if="getMenuIcon(route)">
-              <component :is="getMenuIcon(route)" />
+            <el-icon v-if="item.menuIcon">
+              <component :is="item.menuIcon" />
             </el-icon>
-            <template #title>{{ getMenuTitle(route) }}</template>
+            <template #title>{{ item.menuTitle }}</template>
           </el-menu-item>
 
           <!-- 子菜单（多个可见子菜单） -->
-          <el-sub-menu v-else :index="route.path">
+          <el-sub-menu v-else :index="item.route.path">
             <template #title>
-              <el-icon v-if="route.meta?.icon">
-                <component :is="route.meta.icon" />
+              <el-icon v-if="item.route.meta?.icon">
+                <component :is="item.route.meta.icon" />
               </el-icon>
-              <span>{{ route.meta?.title }}</span>
+              <span>{{ item.route.meta?.title }}</span>
             </template>
             <el-menu-item
-              v-for="child in getVisibleChildren(route)"
+              v-for="child in item.children"
               :key="child.path"
-              :index="`${route.path}/${child.path}`.replace('//', '/')"
+              :index="`${item.route.path}/${child.path}`.replace('//', '/')"
             >
               <el-icon v-if="child.meta?.icon">
                 <component :is="child.meta.icon" />
@@ -78,33 +78,22 @@ const menuRoutes = computed(() => {
   })
 })
 
-function getVisibleChildren(route: any) {
-  return (route.children || []).filter((c: any) => !c.meta?.hidden)
-}
-
-function getMenuPath(route: any): string {
-  const children = getVisibleChildren(route)
-  if (children.length === 1) {
-    return `${route.path}/${children[0].path}`.replace('//', '/')
-  }
-  return route.path
-}
-
-function getMenuIcon(route: any) {
-  const children = getVisibleChildren(route)
-  if (children.length === 1) {
-    return children[0].meta?.icon || route.meta?.icon
-  }
-  return route.meta?.icon
-}
-
-function getMenuTitle(route: any) {
-  const children = getVisibleChildren(route)
-  if (children.length === 1) {
-    return children[0].meta?.title || route.meta?.title
-  }
-  return route.meta?.title
-}
+const processedRoutes = computed(() => {
+  return menuRoutes.value.map((route: any) => {
+    const children = (route.children || []).filter((c: any) => !c.meta?.hidden)
+    const isSingle = children.length <= 1
+    const menuPath = isSingle
+      ? `${route.path}/${children[0]?.path || ''}`.replace('//', '/')
+      : route.path
+    const menuIcon = isSingle
+      ? (children[0]?.meta?.icon || route.meta?.icon)
+      : route.meta?.icon
+    const menuTitle = isSingle
+      ? (children[0]?.meta?.title || route.meta?.title)
+      : route.meta?.title
+    return { route, children, isSingle, menuPath, menuIcon, menuTitle }
+  })
+})
 </script>
 
 <style lang="scss" scoped>
