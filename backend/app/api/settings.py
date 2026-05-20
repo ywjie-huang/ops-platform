@@ -79,31 +79,44 @@ def api_get_config(
     return {"code": 0, "data": {"key": key, "value": value, "description": _CONFIG_SPECS[key]}}
 
 
+class TestConnectionBody(BaseModel):
+    url: str
+
+
 @router.post("/test-connection/{service}")
 def api_test_connection(
     service: str,
-    db: Session = Depends(get_db),
+    body: TestConnectionBody,
     _: User = Depends(api_permission_required("settings.view")),
 ):
     """测试 Prometheus / Alertmanager 连通性。"""
     import httpx
+    from urllib.parse import urlparse
+
+    url = body.url.strip()
+    if not url:
+        return {"code": 1, "msg": "URL 不能为空", "data": {"url": url, "ok": False}}
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return {"code": 1, "msg": f"URL 格式无效: {url}", "data": {"url": url, "ok": False}}
 
     if service == "prometheus":
-        url = get_config(db, "prometheus.url")
-        test_url = f"{url}/api/v1/status/config"
+        test_url = f"{url.rstrip('/')}/api/v1/status/config"
     elif service == "alertmanager":
-        url = get_config(db, "alertmanager.url")
-        test_url = f"{url}/api/v2/status"
+        test_url = f"{url.rstrip('/')}/api/v2/status"
     else:
         raise HTTPException(status_code=400, detail=f"不支持的服务: {service}")
 
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(timeout=5, follow_redirects=False) as client:
             resp = client.get(test_url)
             if resp.status_code == 200:
                 return {"code": 0, "msg": f"{service} 连接成功", "data": {"url": url, "ok": True}}
             return {"code": 1, "msg": f"{service} 返回状态码 {resp.status_code}", "data": {"url": url, "ok": False}}
     except httpx.TimeoutException:
         return {"code": 1, "msg": f"{service} 连接超时", "data": {"url": url, "ok": False}}
+    except httpx.ConnectError as e:
+        return {"code": 1, "msg": f"{service} 连接失败: 无法到达目标地址 ({e})", "data": {"url": url, "ok": False}}
     except Exception as e:
         return {"code": 1, "msg": f"{service} 连接失败: {e}", "data": {"url": url, "ok": False}}

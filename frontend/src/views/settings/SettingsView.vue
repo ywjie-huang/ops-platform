@@ -70,8 +70,15 @@ async function handleSave() {
 async function handleTest(service: string) {
   testing.value = service
   testResults[service] = undefined
+  const urlKey = `${service}.url`
+  const url = configs[urlKey]?.trim()
+  if (!url) {
+    ElMessage.warning('请先输入 URL')
+    testing.value = ''
+    return
+  }
   try {
-    const res: any = await testConnection(service)
+    const res: any = await testConnection(service, url)
     testResults[service] = res.data?.ok ?? false
     if (testResults[service]) {
       ElMessage.success(res.msg)

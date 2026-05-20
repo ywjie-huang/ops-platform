@@ -12,6 +12,6 @@ export function updateSetting(key: string, value: string) {
   return request.put(`/settings/${key}`, { value })
 }
 
-export function testConnection(service: string) {
-  return request.post(`/settings/test-connection/${service}`)
+export function testConnection(service: string, url: string) {
+  return request.post(`/settings/test-connection/${service}`, { url })
 }
