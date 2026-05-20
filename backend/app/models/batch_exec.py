@@ -1,4 +1,4 @@
-"""批量执行模型 — 记录执行历史。"""
+"""批量执行模型 — 执行历史 + 命令预设。"""
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String, Text
@@ -21,3 +21,14 @@ class BatchExecution(Base):
     operator: Mapped[str] = mapped_column(String(100), default="")  # 操作人
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+
+class CommandPreset(Base):
+    __tablename__ = "command_presets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(String(200), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
