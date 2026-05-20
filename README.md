@@ -166,10 +166,31 @@ docker run -d -p 9001:9001 \
 
 ### 12. 批量执行
 
-- 从资产列表中**勾选多台主机**，输入命令，并发执行
+采用 **IDE 工作区风格**的三栏布局，参考 Ansible AWX 设计理念：
+
+**左侧主机面板**（可折叠）：
+- 搜索框实时过滤主机
+- 全选 / 反选快捷操作
+- 主机按状态分组显示（使用中 / 已关机），已关机主机默认不可选
+- 底部显示已选主机计数
+
+**中央命令编辑区**：
+- 等宽字体多行编辑器，带行号显示
+- **命令预设**下拉菜单：常用命令一键填入，预设可通过 API 管理
+- 超时滑块可调（10~300 秒）
+- 快捷键 `Ctrl+Enter` 直接执行
+
+**底部输出控制台**：
+- 每台主机一个 Tab，标题带状态指示（绿色=成功，红色=失败，蓝色脉冲=执行中）
+- Tokyo Night 暗色终端主题（与 SSH 终端一致）
+- 底部状态栏：总主机数、成功数、失败数、总耗时
+
+**执行历史**（底部可折叠面板）：
+- 不切换 Tab，点击即展开
+- 支持搜索和状态筛选，分页展示
+- 记录每次执行的命令、主机、结果、操作人
+
 - 基于 **WebSocket + paramiko**，实时返回每台主机的输出
-- 暗色终端风格输出面板，按主机分屏展示
-- **执行历史**：记录每次执行的命令、主机、结果，支持搜索和删除
 - WebSocket 端点：`/api/v1/batch-exec/ws/exec`
 
 ### 13. 巡检中心
@@ -278,6 +299,7 @@ my-project/
 │       │   ├── containers.py   # 容器（K8s API 自动发现）
 │       │   ├── docker_mgmt.py  # Docker 监控（主机管理 + 容器查询）
 │       │   ├── batch_exec.py   # 批量执行（WebSocket）
+│       │   ├── batch_presets.py # 命令预设 CRUD
 │       │   ├── patrol.py       # 巡检中心
 │       │   ├── settings.py     # 配置中心
 │       │   ├── reports.py      # 报表
@@ -315,7 +337,8 @@ my-project/
 │       ├── api/                # API 请求层
 │       │   ├── request.ts      # Axios 封装
 │       │   ├── sshKeys.ts      # SSH 密钥 API
-│       │   └── sftp.ts         # SFTP 文件管理 API
+│       │   ├── sftp.ts         # SFTP 文件管理 API
+│       │   └── batch_presets.ts # 命令预设 API
 │       ├── components/         # 通用组件（Sparkline、AlertTrendChart 等）
 │       ├── layouts/            # 布局组件
 │       ├── router/             # 路由 + 守卫
@@ -589,6 +612,10 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | Docker | `GET /containers/docker/hosts/{id}/containers` | 指定主机容器列表 |
 | 批量执行 | `WS /batch-exec/ws/exec` | 批量命令执行（WebSocket） |
 | 批量执行 | `GET /batch-exec/history` | 执行历史 |
+| 命令预设 | `GET /batch-exec/presets/` | 命令预设列表 |
+| 命令预设 | `POST /batch-exec/presets/` | 创建命令预设 |
+| 命令预设 | `PUT /batch-exec/presets/{id}` | 更新命令预设 |
+| 命令预设 | `DELETE /batch-exec/presets/{id}` | 删除命令预设 |
 | 巡检 | `POST /patrol/run` | 手动触发巡检 |
 | 巡检 | `GET /patrol/reports` | 巡检报告列表 |
 | 巡检 | `GET /patrol/reports/{id}` | 巡检报告详情 |
