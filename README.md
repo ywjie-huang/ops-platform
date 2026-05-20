@@ -201,11 +201,20 @@ docker run -d -p 9001:9001 \
 - **真实客户端 IP 采集**：优先读取 `X-Forwarded-For` / `X-Real-IP`（反向代理场景），回退到直连 IP；开发环境下 Vite 代理自动透传客户端 IP
 - 搜索栏：关键词 + 操作类型 + 对象类型 + 时间范围
 
-### 17. 仪表盘
+### 17. 仪表盘（数据驱动风格）
 
-- 4 张指标卡片：资产总数 / 在线 / 离线 / 待处理工单
-- 快捷统计条：在线率、待处理工单、待处理告警
-- 左右分栏：资产变更 + 最近工单 | 告警 + 角色分布 + 资产类型分布
+- **问候语 + 日期**：根据时间段自动显示早上好/下午好/晚上好，当前日期
+- **时间筛选**：今天 / 本周 / 本月（UI 展示）
+- **4 张统计卡片**：资产总数 / 在线主机 / 待处理告警 / 待处理工单，每张卡片包含：
+  - 图标 + 大号数值
+  - SVG Sparkline 迷你趋势图（近 7 天数据）
+  - 变化百分比（绿色上升 / 红色下降 / 灰色持平）
+- **活动时间线**（左侧）：从审计日志实时拉取，支持分类筛选（全部 / 告警 / 工单 / 资产 / 巡检 / 用户），独立滚动区域，每类最多 10 条
+- **图表区**（右侧）：
+  - 告警趋势面积图（近 7 天 SVG 面积图 + 数据点）
+  - 资产类型分布（横向条形图 + 百分比）
+- **响应式布局**：600px / 1100px / 1600px / 1920px 四档断点
+- 所有图表纯 SVG 实现，无第三方图表库依赖
 
 ### 18. 配置中心
 
@@ -307,6 +316,7 @@ my-project/
 │       │   ├── request.ts      # Axios 封装
 │       │   ├── sshKeys.ts      # SSH 密钥 API
 │       │   └── sftp.ts         # SFTP 文件管理 API
+│       ├── components/         # 通用组件（Sparkline、AlertTrendChart 等）
 │       ├── layouts/            # 布局组件
 │       ├── router/             # 路由 + 守卫
 │       ├── stores/             # Pinia 状态管理
@@ -314,7 +324,7 @@ my-project/
 │       │   └── icons.ts        # Element Plus 图标按需注册
 │       └── views/
 │           ├── login/          # 登录页（玻璃拟态）
-│           ├── dashboard/      # 仪表盘
+│           ├── dashboard/      # 仪表盘（数据驱动风格）
 │           ├── assets/         # 资产管理 + 主机密钥
 │           ├── monitoring/     # 监控告警 + SSH 终端（含 SFTP）
 │           ├── containers/     # 容器（集群列表 + 资源详情 + Docker 监控 + 主机详情）
@@ -591,6 +601,11 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 报表 | `GET/POST /reports/` | 报表管理 |
 | 用户 | `GET/POST/PUT/DELETE /users/` | 用户 CRUD |
 | 角色 | `GET/POST/PUT/DELETE /roles/` | 角色 CRUD |
+| 仪表盘 | `GET /dashboard/stats` | 仪表盘统计数据 |
+| 仪表盘 | `GET /dashboard/summary` | 仪表盘汇总数据 |
+| 仪表盘 | `GET /dashboard/sparkline` | 近 7 天趋势数据 |
+| 仪表盘 | `GET /dashboard/activities` | 活动时间线（审计日志） |
+| 仪表盘 | `GET /dashboard/alert-trend` | 近 7 天告警趋势 |
 | 审计 | `GET /audit/` | 审计日志 |
 
 详见 Swagger 文档：`http://localhost:8000/docs`
