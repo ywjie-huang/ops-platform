@@ -171,7 +171,7 @@ def build_sparkline_data(db: Session) -> dict:
     ) or 0
 
     # 告警：近 7 天每日新增告警数（alert_events 表）
-    alert_rows = db.scalars(
+    alert_rows = db.execute(
         select(
             cast(AlertEvent.received_at, Date).label("day"),
             func.count(AlertEvent.id),
@@ -183,7 +183,7 @@ def build_sparkline_data(db: Session) -> dict:
     alert_map = {str(row[0]): row[1] for row in alert_rows}
 
     # 工单：近 7 天每日新增工单数
-    ticket_rows = db.scalars(
+    ticket_rows = db.execute(
         select(
             cast(Ticket.created_at, Date).label("day"),
             func.count(Ticket.id),
