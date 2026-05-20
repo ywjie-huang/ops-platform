@@ -217,6 +217,9 @@ _ACTIVITY_TYPE_MAP = {
     "asset": "asset",
     "ssh_key": "asset",
     "container": "asset",
+    "docker_host": "asset",
+    "pod": "asset",
+    "deployment": "asset",
     "ticket": "ticket",
     "alert": "alert",
     "alert_event": "alert",
@@ -243,15 +246,14 @@ _ACTION_MAP = {
     "delete": "删除",
     "login": "登录",
     "logout": "登出",
-}
-
-_TONE_MAP = {
-    "asset": "blue",
-    "ticket": "orange",
-    "alert": "red",
-    "patrol": "green",
-    "user": "purple",
-    "system": "default",
+    "restart": "重启",
+    "ssh_key_create": "新增密钥",
+    "ssh_key_update": "更新密钥",
+    "ssh_key_delete": "删除密钥",
+    "ssh_connect": "SSH连接",
+    "sftp_upload": "上传文件",
+    "sftp_download": "下载文件",
+    "sftp_delete": "删除文件",
 }
 
 
