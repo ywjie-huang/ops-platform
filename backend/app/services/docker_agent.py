@@ -81,11 +81,18 @@ def count_docker_hosts(db: Session) -> int:
     ) or 0
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """给 naive datetime 补上 UTC 时区信息。"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def is_host_online(host: ContainerCluster) -> bool:
     """判断主机是否在线（基于最后成功拉取时间）。"""
     if not host.last_heartbeat:
         return False
-    return (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds() < OFFLINE_TIMEOUT
+    return (datetime.now(timezone.utc) - _ensure_utc(host.last_heartbeat)).total_seconds() < OFFLINE_TIMEOUT
 
 
 # ─── 从 Agent 拉取数据 ────────────────────────────────────
@@ -216,7 +223,7 @@ def sync_all_hosts(db: Session) -> None:
             ok = sync_host_from_agent(db, host)
             if not ok:
                 # 拉取失败，标记离线
-                if host.last_heartbeat and (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds() > OFFLINE_TIMEOUT:
+                if host.last_heartbeat and (datetime.now(timezone.utc) - _ensure_utc(host.last_heartbeat)).total_seconds() > OFFLINE_TIMEOUT:
                     if host.status != "stopped":
                         host.status = "stopped"
                         host.status_message = "Agent 连接失败"
