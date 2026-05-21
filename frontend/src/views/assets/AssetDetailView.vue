@@ -59,13 +59,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAsset, updateAsset } from '@/api/assets'
 import { ElMessage, type FormInstance } from 'element-plus'
 
 const route = useRoute()
-const assetId = Number(route.params.id)
+const assetId = computed(() => Number(route.params.id))
 const asset = ref<any>(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -93,7 +93,7 @@ const rules = {
 async function fetchAsset() {
   loading.value = true
   try {
-    const res: any = await getAsset(assetId)
+    const res: any = await getAsset(assetId.value)
     asset.value = res.data
   } finally { loading.value = false }
 }
@@ -121,7 +121,7 @@ async function handleSave() {
   if (!valid) return
   saving.value = true
   try {
-    await updateAsset(assetId, form)
+    await updateAsset(assetId.value, form)
     ElMessage.success('更新成功')
     dialogVisible.value = false
     fetchAsset()
@@ -129,6 +129,7 @@ async function handleSave() {
 }
 
 onMounted(fetchAsset)
+watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 </script>
 
 <style scoped>
