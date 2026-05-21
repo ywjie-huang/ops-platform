@@ -19,3 +19,7 @@ export function updateAsset(id: number, data: any) {
 export function deleteAsset(id: number) {
   return request.delete(`/assets/${id}`)
 }
+
+export function getAssetStats() {
+  return request.get('/assets/stats')
+}
