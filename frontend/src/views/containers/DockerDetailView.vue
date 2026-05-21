@@ -241,6 +241,7 @@ function containerStatusType(s: string) {
 // ─── 数据获取 ──────────────────────────────────────────────
 
 async function fetchHost() {
+  if (!hostId.value || isNaN(hostId.value)) return
   try {
     const res: any = await getDockerHost(hostId.value)
     host.value = res.data
@@ -251,6 +252,7 @@ async function fetchHost() {
 }
 
 async function fetchContainers() {
+  if (!hostId.value || isNaN(hostId.value)) return
   loading.value = true
   try {
     const res: any = await getHostContainers(hostId.value)
@@ -293,7 +295,7 @@ onMounted(() => {
 })
 
 watch(() => route.params.id, (newId) => {
-  if (newId) {
+  if (newId && !isNaN(Number(newId))) {
     fetchHost()
     fetchContainers()
   }
