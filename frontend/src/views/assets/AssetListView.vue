@@ -181,13 +181,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { getAssets, getAssetStats, createAsset, deleteAsset } from '@/api/assets'
 import { usePagination } from '@/hooks/usePagination'
-import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { Monitor, CircleCheckFilled, VideoPause, CircleCloseFilled } from '@element-plus/icons-vue'
 
-const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const items = ref<any[]>([])
@@ -267,7 +265,6 @@ async function handleSave() {
 }
 
 async function handleDelete(id: number) {
-  await ElMessageBox.confirm('确认删除该资产？删除后关联的告警和工单将解除关联。', '确认删除', { type: 'warning' })
   await deleteAsset(id)
   ElMessage.success('删除成功')
   fetchData()
@@ -285,7 +282,7 @@ onMounted(() => { fetchStats(); fetchData() })
   margin-bottom: 16px;
 }
 .stat-card {
-  background: #fff;
+  background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 16px;
