@@ -83,7 +83,7 @@
               </div>
               <div class="info-item">
                 <div class="info-label">认证方式</div>
-                <div class="info-value">密码</div>
+                <div class="info-value">{{ asset.ssh_password ? '密码' : '未配置' }}</div>
               </div>
             </div>
           </div>
@@ -91,13 +91,13 @@
 
         <el-tab-pane label="关联工单" name="tickets">
           <div class="info-card">
-            <el-empty description="暂无关联工单" :image-size="80" />
+            <el-empty description="功能开发中" :image-size="80" />
           </div>
         </el-tab-pane>
 
         <el-tab-pane label="变更记录" name="changelog">
           <div class="info-card">
-            <el-empty description="暂无变更记录" :image-size="80" />
+            <el-empty description="功能开发中" :image-size="80" />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -273,7 +273,7 @@ watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 .info-item.full-width { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border-color); }
 .info-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .info-value { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.info-value.mono { font-family: monospace; }
+.info-value.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
 .form-group { margin-bottom: 20px; }
 .form-group-title {
