@@ -23,7 +23,7 @@
 **Files:**
 - Rewrite: `frontend/src/views/assets/AssetDetailView.vue`
 
-- [ ] **Step 1: 替换 AssetDetailView.vue 完整内容**
+- [x] **Step 1: 替换 AssetDetailView.vue 完整内容**
 
 ```vue
 <template>
@@ -317,7 +317,7 @@ watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 </style>
 ```
 
-- [ ] **Step 2: 验证**
+- [x] **Step 2: 验证**
 
 启动前端，打开一个资产详情页，确认：
 - Header 区域显示名称、IP、状态、类型、操作按钮
@@ -328,7 +328,7 @@ watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 - 编辑弹窗正常工作
 - 从不同资产跳转时数据正确更新
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add frontend/src/views/assets/AssetDetailView.vue
@@ -339,7 +339,7 @@ git commit -m "feat(asset-detail): redesign as CMDB-style tab layout"
 
 ### Task 2: 推送
 
-- [ ] **Step 1: 推送**
+- [x] **Step 1: 推送**
 
 ```bash
 git push

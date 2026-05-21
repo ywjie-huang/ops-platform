@@ -25,7 +25,7 @@
 **Files:**
 - Modify: `backend/app/api/assets.py:52` (在 `api_list_assets` 之前插入)
 
-- [ ] **Step 1: 在 `api_list_assets` 之前插入 stats 端点**
+- [x] **Step 1: 在 `api_list_assets` 之前插入 stats 端点**
 
 在 `backend/app/api/assets.py` 的 `api_list_assets` 函数（第 52 行）之前插入：
 
@@ -51,11 +51,11 @@ def api_asset_stats(
 
 注意：必须在 `@router.get("/{asset_id}")` 之前定义，否则 FastAPI 路由冲突。
 
-- [ ] **Step 2: 验证后端**
+- [x] **Step 2: 验证后端**
 
 启动后端，访问 `http://localhost:8000/docs`，确认 `/api/v1/assets/stats` 端点可见并返回正确数据。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add backend/app/api/assets.py
@@ -69,7 +69,7 @@ git commit -m "feat(assets): add /stats endpoint for status counts"
 **Files:**
 - Modify: `frontend/src/api/assets.ts`
 
-- [ ] **Step 1: 在 `assets.ts` 末尾添加函数**
+- [x] **Step 1: 在 `assets.ts` 末尾添加函数**
 
 ```typescript
 export function getAssetStats() {
@@ -77,7 +77,7 @@ export function getAssetStats() {
 }
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 git add frontend/src/api/assets.ts
@@ -93,7 +93,7 @@ git commit -m "feat(api): add getAssetStats function"
 
 这是主要变更，整体重写模板、脚本和样式。
 
-- [ ] **Step 1: 重写 AssetListView.vue**
+- [x] **Step 1: 重写 AssetListView.vue**
 
 完整替换文件内容：
 
@@ -463,7 +463,7 @@ onMounted(() => { fetchStats(); fetchData() })
 </style>
 ```
 
-- [ ] **Step 2: 验证前端**
+- [x] **Step 2: 验证前端**
 
 启动前端开发服务器，打开主机管理页面，确认：
 - 顶部 4 个统计卡片正确显示
@@ -473,7 +473,7 @@ onMounted(() => { fetchStats(); fetchData() })
 - 点击"新增资产"弹窗分 3 组显示
 - 创建/删除操作后统计卡片自动刷新
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add frontend/src/views/assets/AssetListView.vue
@@ -484,7 +484,7 @@ git commit -m "feat(asset-list): redesign with stat cards, improved table and gr
 
 ### Task 4: 最终验证与推送
 
-- [ ] **Step 1: 完整功能验证**
+- [x] **Step 1: 完整功能验证**
 
 1. 打开 `http://localhost:3000/assets/list`
 2. 确认统计卡片数字与实际数据一致
@@ -494,7 +494,7 @@ git commit -m "feat(asset-list): redesign with stat cards, improved table and gr
 6. 点击详情跳转正常
 7. 点击 SSH 跳转正常
 
-- [ ] **Step 2: 推送**
+- [x] **Step 2: 推送**
 
 ```bash
 git push
