@@ -7,6 +7,7 @@ from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.assets import (
+    count_assets_by_status,
     create_asset as create_asset_record,
     delete_asset,
     get_asset,
@@ -54,7 +55,6 @@ def api_asset_stats(
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("assets.view")),
 ):
-    from app.services.assets import count_assets_by_status
     counts = count_assets_by_status(db)
     total = sum(counts.values())
     return {
