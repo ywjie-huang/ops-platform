@@ -140,7 +140,7 @@ import { getDockerHost, deleteDockerHost, refreshDockerHost, getHostContainers }
 
 const route = useRoute()
 const router = useRouter()
-const hostId = Number(route.params.id)
+const hostId = computed(() => Number(route.params.id))
 
 const host = ref<any>({})
 const containers = ref<any[]>([])
@@ -242,7 +242,7 @@ function containerStatusType(s: string) {
 
 async function fetchHost() {
   try {
-    const res: any = await getDockerHost(hostId)
+    const res: any = await getDockerHost(hostId.value)
     host.value = res.data
   } catch {
     ElMessage.error('主机不存在')
@@ -253,7 +253,7 @@ async function fetchHost() {
 async function fetchContainers() {
   loading.value = true
   try {
-    const res: any = await getHostContainers(hostId)
+    const res: any = await getHostContainers(hostId.value)
     containers.value = res.data
   } finally { loading.value = false }
 }
@@ -261,7 +261,7 @@ async function fetchContainers() {
 async function handleRefresh() {
   refreshing.value = true
   try {
-    await refreshDockerHost(hostId)
+    await refreshDockerHost(hostId.value)
     await fetchHost()
     await fetchContainers()
     ElMessage.success('刷新成功')
@@ -272,7 +272,7 @@ async function handleRefresh() {
 
 async function handleDelete() {
   await ElMessageBox.confirm(`确定删除主机「${host.value.name}」？所有容器数据将被清除。`, '删除确认', { type: 'warning' })
-  await deleteDockerHost(hostId)
+  await deleteDockerHost(hostId.value)
   ElMessage.success('删除成功')
   router.push('/assets/docker')
 }
@@ -290,6 +290,13 @@ onMounted(() => {
   fetchHost()
   fetchContainers()
   startAutoRefresh()
+})
+
+watch(() => route.params.id, (newId) => {
+  if (newId) {
+    fetchHost()
+    fetchContainers()
+  }
 })
 
 onUnmounted(() => {
