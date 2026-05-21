@@ -49,6 +49,25 @@ def _asset_dict(a) -> dict:
     }
 
 
+@router.get("/stats")
+def api_asset_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("assets.view")),
+):
+    from app.services.assets import count_assets_by_status
+    counts = count_assets_by_status(db)
+    total = sum(counts.values())
+    return {
+        "code": 0,
+        "data": {
+            "total": total,
+            "active": counts.get("使用中", 0),
+            "shutdown": counts.get("已关机", 0),
+            "deleted": counts.get("已删除", 0),
+        },
+    }
+
+
 @router.get("/")
 def api_list_assets(
     keyword: str = "",
