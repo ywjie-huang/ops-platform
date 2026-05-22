@@ -71,6 +71,8 @@ docker compose up -d --build                  # Rebuild images
 - **WebSocket endpoints**: SSH terminal (`/api/v1/ws/ssh/{asset_id}`), batch execution (`/api/v1/batch-exec/ws/exec`).
 - **Background threads**: Docker Agent polling every 10 seconds on startup.
 - **Vite proxy**: `/api` → `http://localhost:8000` with WebSocket support and client IP forwarding.
+- **Asset SSH auth**: Asset model supports both inline `ssh_password` and `ssh_key_id` (FK to `ssh_keys` table). API returns `has_ssh_password` boolean (never exposes plaintext password). SSH key model supports password and private key auth types.
+- **keep-alive + onActivated**: Frontend uses `<keep-alive :max="10">` in `AppMain.vue`. Detail views MUST use `onActivated` for data fetching (not `onMounted` + `watch(route.params.id)`), and pair `onActivated`/`onDeactivated` for timers. See `HostDetailView` as reference pattern.
 
 ### External Dependencies
 
@@ -85,3 +87,8 @@ docker compose up -d --build                  # Rebuild images
 ### Commit Style
 
 Conventional commits (Chinese/English mix): `feat(scope):`, `fix(scope):`, `refactor:`, `docs:`, `perf:`.
+
+### Workflow
+
+- Always commit code changes normally after completion.
+- Only push to remote when user explicitly asks.
