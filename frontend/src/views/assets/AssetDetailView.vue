@@ -1,20 +1,15 @@
 <template>
   <div v-loading="loading">
     <!-- Header -->
-    <div class="detail-header" v-if="asset">
-      <div class="header-left">
-        <el-button text @click="$router.back()" class="back-btn">← 返回</el-button>
-        <div class="header-divider"></div>
-        <div class="header-info">
-          <div class="header-title">{{ asset.name }}</div>
-          <div class="header-meta">
-            <span class="header-ip">{{ asset.ip_address }}</span>
-            <el-tag :type="statusTagType(asset.status)" size="small" round>{{ asset.status }}</el-tag>
-            <span class="header-type">{{ asset.asset_type }}</span>
-          </div>
-        </div>
+    <div class="page-header" v-if="asset">
+      <div style="display:flex;align-items:center;gap:12px">
+        <el-button text @click="$router.push('/assets')"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
+        <h2 class="page-title" style="margin:0">{{ asset.name }}</h2>
+        <el-tag :type="statusTagType(asset.status)" size="small" round>{{ asset.status }}</el-tag>
+        <el-tag type="info" size="small">{{ asset.asset_type }}</el-tag>
+        <span class="header-ip">{{ asset.ip_address }}</span>
       </div>
-      <div class="header-actions">
+      <div style="display:flex;gap:8px">
         <el-button type="primary" @click="$router.push(`/monitoring/hosts/${assetId}/ssh`)">
           <el-icon><Monitor /></el-icon> SSH 连接
         </el-button>
@@ -184,7 +179,7 @@ import { useRoute } from 'vue-router'
 import { getAsset, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
 import { ElMessage, type FormInstance } from 'element-plus'
-import { Monitor } from '@element-plus/icons-vue'
+import { Monitor, ArrowLeft } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const assetId = computed(() => Number(route.params.id))
@@ -289,24 +284,16 @@ onActivated(() => { fetchAsset(); fetchSSHKeys() })
 </script>
 
 <style scoped>
-.detail-header {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px 24px;
+.page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 16px;
 }
-.header-left { display: flex; align-items: center; gap: 12px; }
-.back-btn { font-size: 13px; color: var(--text-muted); }
-.header-divider { width: 1px; height: 24px; background: var(--border-color); }
-.header-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
-.header-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.page-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
 .header-ip { font-size: 13px; color: var(--text-muted); font-family: monospace; }
-.header-type { font-size: 12px; color: var(--text-muted); background: var(--bg-color); padding: 2px 8px; border-radius: 4px; }
-.header-actions { display: flex; gap: 8px; }
 
 .detail-body {
   background: var(--surface-color);
