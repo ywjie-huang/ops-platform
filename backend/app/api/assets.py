@@ -1,4 +1,6 @@
 """资产管理 API。"""
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -31,6 +33,7 @@ class AssetCreate(BaseModel):
     ssh_port: int = 22
     ssh_username: str = "root"
     ssh_password: str = ""
+    ssh_key_id: Optional[int] = None
 
 
 def _asset_dict(a) -> dict:
@@ -46,6 +49,8 @@ def _asset_dict(a) -> dict:
         "os": a.os,
         "ssh_port": a.ssh_port,
         "ssh_username": a.ssh_username,
+        "has_ssh_password": bool(a.ssh_password),
+        "ssh_key_id": a.ssh_key_id,
         "created_at": a.created_at.isoformat(),
     }
 
@@ -112,6 +117,7 @@ def api_create_asset(
         ssh_port=body.ssh_port,
         ssh_username=body.ssh_username.strip(),
         ssh_password=body.ssh_password,
+        ssh_key_id=body.ssh_key_id,
     )
     write_log(db, user=current_user, action="create", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     db.commit()
@@ -155,6 +161,7 @@ def api_update_asset(
         ssh_port=body.ssh_port,
         ssh_username=body.ssh_username.strip(),
         ssh_password=body.ssh_password,
+        ssh_key_id=body.ssh_key_id,
     )
     write_log(db, user=current_user, action="update", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     db.commit()

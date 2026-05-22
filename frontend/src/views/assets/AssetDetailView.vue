@@ -83,7 +83,7 @@
               </div>
               <div class="info-item">
                 <div class="info-label">认证方式</div>
-                <div class="info-value">{{ asset.ssh_password ? '密码' : '未配置' }}</div>
+                <div class="info-value">{{ authMethodLabel }}</div>
               </div>
             </div>
           </div>
@@ -139,8 +139,33 @@
           <div class="form-row form-row--three">
             <el-form-item label="端口"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" style="width:100%" /></el-form-item>
             <el-form-item label="用户名"><el-input v-model="form.ssh_username" placeholder="root" /></el-form-item>
-            <el-form-item label="密码"><el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" /></el-form-item>
+            <el-form-item label="认证方式">
+              <el-select v-model="form.auth_method" style="width:100%">
+                <el-option label="密码" value="password" />
+                <el-option label="SSH 密钥" value="key" />
+              </el-select>
+            </el-form-item>
           </div>
+          <el-form-item v-if="form.auth_method === 'password'" label="密码">
+            <el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" />
+          </el-form-item>
+          <el-form-item v-else label="SSH 密钥">
+            <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" style="width:100%" clearable>
+              <el-option
+                v-for="key in sshKeys"
+                :key="key.id"
+                :label="`${key.name} (${key.username})`"
+                :value="key.id"
+              >
+                <div class="key-option">
+                  <span>{{ key.name }}</span>
+                  <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
+                    {{ key.auth_type === 'key' ? '私钥' : '密码' }}
+                  </el-tag>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
         </div>
       </el-form>
       <template #footer>
@@ -155,6 +180,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAsset, updateAsset } from '@/api/assets'
+import { getSSHKeys } from '@/api/sshKeys'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { Monitor } from '@element-plus/icons-vue'
 
@@ -166,6 +192,7 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const formRef = ref<FormInstance>()
 const activeTab = ref('basic')
+const sshKeys = ref<any[]>([])
 
 const assetTypes = ['云主机', '数据库', '网络设备', '中间件', '其他']
 const statusList = [
@@ -178,9 +205,20 @@ function statusTagType(status: string) {
   return { '使用中': 'success', '已关机': 'warning', '已删除': 'info' }[status] || 'info'
 }
 
+const authMethodLabel = computed(() => {
+  if (!asset.value) return '未配置'
+  if (asset.value.ssh_key_id) {
+    const key = sshKeys.value.find((k: any) => k.id === asset.value.ssh_key_id)
+    return key ? `SSH 密钥（${key.name}）` : 'SSH 密钥'
+  }
+  if (asset.value.has_ssh_password) return '密码'
+  return '未配置'
+})
+
 const form = reactive({
   name: '', asset_type: '云主机', ip_address: '', status: '使用中', owner: '', description: '',
   spec: '', os: '', ssh_port: 22, ssh_username: 'root', ssh_password: '',
+  auth_method: 'password' as 'password' | 'key', ssh_key_id: null as number | null,
 })
 const rules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
@@ -197,8 +235,16 @@ async function fetchAsset() {
   } finally { loading.value = false }
 }
 
+async function fetchSSHKeys() {
+  try {
+    const res: any = await getSSHKeys({ page_size: 100 })
+    sshKeys.value = res.data?.items || []
+  } catch { /* ignore */ }
+}
+
 function openEdit() {
   if (!asset.value) return
+  const isKey = !!asset.value.ssh_key_id
   Object.assign(form, {
     name: asset.value.name,
     asset_type: asset.value.asset_type,
@@ -211,7 +257,10 @@ function openEdit() {
     ssh_port: asset.value.ssh_port || 22,
     ssh_username: asset.value.ssh_username || 'root',
     ssh_password: '',
+    auth_method: isKey ? 'key' : 'password',
+    ssh_key_id: asset.value.ssh_key_id || null,
   })
+  fetchSSHKeys()
   dialogVisible.value = true
 }
 
@@ -220,14 +269,21 @@ async function handleSave() {
   if (!valid) return
   saving.value = true
   try {
-    await updateAsset(assetId.value, form)
+    const payload: any = { ...form }
+    if (payload.auth_method === 'password') {
+      payload.ssh_key_id = null
+    } else {
+      payload.ssh_password = ''
+    }
+    delete payload.auth_method
+    await updateAsset(assetId.value, payload)
     ElMessage.success('更新成功')
     dialogVisible.value = false
     fetchAsset()
   } finally { saving.value = false }
 }
 
-onMounted(fetchAsset)
+onMounted(() => { fetchAsset(); fetchSSHKeys() })
 watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 </script>
 
@@ -286,4 +342,5 @@ watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
 }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .form-row--three { grid-template-columns: 1fr 1fr 1fr; }
+.key-option { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 </style>

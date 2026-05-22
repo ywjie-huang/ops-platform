@@ -61,6 +61,9 @@ def _ensure_asset_ssh_columns() -> None:
             if cur.fetchone() is None:
                 cur.execute("ALTER TABLE assets ADD COLUMN spec VARCHAR(100) NOT NULL DEFAULT ''")
                 cur.execute("ALTER TABLE assets ADD COLUMN os VARCHAR(100) NOT NULL DEFAULT ''")
+            cur.execute("SHOW COLUMNS FROM assets LIKE 'ssh_key_id'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE assets ADD COLUMN ssh_key_id INT NULL DEFAULT NULL")
             # 修复外键约束：删除资产时自动置空关联的告警/工单
             for tbl, fk_name in [('alerts', 'alerts_ibfk_1'), ('tickets', 'tickets_ibfk_1')]:
                 try:

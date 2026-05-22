@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -67,6 +69,7 @@ def create_asset(
     ssh_port: int = 22,
     ssh_username: str = "root",
     ssh_password: str = "",
+    ssh_key_id: Optional[int] = None,
 ) -> Asset:
     asset = Asset(
         name=name,
@@ -80,6 +83,7 @@ def create_asset(
         ssh_port=ssh_port,
         ssh_username=ssh_username,
         ssh_password=ssh_password,
+        ssh_key_id=ssh_key_id,
     )
     db.add(asset)
     db.commit()
@@ -102,6 +106,7 @@ def update_asset(
     ssh_port: int = 22,
     ssh_username: str = "root",
     ssh_password: str = "",
+    ssh_key_id: Optional[int] = None,
 ) -> Asset:
     asset.name = name
     asset.asset_type = asset_type
@@ -115,6 +120,7 @@ def update_asset(
     asset.ssh_username = ssh_username
     if ssh_password:  # 只在提供新密码时更新
         asset.ssh_password = ssh_password
+    asset.ssh_key_id = ssh_key_id
     db.commit()
     db.refresh(asset)
     return asset
