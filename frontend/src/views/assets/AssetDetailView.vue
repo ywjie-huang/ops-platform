@@ -136,36 +136,38 @@
         </div>
         <div class="form-group">
           <div class="form-group-title"><span class="form-group-number">3</span> SSH 连接配置</div>
-          <div class="form-row form-row--three">
+          <div class="form-row">
             <el-form-item label="端口"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" style="width:100%" /></el-form-item>
             <el-form-item label="用户名"><el-input v-model="form.ssh_username" placeholder="root" /></el-form-item>
+          </div>
+          <div class="form-row">
             <el-form-item label="认证方式">
               <el-select v-model="form.auth_method" style="width:100%">
                 <el-option label="密码" value="password" />
                 <el-option label="SSH 密钥" value="key" />
               </el-select>
             </el-form-item>
+            <el-form-item v-if="form.auth_method === 'password'" label="密码">
+              <el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" />
+            </el-form-item>
+            <el-form-item v-else label="SSH 密钥">
+              <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" style="width:100%" clearable>
+                <el-option
+                  v-for="key in sshKeys"
+                  :key="key.id"
+                  :label="`${key.name} (${key.username})`"
+                  :value="key.id"
+                >
+                  <div class="key-option">
+                    <span>{{ key.name }}</span>
+                    <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
+                      {{ key.auth_type === 'key' ? '私钥' : '密码' }}
+                    </el-tag>
+                  </div>
+                </el-option>
+              </el-select>
+            </el-form-item>
           </div>
-          <el-form-item v-if="form.auth_method === 'password'" label="密码">
-            <el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" />
-          </el-form-item>
-          <el-form-item v-else label="SSH 密钥">
-            <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" style="width:100%" clearable>
-              <el-option
-                v-for="key in sshKeys"
-                :key="key.id"
-                :label="`${key.name} (${key.username})`"
-                :value="key.id"
-              >
-                <div class="key-option">
-                  <span>{{ key.name }}</span>
-                  <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
-                    {{ key.auth_type === 'key' ? '私钥' : '密码' }}
-                  </el-tag>
-                </div>
-              </el-option>
-            </el-select>
-          </el-form-item>
         </div>
       </el-form>
       <template #footer>
@@ -341,6 +343,5 @@ watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
   display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
 }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-.form-row--three { grid-template-columns: 1fr 1fr 1fr; }
 .key-option { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 </style>
