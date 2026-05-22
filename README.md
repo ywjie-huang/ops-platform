@@ -335,6 +335,7 @@ my-project/
 │           ├── batch_exec.py   # 批量 SSH 执行服务
 │           └── patrol.py       # 巡检执行服务
 ├── frontend/
+│   ├── nginx.conf              # nginx 配置（SPA + API 反代）
 │   └── src/
 │       ├── api/                # API 请求层
 │       │   ├── request.ts      # Axios 封装
@@ -369,8 +370,7 @@ my-project/
 │   └── README.md
 ├── docker/                   # Docker 部署
 │   ├── docker-compose.yml    # 一键部署编排
-│   ├── .env.example          # 环境变量模板
-│   └── nginx.conf            # nginx 配置（SPA + API 反代）
+│   └── .env.example          # 环境变量模板
 ├── .dockerignore
 └── README.md
 ```
