@@ -132,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
@@ -247,7 +247,6 @@ async function fetchHost() {
     host.value = res.data
   } catch {
     ElMessage.error('主机不存在')
-    router.push('/assets/docker')
   }
 }
 
@@ -288,20 +287,13 @@ function startAutoRefresh() {
   }, 15000)
 }
 
-onMounted(() => {
+onActivated(() => {
   fetchHost()
   fetchContainers()
   startAutoRefresh()
 })
 
-watch(() => route.params.id, (newId) => {
-  if (newId && !isNaN(Number(newId))) {
-    fetchHost()
-    fetchContainers()
-  }
-})
-
-onUnmounted(() => {
+onDeactivated(() => {
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>

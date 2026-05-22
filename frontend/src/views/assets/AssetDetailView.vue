@@ -179,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAsset, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
@@ -285,8 +285,7 @@ async function handleSave() {
   } finally { saving.value = false }
 }
 
-onMounted(() => { fetchAsset(); fetchSSHKeys() })
-watch(() => route.params.id, () => { if (route.params.id) fetchAsset() })
+onActivated(() => { fetchAsset(); fetchSSHKeys() })
 </script>
 
 <style scoped>
