@@ -13,7 +13,7 @@
 | **监控告警** | 主机监控 / 告警规则 / 告警事件 / 告警管理 | Prometheus 实时数据 + 告警规则 + Alertmanager 事件 + 告警处理 |
 | **工单协作** | 工单协作 | 工单流转 |
 | **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
-| **巡检中心** | 巡检报告 / 阈值配置 | 主机/K8s/资产自动巡检 + 报告管理 + 滑块式阈值配置 + 快捷预设 |
+| **巡检中心** | 巡检报告 / 阈值配置 / 定时任务 | 主机/K8s/资产自动巡检 + 报告管理 + 滑块式阈值配置 + 快捷预设 + Cron 定时调度 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
 | **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager 地址配置 |
 
@@ -206,6 +206,16 @@ docker run -d -p 9001:9001 \
 - **巡检阈值配置**：独立配置页面，2×2 卡片网格布局，每项指标支持滑块调节 + 三色预览条（绿/黄/红），提供「严格 / 标准 / 宽松」三档快捷预设，支持恢复默认
 - 报告列表 + 详情弹窗 + **导出 Excel**（状态自动着色、中文分类、支持中文文件名）+ 删除
 
+### 13.5 定时任务
+
+- **APScheduler 调度框架**：基于 APScheduler AsyncIOScheduler，内存模式运行，任务定义存储在 MySQL
+- **Cron 表达式**：标准 5 字段格式（分 时 日 月 星期），支持灵活的定时配置
+- **内置任务类型**：定时巡检（调用现有巡检引擎），预留报表和备份扩展点
+- **任务管理**：创建、编辑、删除、启用/禁用、立即执行
+- **执行日志**：完整记录每次执行的开始时间、结束时间、耗时、状态、结果摘要、错误信息
+- **并发保护**：任务执行中自动跳过重复触发
+- **启动恢复**：服务重启后自动从数据库加载已启用的任务并注册到调度器
+
 ### 14. 报表中心
 
 - **预置报表**：8 种内置报表（资产统计、工单统计、告警统计等）
@@ -303,6 +313,7 @@ my-project/
 │       │   ├── batch_exec.py   # 批量执行（WebSocket）
 │       │   ├── batch_presets.py # 命令预设 CRUD
 │       │   ├── patrol.py       # 巡检中心
+│       │   ├── scheduler.py    # 定时任务 API
 │       │   ├── settings.py     # 配置中心
 │       │   ├── reports.py      # 报表
 │       │   ├── dashboard.py    # 仪表盘
@@ -310,7 +321,7 @@ my-project/
 │       │   ├── roles.py        # 角色权限
 │       │   ├── audit.py        # 审计
 │       │   └── password.py     # 密码
-│       ├── core/               # 配置 + JWT + settings
+│       ├── core/               # 配置 + JWT + settings + scheduler
 │       ├── db/                 # 数据库连接与初始化
 │       ├── models/             # SQLAlchemy 模型
 │       │   ├── alert.py        # 告警
@@ -320,6 +331,7 @@ my-project/
 │       │   ├── batch_exec.py   # 批量执行记录
 │       │   ├── container.py    # 容器（集群/Pod/Service/Deployment）
 │       │   ├── patrol.py       # 巡检报告 + 巡检项
+│       │   ├── scheduled_task.py # 定时任务 + 执行日志
 │       │   ├── rbac.py         # 角色权限
 │       │   ├── ssh_key.py      # SSH 密钥
 │       │   ├── system_config.py # 系统配置
@@ -333,7 +345,8 @@ my-project/
 │           ├── containers.py   # 容器数据服务
 │           ├── captcha.py      # 图形验证码生成与校验
 │           ├── batch_exec.py   # 批量 SSH 执行服务
-│           └── patrol.py       # 巡检执行服务
+│           ├── patrol.py       # 巡检执行服务
+│           └── scheduler.py    # 定时任务执行服务
 ├── frontend/
 │   ├── nginx.conf              # nginx 配置（SPA + API 反代）
 │   └── src/
@@ -341,7 +354,8 @@ my-project/
 │       │   ├── request.ts      # Axios 封装
 │       │   ├── sshKeys.ts      # SSH 密钥 API
 │       │   ├── sftp.ts         # SFTP 文件管理 API
-│       │   └── batch_presets.ts # 命令预设 API
+│       │   ├── batch_presets.ts # 命令预设 API
+│       │   └── scheduler.ts    # 定时任务 API
 │       ├── components/         # 通用组件（Sparkline、AlertTrendChart 等）
 │       ├── layouts/            # 布局组件
 │       ├── router/             # 路由 + 守卫
@@ -626,6 +640,13 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 巡检 | `GET /patrol/thresholds` | 获取巡检阈值配置 |
 | 巡检 | `PUT /patrol/thresholds` | 批量更新巡检阈值 |
 | 巡检 | `PUT /patrol/thresholds/{key}` | 更新单个巡检阈值 |
+| 定时任务 | `GET /scheduler/tasks` | 定时任务列表 |
+| 定时任务 | `POST /scheduler/tasks` | 创建定时任务 |
+| 定时任务 | `PUT /scheduler/tasks/{id}` | 更新定时任务 |
+| 定时任务 | `DELETE /scheduler/tasks/{id}` | 删除定时任务 |
+| 定时任务 | `POST /scheduler/tasks/{id}/toggle` | 启用/禁用任务 |
+| 定时任务 | `POST /scheduler/tasks/{id}/run` | 立即执行一次 |
+| 定时任务 | `GET /scheduler/tasks/{id}/logs` | 查看执行日志 |
 | 配置 | `GET/PUT /settings/` | 系统配置 |
 | 配置 | `POST /settings/test-connection/{service}` | 测试 Prometheus/Alertmanager |
 | 报表 | `GET/POST /reports/` | 报表管理 |

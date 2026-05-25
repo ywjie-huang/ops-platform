@@ -46,9 +46,9 @@ docker compose up -d --build                  # Rebuild images
 
 ### Three-Layer Backend (`backend/app/`)
 
-- **`api/`** — 22 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
-- **`services/`** — Business logic layer (21 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`.
-- **`models/`** — 16 SQLAlchemy model files using `DeclarativeBase`.
+- **`api/`** — 23 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
+- **`services/`** — Business logic layer (22 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`.
+- **`models/`** — 17 SQLAlchemy model files using `DeclarativeBase`.
 - **`core/`** — `config.py` (constants/env vars), `jwt.py` (HS256, 12h expiry), `settings.py` (DB-first config with fallback to `config.py`), `pagination.py`.
 - **`db/`** — `database.py` (PyMySQL + SQLAlchemy, pool_size=10), `init_db.py` (auto-create DB, run ALTER TABLE migrations, seed defaults).
 
@@ -73,6 +73,7 @@ docker compose up -d --build                  # Rebuild images
 - **Vite proxy**: `/api` → `http://localhost:8000` with WebSocket support and client IP forwarding.
 - **Asset SSH auth**: Asset model supports both inline `ssh_password` and `ssh_key_id` (FK to `ssh_keys` table). API returns `has_ssh_password` boolean (never exposes plaintext password). SSH key model supports password and private key auth types.
 - **keep-alive + onActivated**: Frontend uses `<keep-alive :max="10">` in `AppMain.vue`. Detail views MUST use `onActivated` for data fetching (not `onMounted` + `watch(route.params.id)`), and pair `onActivated`/`onDeactivated` for timers. See `HostDetailView` as reference pattern.
+- **Scheduled tasks**: APScheduler `AsyncIOScheduler` with in-memory jobstore. Task definitions in `scheduled_tasks` table, execution logs in `task_execution_logs`. `core/scheduler.py` manages lifecycle (startup loads enabled tasks, shutdown graceful). `services/scheduler.py` handles execution callback with dynamic function import via `_TASK_FUNCTIONS` registry. API layer calls `sync_task_to_scheduler()` after every create/update/delete to keep scheduler in sync. Currently supports `patrol` task type; `report` and `backup` are reserved.
 
 ### External Dependencies
 
