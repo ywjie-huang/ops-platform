@@ -235,6 +235,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/settings/SettingsView.vue'),
         meta: { title: '配置中心', icon: 'Tools', permission: 'settings.view' },
       },
+      {
+        path: 'scheduler',
+        name: 'Scheduler',
+        component: () => import('@/views/settings/SchedulerView.vue'),
+        meta: { title: '定时任务', icon: 'Odometer', permission: 'settings.view' },
+      },
     ],
   },
   {
