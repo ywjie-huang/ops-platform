@@ -2,9 +2,10 @@
 import asyncio
 import importlib
 import logging
+import traceback
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -51,6 +52,11 @@ async def execute_task(task_id: int) -> None:
             logger.warning("定时任务 %d 不存在，跳过执行", task_id)
             return
 
+        # 并发保护：如果任务正在执行中，跳过本次
+        if task.last_status == "running":
+            logger.warning("定时任务 %s 正在执行中，跳过本次触发", task.name)
+            return
+
         # 创建执行日志
         log_entry = TaskExecutionLog(task_id=task_id, status="running")
         db.add(log_entry)
@@ -60,17 +66,19 @@ async def execute_task(task_id: int) -> None:
 
         logger.info("开始执行定时任务: %s (type=%s)", task.name, task.task_type)
 
-        # 解析并调用执行函数
-        func = _resolve_task_func(task.task_type)
-
-        # 处理参数
+        # 解析执行函数
+        task_func = _resolve_task_func(task.task_type)
         params = task.params or {}
 
-        # 调用函数（支持 sync 和 async）
-        if asyncio.iscoroutinefunction(func):
-            result = await func(db, **params)
-        else:
-            result = func(db, **params)
+        # 给任务函数独立的 session，避免事务交叉
+        task_db = SessionLocal()
+        try:
+            if asyncio.iscoroutinefunction(task_func):
+                result = await task_func(task_db, **params)
+            else:
+                result = task_func(task_db, **params)
+        finally:
+            task_db.close()
 
         # 提取结果摘要
         if hasattr(result, "summary"):
@@ -95,15 +103,10 @@ async def execute_task(task_id: int) -> None:
         if log_entry:
             log_entry.finished_at = datetime.now(timezone.utc)
             log_entry.status = "failed"
-            log_entry.error = str(e)[:2000]
+            log_entry.error = traceback.format_exc()[:4000]
         # 更新任务状态
-        try:
-            task = db.scalar(select(ScheduledTask).where(ScheduledTask.id == task_id))
-            if task:
-                task.last_run_at = datetime.now(timezone.utc)
-                task.last_status = "failed"
-        except Exception:
-            pass
+        task.last_run_at = datetime.now(timezone.utc)
+        task.last_status = "failed"
         try:
             db.commit()
         except Exception:
@@ -114,8 +117,6 @@ async def execute_task(task_id: int) -> None:
 
 def list_tasks(db: Session, *, page: int = 1, page_size: int = 20) -> tuple[list[ScheduledTask], int]:
     """查询定时任务列表。"""
-    from sqlalchemy import func
-
     total = db.scalar(select(func.count()).select_from(ScheduledTask)) or 0
     offset = (max(page, 1) - 1) * page_size
     items = list(db.scalars(
@@ -130,8 +131,6 @@ def get_task(db: Session, task_id: int) -> ScheduledTask | None:
 
 def list_task_logs(db: Session, task_id: int, *, page: int = 1, page_size: int = 20) -> tuple[list[TaskExecutionLog], int]:
     """查询任务执行日志。"""
-    from sqlalchemy import func
-
     stmt = select(TaskExecutionLog).where(TaskExecutionLog.task_id == task_id)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     offset = (max(page, 1) - 1) * page_size
