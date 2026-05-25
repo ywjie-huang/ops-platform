@@ -50,7 +50,7 @@ def api_list_tasks(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("settings.view")),
+    _: User = Depends(api_permission_required("patrol.view")),
 ):
     """查询定时任务列表。"""
     items, total = list_tasks(db, page=page, page_size=page_size)
@@ -81,7 +81,7 @@ def api_list_tasks(
 
 @router.get("/task-types")
 def api_task_types(
-    _: User = Depends(api_permission_required("settings.view")),
+    _: User = Depends(api_permission_required("patrol.view")),
 ):
     """返回支持的任务类型。"""
     types = get_supported_task_types()
@@ -93,7 +93,7 @@ def api_create_task(
     body: TaskCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.edit")),
+    current_user: User = Depends(api_permission_required("patrol.execute")),
 ):
     """创建定时任务。"""
     supported = get_supported_task_types()
@@ -133,7 +133,7 @@ def api_update_task(
     body: TaskUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.edit")),
+    current_user: User = Depends(api_permission_required("patrol.execute")),
 ):
     """更新定时任务。"""
     task = get_task(db, task_id)
@@ -183,7 +183,7 @@ def api_delete_task(
     task_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.edit")),
+    current_user: User = Depends(api_permission_required("patrol.execute")),
 ):
     """删除定时任务。"""
     task = get_task(db, task_id)
@@ -209,7 +209,7 @@ def api_toggle_task(
     task_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.edit")),
+    current_user: User = Depends(api_permission_required("patrol.execute")),
 ):
     """启用/禁用定时任务。"""
     task = get_task(db, task_id)
@@ -236,7 +236,7 @@ async def api_run_task_now(
     task_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.edit")),
+    current_user: User = Depends(api_permission_required("patrol.execute")),
 ):
     """立即执行一次定时任务。"""
     task = get_task(db, task_id)
@@ -259,7 +259,7 @@ def api_task_logs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("settings.view")),
+    _: User = Depends(api_permission_required("patrol.view")),
 ):
     """查看任务执行日志。"""
     task = get_task(db, task_id)

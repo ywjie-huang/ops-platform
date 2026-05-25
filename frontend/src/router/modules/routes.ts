@@ -203,6 +203,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/patrol/PatrolSettingsView.vue'),
         meta: { title: '阈值配置', icon: 'Setting', permission: 'patrol.view' },
       },
+      {
+        path: 'scheduler',
+        name: 'Scheduler',
+        component: () => import('@/views/settings/SchedulerView.vue'),
+        meta: { title: '定时任务', icon: 'Odometer', permission: 'patrol.view' },
+      },
     ],
   },
   {
@@ -234,12 +240,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Settings',
         component: () => import('@/views/settings/SettingsView.vue'),
         meta: { title: '配置中心', icon: 'Tools', permission: 'settings.view' },
-      },
-      {
-        path: 'scheduler',
-        name: 'Scheduler',
-        component: () => import('@/views/settings/SchedulerView.vue'),
-        meta: { title: '定时任务', icon: 'Odometer', permission: 'settings.view' },
       },
     ],
   },
