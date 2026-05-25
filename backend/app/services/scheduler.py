@@ -45,6 +45,7 @@ def get_supported_task_types() -> dict[str, str]:
 async def execute_task(task_id: int) -> None:
     """APScheduler 回调：执行指定任务并记录日志。"""
     db = SessionLocal()
+    task = None
     log_entry = None
     try:
         task = db.scalar(select(ScheduledTask).where(ScheduledTask.id == task_id))
@@ -105,8 +106,9 @@ async def execute_task(task_id: int) -> None:
             log_entry.status = "failed"
             log_entry.error = traceback.format_exc()[:4000]
         # 更新任务状态
-        task.last_run_at = datetime.now(timezone.utc)
-        task.last_status = "failed"
+        if task is not None:
+            task.last_run_at = datetime.now(timezone.utc)
+            task.last_status = "failed"
         try:
             db.commit()
         except Exception:

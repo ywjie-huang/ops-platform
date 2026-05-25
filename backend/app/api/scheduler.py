@@ -1,8 +1,8 @@
 """定时任务 API。"""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
@@ -26,19 +26,19 @@ router = APIRouter(prefix="/scheduler", tags=["定时任务"])
 
 
 class TaskCreate(BaseModel):
-    name: str
-    task_type: str
-    cron_expr: str
+    name: str = Field(min_length=1, max_length=100)
+    task_type: str = Field(min_length=1, max_length=50)
+    cron_expr: str = Field(min_length=1, max_length=100)
     params: dict | None = None
-    description: str = ""
+    description: str = Field(default="", max_length=500)
 
 
 class TaskUpdate(BaseModel):
-    name: str | None = None
-    task_type: str | None = None
-    cron_expr: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    task_type: str | None = Field(default=None, min_length=1, max_length=50)
+    cron_expr: str | None = Field(default=None, min_length=1, max_length=100)
     params: dict | None = None
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=500)
     enabled: bool | None = None
 
 
@@ -47,8 +47,8 @@ class TaskUpdate(BaseModel):
 
 @router.get("/tasks")
 def api_list_tasks(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("settings.view")),
 ):
@@ -234,6 +234,7 @@ def api_toggle_task(
 @router.post("/tasks/{task_id}/run")
 async def api_run_task_now(
     task_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("settings.edit")),
 ):
@@ -244,14 +245,19 @@ async def api_run_task_now(
 
     await execute_task(task_id)
 
+    write_log(db, user=current_user, action="update", target_type="scheduler",
+              target_name=task.name, detail="手动触发执行定时任务",
+              ip_address=get_client_ip(request))
+    db.commit()
+
     return {"code": 0, "msg": "任务已触发执行"}
 
 
 @router.get("/tasks/{task_id}/logs")
 def api_task_logs(
     task_id: int,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("settings.view")),
 ):
