@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import router as api_router
 from app.db.database import SessionLocal
 from app.db.init_db import init_db
-from app.models import alert, alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key  # noqa: F401
+from app.models import alert, alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key, scheduled_task  # noqa: F401
 from app.services.docker_agent import sync_all_hosts
 
 logger = logging.getLogger(__name__)
