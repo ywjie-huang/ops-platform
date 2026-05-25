@@ -32,6 +32,9 @@ app.include_router(api_router)
 @app.on_event("startup")
 def on_startup():
     init_db()
+    # 启动定时任务调度器
+    from app.core.scheduler import startup_scheduler
+    startup_scheduler()
     # 启动 Docker Agent 后台轮询线程（每 10 秒拉取一次）
     def _poll_docker_agents():
         while True:
@@ -48,6 +51,12 @@ def on_startup():
     t = threading.Thread(target=_poll_docker_agents, daemon=True)
     t.start()
     logger.info("Docker Agent 后台轮询线程已启动")
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    from app.core.scheduler import shutdown_scheduler
+    shutdown_scheduler()
 
 
 @app.get("/health")
