@@ -1,8 +1,14 @@
 """定时任务调度器核心。"""
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+if TYPE_CHECKING:
+    from app.models.scheduled_task import ScheduledTask
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +41,7 @@ def parse_cron(expr: str) -> CronTrigger:
     )
 
 
-async def startup_scheduler() -> None:
+def startup_scheduler() -> None:
     """启动调度器：从 DB 加载已启用的任务并注册。"""
     from app.db.database import SessionLocal
     from app.models.scheduled_task import ScheduledTask
@@ -45,7 +51,10 @@ async def startup_scheduler() -> None:
     try:
         tasks = db.scalars(select(ScheduledTask).where(ScheduledTask.enabled == True)).all()
         for task in tasks:
-            _add_job(task)
+            try:
+                _add_job(task)
+            except Exception as e:
+                logger.error("加载任务 %s 失败: %s", task.name, e)
         logger.info("调度器已启动，加载 %d 个定时任务", len(tasks))
     finally:
         db.close()
@@ -53,20 +62,17 @@ async def startup_scheduler() -> None:
     scheduler.start()
 
 
-async def shutdown_scheduler() -> None:
+def shutdown_scheduler() -> None:
     """优雅关闭调度器。"""
     scheduler.shutdown(wait=False)
     logger.info("调度器已关闭")
 
 
-def _add_job(task) -> None:
+def _add_job(task: ScheduledTask) -> None:
     """将一个 ScheduledTask 注册到 scheduler。"""
     from app.services.scheduler import execute_task
 
     job_id = f"scheduled_task_{task.id}"
-    # 先移除旧 job（如果存在）
-    if scheduler.get_job(job_id):
-        scheduler.remove_job(job_id)
 
     try:
         trigger = parse_cron(task.cron_expr)
