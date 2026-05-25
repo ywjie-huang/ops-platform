@@ -64,7 +64,13 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const breadcrumbs = computed(() => {
-  return route.matched.filter(r => r.meta?.title && r.path !== '/')
+  const matched = route.matched.filter(r => r.meta?.title && r.path !== '/')
+  // 详情页插入父级标题，如：资产管理 → 主机管理 → 资产详情
+  if (route.meta?.parentTitle && matched.length > 0) {
+    const parent = matched[matched.length - 1]
+    matched.splice(matched.length - 1, 0, { ...parent, meta: { ...parent.meta, title: route.meta.parentTitle as string } } as any)
+  }
+  return matched
 })
 
 async function handleLogout() {

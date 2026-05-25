@@ -164,10 +164,37 @@
             <span class="form-group-number">3</span>
             SSH 连接配置
           </div>
-          <div class="form-row form-row--three">
+          <div class="form-row">
             <el-form-item label="端口"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" style="width:100%" /></el-form-item>
             <el-form-item label="用户名"><el-input v-model="form.ssh_username" placeholder="root" /></el-form-item>
-            <el-form-item label="密码"><el-input v-model="form.ssh_password" type="password" show-password placeholder="SSH 密码" /></el-form-item>
+          </div>
+          <div class="form-row">
+            <el-form-item label="认证方式">
+              <el-select v-model="form.auth_method" style="width:100%">
+                <el-option label="密码" value="password" />
+                <el-option label="SSH 密钥" value="key" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="form.auth_method === 'password'" label="密码">
+              <el-input v-model="form.ssh_password" type="password" show-password placeholder="SSH 密码" />
+            </el-form-item>
+            <el-form-item v-else label="SSH 密钥">
+              <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" style="width:100%" clearable>
+                <el-option
+                  v-for="key in sshKeys"
+                  :key="key.id"
+                  :label="`${key.name} (${key.username})`"
+                  :value="key.id"
+                >
+                  <div class="key-option">
+                    <span>{{ key.name }}</span>
+                    <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
+                      {{ key.auth_type === 'key' ? '私钥' : '密码' }}
+                    </el-tag>
+                  </div>
+                </el-option>
+              </el-select>
+            </el-form-item>
           </div>
         </div>
       </el-form>
@@ -182,6 +209,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { getAssets, getAssetStats, createAsset, deleteAsset } from '@/api/assets'
+import { getSSHKeys } from '@/api/sshKeys'
 import { usePagination } from '@/hooks/usePagination'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { Monitor, CircleCheckFilled, VideoPause, CircleCloseFilled } from '@element-plus/icons-vue'
@@ -191,6 +219,7 @@ const saving = ref(false)
 const items = ref<any[]>([])
 const dialogVisible = ref(false)
 const formRef = ref<FormInstance>()
+const sshKeys = ref<any[]>([])
 
 const stats = reactive({ total: 0, active: 0, shutdown: 0, deleted: 0 })
 
@@ -212,6 +241,7 @@ const filters = reactive({ keyword: '', asset_type: '', status: '' })
 const form = reactive({
   name: '', asset_type: '云主机', ip_address: '', status: '使用中', owner: '', description: '',
   spec: '', os: '', ssh_port: 22, ssh_username: 'root', ssh_password: '',
+  auth_method: 'password' as 'password' | 'key', ssh_key_id: null as number | null,
 })
 const rules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
@@ -243,11 +273,20 @@ function resetFilters() {
   fetchData()
 }
 
+async function fetchSSHKeys() {
+  try {
+    const res: any = await getSSHKeys({ page_size: 100 })
+    sshKeys.value = res.data?.items || []
+  } catch { /* ignore */ }
+}
+
 function showDialog() {
   Object.assign(form, {
     name: '', asset_type: '云主机', ip_address: '', status: '使用中', owner: '', description: '',
     spec: '', os: '', ssh_port: 22, ssh_username: 'root', ssh_password: '',
+    auth_method: 'password', ssh_key_id: null,
   })
+  fetchSSHKeys()
   dialogVisible.value = true
 }
 
@@ -256,7 +295,14 @@ async function handleSave() {
   if (!valid) return
   saving.value = true
   try {
-    await createAsset(form)
+    const payload: any = { ...form }
+    if (payload.auth_method === 'password') {
+      payload.ssh_key_id = null
+    } else {
+      payload.ssh_password = ''
+    }
+    delete payload.auth_method
+    await createAsset(payload)
     ElMessage.success('创建成功')
     dialogVisible.value = false
     fetchData()
@@ -352,7 +398,7 @@ onMounted(() => { fetchStats(); fetchData() })
   font-size: 11px;
 }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-.form-row--three { grid-template-columns: 1fr 1fr 1fr; }
+.key-option { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 
 @media (max-width: 900px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }

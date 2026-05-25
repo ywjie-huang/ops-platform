@@ -80,7 +80,7 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => (route.meta?.activeMenu as string) || route.path)
 
 const menuRoutes = computed(() => {
   return router.options.routes.filter(r => {
