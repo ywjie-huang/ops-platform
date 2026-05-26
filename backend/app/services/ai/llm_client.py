@@ -92,7 +92,7 @@ class LLMClient:
                         yield {"type": "text", "content": content}
 
                     # 工具调用（流式累积）
-                    if "tool_calls" in delta:
+                    if delta.get("tool_calls"):
                         for tc_delta in delta["tool_calls"]:
                             idx = tc_delta["index"]
                             if idx not in pending_tool_calls:
