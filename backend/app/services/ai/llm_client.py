@@ -47,6 +47,7 @@ class LLMClient:
 
         # 累积 tool_call 的参数（流式返回时 arguments 是分片的）
         pending_tool_calls: dict[int, dict[str, Any]] = {}
+        done_yielded = False
 
         async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
             async with client.stream(
@@ -70,6 +71,7 @@ class LLMClient:
                         for tc in pending_tool_calls.values():
                             yield tc
                         yield {"type": "done"}
+                        done_yielded = True
                         return
 
                     try:
@@ -85,8 +87,9 @@ class LLMClient:
                     finish_reason = choices[0].get("finish_reason")
 
                     # 文本内容
-                    if "content" in delta and delta["content"]:
-                        yield {"type": "text", "content": delta["content"]}
+                    content = delta.get("content")
+                    if content:
+                        yield {"type": "text", "content": content}
 
                     # 工具调用（流式累积）
                     if "tool_calls" in delta:
@@ -118,8 +121,21 @@ class LLMClient:
                                 tc["arguments"] = {}
                             yield tc
                         pending_tool_calls.clear()
+                        done_yielded = True
+                        return
 
                     # finish_reason == "stop" — 正常结束
                     if finish_reason == "stop":
                         yield {"type": "done"}
+                        done_yielded = True
                         return
+
+        # 兜底：流结束但没收到 [DONE] 或 finish_reason（某些兼容 API 会这样）
+        if not done_yielded:
+            for tc in pending_tool_calls.values():
+                try:
+                    tc["arguments"] = json.loads(tc["arguments"])
+                except (json.JSONDecodeError, TypeError):
+                    tc["arguments"] = {}
+                yield tc
+            yield {"type": "done"}

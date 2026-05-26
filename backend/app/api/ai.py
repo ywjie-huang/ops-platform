@@ -81,12 +81,11 @@ async def api_chat(
     client = LLMClient(config["base_url"], config["api_key"], config["model"])
 
     async def event_stream():
-        # 构建 messages：system + history
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-
         # 循环处理（可能有多轮 tool call）
         max_rounds = 10  # 防止无限循环
         for _ in range(max_rounds):
+            # 每轮重新构建 messages，确保包含最新的工具结果
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
             # 检查客户端是否断开
             if await request.is_disconnected():
                 break
