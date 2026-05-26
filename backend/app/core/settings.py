@@ -19,6 +19,10 @@ _DEFAULTS: dict[str, str] = {
     "patrol.disk_critical": "95",
     "patrol.load_warning": "5",
     "patrol.load_critical": "10",
+    # LLM 配置
+    "llm.base_url": "",
+    "llm.api_key": "",
+    "llm.model": "",
 }
 
 
@@ -45,6 +49,15 @@ def get_prometheus_url(db: Session) -> str:
 
 def get_alertmanager_url(db: Session) -> str:
     return get_config(db, "alertmanager.url")
+
+
+def get_llm_config(db: Session) -> dict[str, str]:
+    """读取 LLM 配置，返回 {base_url, api_key, model}。"""
+    return {
+        "base_url": get_config(db, "llm.base_url"),
+        "api_key": get_config(db, "llm.api_key"),
+        "model": get_config(db, "llm.model"),
+    }
 
 
 def set_config(db: Session, key: str, value: str, description: str = "") -> SystemConfig:

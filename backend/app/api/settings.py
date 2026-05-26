@@ -17,6 +17,9 @@ router = APIRouter(prefix="/settings", tags=["系统配置"])
 _CONFIG_SPECS: dict[str, str] = {
     "prometheus.url": "Prometheus 服务地址（例：http://172.16.24.31:30001）",
     "alertmanager.url": "Alertmanager 服务地址（例：http://172.16.24.31:30093）",
+    "llm.base_url": "LLM API 地址（OpenAI 兼容，例：https://api.openai.com/v1）",
+    "llm.api_key": "LLM API Key",
+    "llm.model": "LLM 模型名称（例：gpt-4o、deepseek-chat、qwen-plus）",
 }
 
 
@@ -77,6 +80,53 @@ def api_get_config(
 
     value = get_config(db, key)
     return {"code": 0, "data": {"key": key, "value": value, "description": _CONFIG_SPECS[key]}}
+
+
+class LLMTestBody(BaseModel):
+    base_url: str
+    api_key: str
+    model: str
+
+
+@router.post("/test-connection/llm")
+def api_test_llm_connection(
+    body: LLMTestBody,
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """测试 LLM API 连通性。"""
+    import httpx
+
+    base_url = body.base_url.strip().rstrip("/")
+    api_key = body.api_key.strip()
+    model = body.model.strip()
+
+    if not base_url or not api_key or not model:
+        return {"code": 1, "msg": "请填写完整的 LLM 配置", "data": {"ok": False}}
+
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True) as client:
+            resp = client.post(
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 5,
+                },
+            )
+            if resp.status_code == 200:
+                return {"code": 0, "msg": "LLM 连接成功", "data": {"ok": True}}
+            detail = resp.text[:200]
+            return {"code": 1, "msg": f"LLM 返回状态码 {resp.status_code}: {detail}", "data": {"ok": False}}
+    except httpx.TimeoutException:
+        return {"code": 1, "msg": "LLM 连接超时", "data": {"ok": False}}
+    except httpx.ConnectError as e:
+        return {"code": 1, "msg": f"LLM 连接失败: {e}", "data": {"ok": False}}
+    except Exception as e:
+        return {"code": 1, "msg": f"LLM 连接失败: {e}", "data": {"ok": False}}
 
 
 class TestConnectionBody(BaseModel):
