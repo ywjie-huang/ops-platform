@@ -49,9 +49,6 @@ class LLMClient:
         pending_tool_calls: dict[int, dict[str, Any]] = {}
         done_yielded = False
 
-        logger.info("LLM request: model=%s, messages=%d, tools=%d", self.model, len(messages), len(tools) if tools else 0)
-        logger.debug("LLM payload: %s", json.dumps(payload, ensure_ascii=False, default=str)[:500])
-
         async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
             async with client.stream(
                 "POST",
@@ -66,7 +63,6 @@ class LLMClient:
                     )
 
                 async for line in response.aiter_lines():
-                    logger.debug("LLM SSE line: %s", line[:200])
                     if not line.startswith("data: "):
                         continue
                     data_str = line[6:].strip()

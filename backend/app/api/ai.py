@@ -20,21 +20,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["AI 助手"])
 
-SYSTEM_PROMPT = """你是一个运维助手，运行在运维管理平台中。你可以自由回答用户的各种问题，同时也可以使用工具来帮助用户完成运维操作。
-
-可用工具：
-- 查询服务器状态、性能指标、告警、工单、K8s 集群、Docker 容器
-- 查看巡检报告
-- 在服务器上执行命令（部署服务、查看日志、管理容器等）
-- 执行巡检、创建工单
-
-重要规则：
-- 用户问什么就回答什么，不要回避问题
-- 如果用户问你是什么模型、叫什么名字、谁开发的等身份问题，必须如实直接回答，不要使用工具
-- 当用户需要运维操作时，选择合适的工具执行
-- 查询类操作直接执行
-- 写操作（执行命令、巡检、创建工单）先说明要做什么，等用户确认
-- 回复使用中文，简洁明了"""
+SYSTEM_PROMPT = """使用工具来帮助用户完成运维操作。
+查询类操作直接执行。写操作（执行命令、巡检、创建工单）先说明要做什么，等用户确认。
+不需要工具的问题直接回答。回复使用中文，简洁明了。"""
 
 
 class ChatRequest(BaseModel):
@@ -84,12 +72,9 @@ async def api_chat(
     async def event_stream():
         # 循环处理（可能有多轮 tool call）
         max_rounds = 10  # 防止无限循环
-        for _ in range(max_rounds):
+        for round_idx in range(max_rounds):
             # 每轮重新构建 messages，确保包含最新的工具结果
             messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-            logger.info("AI chat: round %d, messages=%d, cid=%s", _ + 1, len(messages), cid)
-            for m in messages:
-                logger.info("  [%s] %s", m.get("role"), str(m.get("content", ""))[:100])
             # 检查客户端是否断开
             if await request.is_disconnected():
                 break
