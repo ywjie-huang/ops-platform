@@ -1,30 +1,39 @@
 """
-AI 运维助手 API
-当前为 stub 实现，预留 LLM 接口。
-对接 LLM 后，可通过 function calling 调用运维 API 获取实时数据。
+AI 运维助手 API — SSE 流式对话 + 工具调用 + 写操作确认。
 """
-
 from __future__ import annotations
 
+import json
 import logging
-from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_api_user
 from app.db.database import get_db
-from app.models.alert import Alert
-from app.models.alert_event import AlertEvent
-from app.models.asset import Asset
-from app.models.ticket import Ticket
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["AI 助手"])
+
+SYSTEM_PROMPT = """你是运维平台的 AI 助手。你可以帮助用户：
+- 查询服务器状态和性能指标
+- 查询告警事件
+- 查询 Docker 容器和 K8s 集群状态
+- 查询工单
+- 查看巡检报告
+- 在服务器上执行命令（如部署服务、查看日志、管理容器等）
+- 执行巡检
+- 创建工单
+
+根据用户的意图选择合适的工具来完成操作。
+对于查询类操作，直接执行并告诉用户结果。
+对于写操作（执行命令、巡检、创建工单），先说明你要做什么，等用户确认后再执行。
+回复使用中文，简洁明了。"""
 
 
 class ChatRequest(BaseModel):
@@ -32,205 +41,257 @@ class ChatRequest(BaseModel):
     conversation_id: str = ""
 
 
+class ConfirmRequest(BaseModel):
+    pending_id: str
+    conversation_id: str
+
+
 @router.post("/chat")
-def api_chat(
+async def api_chat(
     body: ChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_api_user),
 ):
-    """
-    AI 对话接口。
-    当前为基于关键词的 stub 实现，后续对接 LLM API。
-    """
-    msg = body.message.strip()
-    if not msg:
-        return {"code": 0, "data": {"reply": "请输入你的问题。"}}
-
-    reply = _handle_query(db, msg)
-    return {"code": 0, "data": {"reply": reply, "conversation_id": body.conversation_id or "default"}}
-
-
-# ─── 基于关键词的 stub 实现 ────────────────────────────────
-
-
-def _handle_query(db: Session, msg: str) -> str:
-    """根据关键词路由到对应的查询逻辑。"""
-
-    # 告警相关
-    if any(kw in msg for kw in ["告警", "报警", "alert"]):
-        return _query_alerts(db, msg)
-
-    # 资产/服务器相关
-    if any(kw in msg for kw in ["服务器", "主机", "资产", "server", "host"]):
-        return _query_assets(db, msg)
-
-    # 工单相关
-    if any(kw in msg for kw in ["工单", "ticket"]):
-        return _query_tickets(db, msg)
-
-    # K8s/容器相关
-    if any(kw in msg for kw in ["k8s", "kubernetes", "集群", "容器", "pod", "container"]):
-        return _query_k8s(db, msg)
-
-    # 巡检相关
-    if any(kw in msg for kw in ["巡检", "检查", "patrol", "巡检"]):
-        return _query_patrol(db)
-
-    # 资源异常
-    if any(kw in msg for kw in ["异常", "问题", "故障", "error"]):
-        return _query_abnormal(db)
-
-    # 默认回复
-    return (
-        "我可以帮你查询以下信息：\n\n"
-        "**告警** — 最近的告警事件和状态\n"
-        "**服务器** — 资产列表和在线状态\n"
-        "**工单** — 工单统计和待处理工单\n"
-        "**K8s** — 集群和容器状态\n"
-        "**巡检** — 最近的巡检报告\n\n"
-        "试试问我：「最近有什么告警？」或「哪台服务器资源异常？」"
+    """SSE 流式对话接口。"""
+    from app.core.settings import get_llm_config
+    from app.services.ai.conversations import (
+        add_message,
+        get_conversation,
+        new_conversation,
+        store_pending_action,
     )
+    from app.services.ai.dispatcher import dispatch_tool, is_readonly
+    from app.services.ai.llm_client import LLMClient
+    from app.services.ai.tools import TOOL_DEFINITIONS
+
+    config = get_llm_config(db)
+    if not config["base_url"] or not config["api_key"] or not config["model"]:
+        async def error_stream():
+            yield _sse_event({"type": "error", "content": "LLM 未配置，请在系统设置中配置 AI 模型。"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    # 初始化对话
+    cid = body.conversation_id or new_conversation()
+    history = get_conversation(cid)
+
+    # 追加用户消息
+    add_message(cid, {"role": "user", "content": body.message})
+
+    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+
+    async def event_stream():
+        # 构建 messages：system + history
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+
+        # 循环处理（可能有多轮 tool call）
+        max_rounds = 10  # 防止无限循环
+        for _ in range(max_rounds):
+            # 检查客户端是否断开
+            if await request.is_disconnected():
+                break
+
+            full_text = ""
+            tool_calls = []
+
+            try:
+                async for event in client.chat_stream(messages, TOOL_DEFINITIONS):
+                    if event["type"] == "text":
+                        full_text += event["content"]
+                        yield _sse_event({"type": "text", "content": event["content"]})
+
+                    elif event["type"] == "tool_call":
+                        tool_calls.append(event)
+
+                    elif event["type"] == "done":
+                        break
+            except Exception as e:
+                logger.exception("LLM stream error")
+                yield _sse_event({"type": "error", "content": f"LLM 调用失败: {str(e)}"})
+                return
+
+            # 没有工具调用 — 对话结束
+            if not tool_calls:
+                if full_text:
+                    add_message(cid, {"role": "assistant", "content": full_text})
+                yield _sse_event({"type": "done", "conversation_id": cid})
+                return
+
+            # 有工具调用 — 处理每个 tool call
+            # 先把 assistant 的 tool_calls 消息加入历史
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_text or None, "tool_calls": []}
+            for tc in tool_calls:
+                assistant_msg["tool_calls"].append({
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)},
+                })
+            add_message(cid, assistant_msg)
+
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc["arguments"]
+                tool_call_id = tc["id"]
+
+                if is_readonly(tool_name):
+                    # 只读 — 直接执行
+                    yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
+                    result = await dispatch_tool(db, tool_name, tool_args)
+                    result_text = result.get("result", result.get("error", "执行失败"))
+                    yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
+                    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": result_text})
+                else:
+                    # 写操作 — 返回确认请求
+                    pending_id = store_pending_action(cid, tool_name, tool_args, tool_call_id)
+                    asset_info = ""
+                    if tool_name == "execute_command" and "asset_id" in tool_args:
+                        from app.models.asset import Asset
+                        asset = db.get(Asset, tool_args["asset_id"])
+                        if asset:
+                            asset_info = f"服务器: {asset.name} ({asset.ip_address})\n"
+                    yield _sse_event({
+                        "type": "tool_confirm",
+                        "pending_id": pending_id,
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "description": f"{asset_info}操作: {tool_name}\n参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}",
+                    })
+                    # 暂停此轮，等用户确认后通过 /confirm 接口继续
+                    return
+
+            # 所有工具执行完毕，继续下一轮 LLM 调用
+
+        yield _sse_event({"type": "done", "conversation_id": cid})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def _query_alerts(db: Session, msg: str) -> str:
-    """查询告警信息。"""
-    # 最近告警事件
-    total = db.scalar(select(func.count(AlertEvent.id))) or 0
-    if total == 0:
-        return "目前没有告警事件记录。系统运行正常 ✅"
-
-    # 按严重程度统计
-    severity_stats = db.execute(
-        select(AlertEvent.severity, func.count(AlertEvent.id))
-        .group_by(AlertEvent.severity)
-    ).all()
-
-    # 最近 5 条
-    recent = list(db.scalars(
-        select(AlertEvent).order_by(AlertEvent.id.desc()).limit(5)
-    ).all())
-
-    lines = [f"📊 **告警概况**（共 {total} 条）\n"]
-    for sev, count in severity_stats:
-        emoji = {"critical": "🔴", "warning": "🟡", "info": "🔵"}.get(sev, "⚪")
-        lines.append(f"- {emoji} {sev}：{count} 条")
-
-    lines.append(f"\n📋 **最近告警：**")
-    for e in recent:
-        lines.append(f"- [{e.severity}] {e.alert_name} — {e.instance or 'N/A'}（{e.status}）")
-
-    return "\n".join(lines)
-
-
-def _query_assets(db: Session, msg: str) -> str:
-    """查询资产信息。"""
-    total = db.scalar(select(func.count(Asset.id))) or 0
-    if total == 0:
-        return "暂无资产记录。"
-
-    online = db.scalar(select(func.count(Asset.id)).where(Asset.status == "使用中")) or 0
-    offline = db.scalar(select(func.count(Asset.id)).where(Asset.status == "已关机")) or 0
-
-    lines = [
-        f"🖥️ **资产概况**（共 {total} 台）\n",
-        f"- ✅ 使用中：{online} 台",
-        f"- ⚪ 已关机：{offline} 台",
-    ]
-
-    # 如果问的是"异常"或"离线"
-    if any(kw in msg for kw in ["异常", "离线", "关机", "offline"]):
-        offline_assets = list(db.scalars(
-            select(Asset).where(Asset.status != "使用中")
-        ).all())
-        if offline_assets:
-            lines.append(f"\n⚠️ **异常资产：**")
-            for a in offline_assets:
-                lines.append(f"- {a.name}（{a.ip_address}）— {a.status}")
-        else:
-            lines.append("\n✅ 所有资产状态正常")
-
-    return "\n".join(lines)
-
-
-def _query_tickets(db: Session, msg: str) -> str:
-    """查询工单信息。"""
-    total = db.scalar(select(func.count(Ticket.id))) or 0
-    if total == 0:
-        return "暂无工单记录。"
-
-    open_count = db.scalar(select(func.count(Ticket.id)).where(Ticket.status == "open")) or 0
-    in_progress = db.scalar(select(func.count(Ticket.id)).where(Ticket.status == "in_progress")) or 0
-
-    lines = [
-        f"📝 **工单概况**（共 {total} 个）\n",
-        f"- 📋 待处理：{open_count} 个",
-        f"- 🔧 处理中：{in_progress} 个",
-    ]
-
-    if open_count > 0:
-        open_tickets = list(db.scalars(
-            select(Ticket).where(Ticket.status == "open").order_by(Ticket.id.desc()).limit(5)
-        ).all())
-        lines.append(f"\n📋 **待处理工单：**")
-        for t in open_tickets:
-            lines.append(f"- [{t.priority}] {t.title} — {t.assignee or '未分配'}")
-
-    return "\n".join(lines)
-
-
-def _query_k8s(db: Session, msg: str) -> str:
-    """查询 K8s 集群信息。"""
-    from app.models.container import ContainerCluster
-    clusters = list(db.scalars(select(ContainerCluster)).all())
-    if not clusters:
-        return "暂未接入 K8s 集群。请在「容器管理」中接入集群。"
-
-    lines = [f"☸️ **K8s 集群概况**（共 {len(clusters)} 个）\n"]
-    for c in clusters:
-        status_emoji = "✅" if c.status == "running" else "❌"
-        lines.append(f"- {status_emoji} **{c.name}** — {c.version or '未知版本'}，{c.node_count} 个节点（{c.status}）")
-
-    return "\n".join(lines)
-
-
-def _query_patrol(db: Session) -> str:
-    """查询最近巡检报告。"""
-    from app.models.patrol import PatrolReport
-    report = db.scalar(select(PatrolReport).order_by(PatrolReport.id.desc()))
-    if not report:
-        return "暂无巡检报告。请在「巡检中心」中执行巡检。"
-
-    status_emoji = {"normal": "✅", "warning": "⚠️", "critical": "🔴"}.get(report.status, "❓")
-    return (
-        f"🔍 **最近巡检报告**\n\n"
-        f"- 标题：{report.title}\n"
-        f"- 状态：{status_emoji} {report.status}\n"
-        f"- 正常：{report.normal_count}，警告：{report.warning_count}，严重：{report.critical_count}\n"
-        f"- 时间：{report.created_at.strftime('%Y-%m-%d %H:%M') if report.created_at else 'N/A'}\n"
-        f"- 操作人：{report.operator or '系统'}"
+@router.post("/chat/confirm")
+async def api_chat_confirm(
+    body: ConfirmRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
+):
+    """确认执行写操作，继续 LLM 对话。"""
+    from app.core.settings import get_llm_config
+    from app.services.ai.conversations import (
+        add_message,
+        get_conversation,
+        get_pending_action,
+        remove_pending_action,
     )
+    from app.services.ai.dispatcher import dispatch_tool
+    from app.services.ai.llm_client import LLMClient
+    from app.services.ai.tools import TOOL_DEFINITIONS
+
+    pending = get_pending_action(body.pending_id)
+    if not pending:
+        async def error_stream():
+            yield _sse_event({"type": "error", "content": "该操作已过期或不存在。"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    cid = pending["conversation_id"]
+    tool_name = pending["tool_name"]
+    tool_args = pending["arguments"]
+    tool_call_id = pending["tool_call_id"]
+
+    remove_pending_action(body.pending_id)
+
+    # 执行工具
+    result = await dispatch_tool(db, tool_name, tool_args)
+    result_text = result.get("result", result.get("error", "执行失败"))
+
+    # 把工具结果加入对话历史
+    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": result_text})
+
+    # 继续 LLM 对话
+    config = get_llm_config(db)
+    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+    history = get_conversation(cid)
+
+    async def event_stream():
+        yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
+        yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
+
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        full_text = ""
+
+        try:
+            async for event in client.chat_stream(messages, TOOL_DEFINITIONS):
+                if event["type"] == "text":
+                    full_text += event["content"]
+                    yield _sse_event({"type": "text", "content": event["content"]})
+                elif event["type"] == "done":
+                    break
+        except Exception as e:
+            logger.exception("LLM stream error after confirm")
+            yield _sse_event({"type": "error", "content": f"LLM 调用失败: {str(e)}"})
+            return
+
+        if full_text:
+            add_message(cid, {"role": "assistant", "content": full_text})
+        yield _sse_event({"type": "done", "conversation_id": cid})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def _query_abnormal(db: Session) -> str:
-    """综合查询异常信息。"""
-    parts = []
+@router.post("/chat/reject")
+async def api_chat_reject(
+    body: ConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
+):
+    """拒绝写操作，告知 LLM 用户拒绝了。"""
+    from app.core.settings import get_llm_config
+    from app.services.ai.conversations import (
+        add_message,
+        get_conversation,
+        get_pending_action,
+        remove_pending_action,
+    )
+    from app.services.ai.llm_client import LLMClient
+    from app.services.ai.tools import TOOL_DEFINITIONS
 
-    # 异常资产
-    offline = db.scalar(select(func.count(Asset.id)).where(Asset.status != "使用中")) or 0
-    if offline:
-        parts.append(f"🖥️ {offline} 台资产非在线状态")
+    pending = get_pending_action(body.pending_id)
+    if not pending:
+        async def error_stream():
+            yield _sse_event({"type": "error", "content": "该操作已过期或不存在。"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    # 最近告警
-    alert_count = db.scalar(select(func.count(AlertEvent.id))) or 0
-    if alert_count:
-        parts.append(f"🔔 共 {alert_count} 条告警事件")
+    cid = pending["conversation_id"]
+    tool_call_id = pending["tool_call_id"]
+    remove_pending_action(body.pending_id)
 
-    # 待处理工单
-    open_tickets = db.scalar(select(func.count(Ticket.id)).where(Ticket.status == "open")) or 0
-    if open_tickets:
-        parts.append(f"📝 {open_tickets} 个待处理工单")
+    # 告知 LLM 用户拒绝了
+    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": "用户拒绝了该操作的执行。"})
 
-    if not parts:
-        return "✅ 系统一切正常，没有发现异常。"
+    config = get_llm_config(db)
+    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+    history = get_conversation(cid)
 
-    return "⚠️ **发现以下异常：**\n\n" + "\n".join(f"- {p}" for p in parts)
+    async def event_stream():
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        full_text = ""
+
+        try:
+            async for event in client.chat_stream(messages, TOOL_DEFINITIONS):
+                if event["type"] == "text":
+                    full_text += event["content"]
+                    yield _sse_event({"type": "text", "content": event["content"]})
+                elif event["type"] == "done":
+                    break
+        except Exception as e:
+            yield _sse_event({"type": "error", "content": f"LLM 调用失败: {str(e)}"})
+            return
+
+        if full_text:
+            add_message(cid, {"role": "assistant", "content": full_text})
+        yield _sse_event({"type": "done", "conversation_id": cid})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _sse_event(data: dict[str, Any]) -> str:
+    """格式化 SSE 事件。"""
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
