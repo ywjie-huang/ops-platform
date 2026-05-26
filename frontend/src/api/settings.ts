@@ -15,3 +15,7 @@ export function updateSetting(key: string, value: string) {
 export function testConnection(service: string, url: string) {
   return request.post(`/settings/test-connection/${service}`, { url })
 }
+
+export function testLLMConnection(data: { base_url: string; api_key: string; model: string }) {
+  return request.post('/settings/test-connection/llm', data)
+}
