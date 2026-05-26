@@ -15,7 +15,8 @@
 | **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
 | **巡检中心** | 巡检报告 / 阈值配置 / 定时任务 | 主机/K8s/资产自动巡检 + 报告管理 + 滑块式阈值配置 + 快捷预设 + Cron 定时调度 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
-| **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager 地址配置 |
+| **AI 助手** | AI 助手 | LLM 流式对话 + 工具调用 + 写操作确认 |
+| **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager 地址配置 + LLM 模型配置 |
 
 ---
 
@@ -249,7 +250,35 @@ docker run -d -p 9001:9001 \
 - **响应式布局**：600px / 1100px / 1600px / 1920px 四档断点
 - 所有图表纯 SVG 实现，无第三方图表库依赖
 
-### 18. 配置中心
+### 18. AI 助手
+
+基于 **OpenAI 兼容 API** 的智能运维助手，支持 SSE 流式对话 + function calling 工具调用。
+
+**核心能力：**
+- **日常对话**：直接与 LLM 聊天，如实回答模型身份
+- **运维工具调用**：自动识别运维意图，调用 10 种内置工具
+- **写操作确认**：执行命令、巡检、创建工单等写操作需用户确认后执行
+- **SSE 流式响应**：实时返回 LLM 文本和工具执行状态
+- **Markdown 渲染**：支持代码高亮、表格、列表等格式
+
+**内置工具：**
+
+| 工具 | 类型 | 说明 |
+|------|------|------|
+| query_assets | 只读 | 查询服务器/资产列表 |
+| query_host_metrics | 只读 | 查询主机实时指标（CPU/内存/磁盘/网络/负载） |
+| query_alerts | 只读 | 查询告警事件 |
+| query_containers | 只读 | 查询 Docker 容器状态 |
+| query_k8s | 只读 | 查询 K8s 集群状态 |
+| query_tickets | 只读 | 查询工单列表 |
+| get_patrol_reports | 只读 | 查询巡检报告 |
+| execute_command | 写操作 | 在服务器上执行 shell 命令 |
+| run_patrol | 写操作 | 执行全量巡检 |
+| create_ticket | 写操作 | 创建新工单 |
+
+**配置方式：** 系统管理 → 配置中心 → AI 模型配置（API 地址 + API Key + 模型名称），支持连接测试。
+
+### 19. 配置中心
 
 - 通过 UI 管理 Prometheus / Alertmanager 服务地址，无需改代码重启
 - **连接测试**：一键测试 Prometheus / Alertmanager 是否可达
@@ -290,6 +319,7 @@ docker run -d -p 9001:9001 \
 | 部署 | Docker Compose（一键部署 MySQL + 后端 + 前端） |
 | SSH | xterm.js + paramiko + WebSocket（终端 + SFTP 文件管理） |
 | 认证 | JWT (pbkdf2_sha256) + 图形验证码 (captcha) |
+| AI | OpenAI 兼容 LLM API（SSE 流式 + function calling） |
 
 ---
 
@@ -315,6 +345,7 @@ my-project/
 │       │   ├── patrol.py       # 巡检中心
 │       │   ├── scheduler.py    # 定时任务 API
 │       │   ├── settings.py     # 配置中心
+│       │   ├── ai.py           # AI 助手（SSE 流式对话）
 │       │   ├── reports.py      # 报表
 │       │   ├── dashboard.py    # 仪表盘
 │       │   ├── users.py        # 用户
@@ -338,6 +369,11 @@ my-project/
 │       │   ├── ticket.py       # 工单
 │       │   └── user.py         # 用户
 │       └── services/           # 业务逻辑层
+│           ├── ai/             # AI 助手服务
+│           │   ├── llm_client.py   # OpenAI 兼容 LLM 客户端（SSE 流式 + function calling）
+│           │   ├── tools.py        # 工具定义 + handler 函数（10 种工具）
+│           │   ├── dispatcher.py   # 工具调度器（动态导入 + async/sync 自动检测）
+│           │   └── conversations.py # 对话历史管理（内存存储）
 │           ├── prometheus.py   # Prometheus 查询服务
 │           ├── alertmanager.py # Alertmanager 查询 + Webhook 处理
 │           ├── k8s.py          # Kubernetes API 客户端
@@ -352,6 +388,7 @@ my-project/
 │   └── src/
 │       ├── api/                # API 请求层
 │       │   ├── request.ts      # Axios 封装
+│       │   ├── ai.ts           # AI 助手 API（SSE 流式）
 │       │   ├── sshKeys.ts      # SSH 密钥 API
 │       │   ├── sftp.ts         # SFTP 文件管理 API
 │       │   ├── batch_presets.ts # 命令预设 API
@@ -372,6 +409,7 @@ my-project/
 │           ├── patrol/         # 巡检中心
 │           ├── tickets/        # 工单
 │           ├── reports/        # 报表
+│           ├── ai/             # AI 助手
 │           ├── settings/       # 配置中心
 │           ├── users/          # 用户
 │           ├── roles/          # 角色
@@ -649,6 +687,11 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 定时任务 | `GET /scheduler/tasks/{id}/logs` | 查看执行日志 |
 | 配置 | `GET/PUT /settings/` | 系统配置 |
 | 配置 | `POST /settings/test-connection/{service}` | 测试 Prometheus/Alertmanager |
+| 配置 | `POST /settings/test-connection/llm` | 测试 LLM 连通性 |
+| AI 助手 | `GET /ai/info` | 获取 AI 模型信息 |
+| AI 助手 | `POST /ai/chat` | SSE 流式对话 |
+| AI 助手 | `POST /ai/chat/confirm` | 确认执行写操作 |
+| AI 助手 | `POST /ai/chat/reject` | 拒绝写操作 |
 | 报表 | `GET/POST /reports/` | 报表管理 |
 | 用户 | `GET/POST/PUT/DELETE /users/` | 用户 CRUD |
 | 角色 | `GET/POST/PUT/DELETE /roles/` | 角色 CRUD |

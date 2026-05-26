@@ -280,15 +280,18 @@ async def handle_query_host_metrics(db: Session, args: dict[str, Any]) -> str:
         return f"无法获取 {asset.name}({asset.ip_address}) 的指标数据，请检查 Prometheus 配置和 node_exporter。"
 
     r = results[0]
-    lines = [f"**{asset.name}** ({asset.ip_address}) 指标：\n"]
-    for key, val in r.items():
-        if key.startswith("_"):
-            continue
-        if isinstance(val, dict):
-            lines.append(f"- {key}: {val.get('value', 'N/A')} {val.get('unit', '')}")
-        else:
-            lines.append(f"- {key}: {val}")
-    return "\n".join(lines)
+    if not r.get("prometheus_ok"):
+        return f"{asset.name} ({asset.ip_address}) 未采集到 Prometheus 指标，请检查 node_exporter 是否运行。"
+
+    return (
+        f"**{asset.name}** ({asset.ip_address}) 实时指标：\n"
+        f"- CPU: {r['cpu']}%\n"
+        f"- 内存: {r['memory']}%\n"
+        f"- 磁盘: {r['disk']}%\n"
+        f"- 负载: {r['load']}\n"
+        f"- 网络入: {r['network_in']} Mbps\n"
+        f"- 网络出: {r['network_out']} Mbps"
+    )
 
 
 def handle_query_alerts(db: Session, args: dict[str, Any]) -> str:

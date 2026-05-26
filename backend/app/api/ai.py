@@ -20,9 +20,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["AI 助手"])
 
-SYSTEM_PROMPT = """使用工具来帮助用户完成运维操作。
-查询类操作直接执行。写操作（执行命令、巡检、创建工单）先说明要做什么，等用户确认。
-不需要工具的问题直接回答。回复使用中文，简洁明了。"""
+def _build_system_prompt(model_name: str) -> str:
+    return f"""你是 {model_name}，一个真实存在的大语言模型。你不是什么"运维助手"，不要编造身份。
+
+你可以使用提供的工具来帮助用户完成运维操作：
+- 查询类操作直接执行
+- 写操作（执行命令、巡检、创建工单）先说明要做什么，等用户确认
+- 不需要工具的问题直接回答，就像普通聊天一样
+
+当用户问你是什么模型、你是谁时，如实回答你是 {model_name}。
+回复使用中文，简洁明了。"""
+
+
+@router.get("/info")
+def api_ai_info(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_api_user),
+):
+    """获取 AI 模型配置信息。"""
+    from app.core.settings import get_llm_config
+
+    config = get_llm_config(db)
+    configured = bool(config["base_url"] and config["api_key"] and config["model"])
+    return {
+        "code": 0,
+        "data": {
+            "model": config["model"],
+            "configured": configured,
+        },
+    }
 
 
 class ChatRequest(BaseModel):
@@ -74,7 +100,7 @@ async def api_chat(
         max_rounds = 10  # 防止无限循环
         for round_idx in range(max_rounds):
             # 每轮重新构建 messages，确保包含最新的工具结果
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+            messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
             # 检查客户端是否断开
             if await request.is_disconnected():
                 break
@@ -202,7 +228,7 @@ async def api_chat_confirm(
         yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
         yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
         full_text = ""
 
         try:
@@ -259,7 +285,7 @@ async def api_chat_reject(
     history = get_conversation(cid)
 
     async def event_stream():
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
         full_text = ""
 
         try:

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring (agent pull model), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, and RBAC permissions.
+Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring (agent pull model), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, RBAC permissions, and AI-powered ops assistant (LLM streaming + function calling).
 
 ## Development Commands
 
@@ -46,8 +46,8 @@ docker compose up -d --build                  # Rebuild images
 
 ### Three-Layer Backend (`backend/app/`)
 
-- **`api/`** — 23 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
-- **`services/`** — Business logic layer (22 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`.
+- **`api/`** — 24 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
+- **`services/`** — Business logic layer (22 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`. AI assistant: `services/ai/` (LLM client, tool definitions, dispatcher, conversations).
 - **`models/`** — 17 SQLAlchemy model files using `DeclarativeBase`.
 - **`core/`** — `config.py` (constants/env vars), `jwt.py` (HS256, 12h expiry), `settings.py` (DB-first config with fallback to `config.py`), `pagination.py`.
 - **`db/`** — `database.py` (PyMySQL + SQLAlchemy, pool_size=10), `init_db.py` (auto-create DB, run ALTER TABLE migrations, seed defaults).
@@ -74,6 +74,7 @@ docker compose up -d --build                  # Rebuild images
 - **Asset SSH auth**: Asset model supports both inline `ssh_password` and `ssh_key_id` (FK to `ssh_keys` table). API returns `has_ssh_password` boolean (never exposes plaintext password). SSH key model supports password and private key auth types.
 - **keep-alive + onActivated**: Frontend uses `<keep-alive :max="10">` in `AppMain.vue`. Detail views MUST use `onActivated` for data fetching (not `onMounted` + `watch(route.params.id)`), and pair `onActivated`/`onDeactivated` for timers. See `HostDetailView` as reference pattern.
 - **Scheduled tasks**: APScheduler `AsyncIOScheduler` with in-memory jobstore. Task definitions in `scheduled_tasks` table, execution logs in `task_execution_logs`. `core/scheduler.py` manages lifecycle (startup loads enabled tasks, shutdown graceful). `services/scheduler.py` handles execution callback with dynamic function import via `_TASK_FUNCTIONS` registry. API layer calls `sync_task_to_scheduler()` after every create/update/delete to keep scheduler in sync. Currently supports `patrol` task type; `report` and `backup` are reserved.
+- **AI assistant**: OpenAI-compatible LLM with SSE streaming + function calling. `services/ai/llm_client.py` handles streaming with chunked tool_call accumulation. `services/ai/tools.py` defines 10 tools (7 read-only, 3 write). Read-only tools auto-execute; write tools require user confirmation via `/ai/chat/confirm` or `/ai/chat/reject`. System prompt is dynamic — model name injected from DB config. Conversations stored in-memory (`services/ai/conversations.py`). LLM config via `settings.py` keys: `llm.base_url`, `llm.api_key`, `llm.model`.
 
 ### External Dependencies
 
@@ -84,6 +85,7 @@ docker compose up -d --build                  # Rebuild images
 | Alertmanager | Config center UI or `config.py` → `ALERTMANAGER_URL` | Webhook push to `/api/v1/alertmanager/webhook` |
 | Kubernetes | Per-cluster in DB | API Server URL + ServiceAccount Token |
 | Docker Agent | Per-host in DB | HTTP pull model, port 9001 |
+| LLM (AI 助手) | Settings UI → `llm.base_url/api_key/model` | OpenAI-compatible API, configurable at runtime |
 
 ### Commit Style
 
