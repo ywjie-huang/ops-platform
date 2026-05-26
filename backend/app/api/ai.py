@@ -86,6 +86,9 @@ async def api_chat(
         for _ in range(max_rounds):
             # 每轮重新构建 messages，确保包含最新的工具结果
             messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+            logger.info("AI chat: round %d, messages=%d, cid=%s", _ + 1, len(messages), cid)
+            for m in messages:
+                logger.info("  [%s] %s", m.get("role"), str(m.get("content", ""))[:100])
             # 检查客户端是否断开
             if await request.is_disconnected():
                 break
