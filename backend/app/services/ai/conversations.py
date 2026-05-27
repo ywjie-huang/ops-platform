@@ -1,44 +1,108 @@
-"""对话历史管理 — 内存存储，按 conversation_id 维护消息列表。"""
+"""对话管理 — 基于数据库的对话和消息 CRUD。"""
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
-# {conversation_id: [message, ...]}
-_conversations: dict[str, list[dict[str, Any]]] = {}
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.conversation import Conversation, Message
 
 # {pending_id: {conversation_id, tool_name, arguments, tool_call_id}}
 _pending_actions: dict[str, dict[str, Any]] = {}
 
 
-def new_conversation() -> str:
-    """创建新对话，返回 conversation_id。"""
-    cid = str(uuid.uuid4())
-    _conversations[cid] = []
-    return cid
+def create_conversation(db: Session, user_id: int | None = None) -> Conversation:
+    """创建新对话。"""
+    conv = Conversation(user_id=user_id)
+    db.add(conv)
+    db.flush()
+    return conv
 
 
-def get_conversation(conversation_id: str) -> list[dict[str, Any]]:
-    """获取对话历史。不存在则创建。"""
-    if conversation_id not in _conversations:
-        _conversations[conversation_id] = []
-    return _conversations[conversation_id]
+def get_conversations(db: Session, user_id: int | None = None) -> list[Conversation]:
+    """获取对话列表，按更新时间倒序。"""
+    stmt = select(Conversation).order_by(Conversation.updated_at.desc())
+    if user_id:
+        stmt = stmt.where(Conversation.user_id == user_id)
+    return list(db.scalars(stmt).all())
 
 
-def add_message(conversation_id: str, message: dict[str, Any]) -> None:
-    """向对话历史追加一条消息。"""
-    if conversation_id not in _conversations:
-        _conversations[conversation_id] = []
-    _conversations[conversation_id].append(message)
+def get_conversation(db: Session, conversation_id: int) -> Conversation | None:
+    """获取单个对话。"""
+    return db.get(Conversation, conversation_id)
 
 
-def clear_conversation(conversation_id: str) -> None:
-    """清空对话历史。"""
-    _conversations.pop(conversation_id, None)
+def delete_conversation(db: Session, conversation_id: int) -> bool:
+    """删除对话及其消息。"""
+    conv = db.get(Conversation, conversation_id)
+    if not conv:
+        return False
+    db.delete(conv)
+    db.flush()
+    return True
+
+
+def add_message(
+    db: Session,
+    conversation_id: int,
+    role: str,
+    content: str | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    tool_call_id: str | None = None,
+    tool_name: str | None = None,
+) -> Message:
+    """向对话追加一条消息。"""
+    msg = Message(
+        conversation_id=conversation_id,
+        role=role,
+        content=content,
+        tool_calls=json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+    )
+    db.add(msg)
+    db.flush()
+
+    # 更新对话的 updated_at
+    conv = db.get(Conversation, conversation_id)
+    if conv:
+        conv.updated_at = datetime.now(timezone.utc)
+
+    return msg
+
+
+def get_messages(db: Session, conversation_id: int) -> list[Message]:
+    """获取对话的所有消息。"""
+    stmt = (
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.id)
+    )
+    return list(db.scalars(stmt).all())
+
+
+def build_llm_messages(db: Session, conversation_id: int) -> list[dict[str, Any]]:
+    """构建发送给 LLM 的消息列表。"""
+    messages = get_messages(db, conversation_id)
+    result = []
+    for msg in messages:
+        m: dict[str, Any] = {"role": msg.role}
+        if msg.content is not None:
+            m["content"] = msg.content
+        if msg.tool_calls:
+            m["tool_calls"] = json.loads(msg.tool_calls)
+        if msg.tool_call_id:
+            m["tool_call_id"] = msg.tool_call_id
+        result.append(m)
+    return result
 
 
 def store_pending_action(
-    conversation_id: str,
+    conversation_id: int,
     tool_name: str,
     arguments: dict[str, Any],
     tool_call_id: str,
