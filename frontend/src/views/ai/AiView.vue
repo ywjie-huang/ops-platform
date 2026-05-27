@@ -1,180 +1,227 @@
 <template>
   <div class="ai-page">
-    <!-- 顶部标题栏 -->
-    <div class="ai-header">
-      <div class="ai-title">
-        <el-icon :size="22"><ChatDotRound /></el-icon>
-        <h2>AI 助手</h2>
-        <el-tag v-if="aiModel" type="info" size="small" effect="plain">{{ aiModel }}</el-tag>
-        <el-tag v-else type="warning" size="small" effect="plain">未配置</el-tag>
+    <!-- 左侧栏 -->
+    <aside class="ai-sidebar">
+      <div class="sidebar-header">
+        <el-input
+          v-model="searchText"
+          placeholder="搜索对话..."
+          size="small"
+          clearable
+          :prefix-icon="Search"
+        />
+        <el-button type="primary" size="small" @click="handleNewChat">
+          <el-icon><Plus /></el-icon> 新对话
+        </el-button>
       </div>
-      <el-button text @click="handleClear" :disabled="!messages.length">
-        <el-icon><Delete /></el-icon> 清空对话
-      </el-button>
-    </div>
-
-    <!-- 对话区域 -->
-    <div class="ai-chat" ref="chatRef">
-      <!-- 欢迎消息 -->
-      <div v-if="!messages.length" class="ai-welcome">
-        <div class="welcome-icon">
-          <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
+      <div class="conversation-list">
+        <div
+          v-for="conv in filteredConversations"
+          :key="conv.id"
+          class="conv-item"
+          :class="{ active: currentConvId === conv.id }"
+          @click="handleSelectConversation(conv.id)"
+        >
+          <div class="conv-title">{{ conv.title }}</div>
+          <div class="conv-time">{{ formatTime(conv.updated_at) }}</div>
+          <el-icon class="conv-delete" @click.stop="handleDeleteConversation(conv.id)">
+            <Delete />
+          </el-icon>
         </div>
-        <h3>你好，我是 AI 助手</h3>
-        <p>我可以帮你查询服务器状态、执行巡检、在服务器上执行命令等。也可以随便聊聊。</p>
-        <div class="quick-actions">
-          <div v-for="q in quickQuestions" :key="q" class="quick-item" @click="handleQuickAsk(q)">
-            {{ q }}
-          </div>
+        <div v-if="!filteredConversations.length" class="conv-empty">
+          {{ searchText ? '没有匹配的对话' : '暂无对话' }}
         </div>
       </div>
+    </aside>
 
-      <!-- 消息列表 -->
-      <div v-for="(msg, idx) in messages" :key="idx" class="msg-row" :class="msg.role">
-        <!-- 用户消息 -->
-        <template v-if="msg.role === 'user'">
-          <div class="msg-body user-body">
-            <div class="msg-content user-content">{{ msg.content }}</div>
-            <div class="msg-time">{{ msg.time }}</div>
-          </div>
-          <div class="msg-avatar user-avatar">
-            <el-icon :size="18"><User /></el-icon>
-          </div>
-        </template>
+    <!-- 右侧聊天区 -->
+    <main class="ai-main">
+      <!-- 顶部栏 -->
+      <header class="ai-header">
+        <div class="header-left">
+          <el-icon :size="18"><Monitor /></el-icon>
+          <span class="header-title">AI 助手</span>
+          <el-tag v-if="aiModel" type="info" size="small" effect="plain">{{ aiModel }}</el-tag>
+          <el-tag v-else type="warning" size="small" effect="plain">未配置</el-tag>
+        </div>
+      </header>
 
-        <!-- 助手消息 -->
-        <template v-else>
-          <div class="msg-avatar assistant-avatar">
-            <el-icon :size="18"><Monitor /></el-icon>
+      <!-- 消息区域 -->
+      <div class="ai-messages" ref="messagesRef">
+        <!-- 欢迎页 -->
+        <div v-if="!displayMessages.length" class="ai-welcome">
+          <el-icon :size="48" color="#409eff"><ChatDotRound /></el-icon>
+          <h3>你好，我是 AI 助手</h3>
+          <p>我可以帮你查询服务器状态、执行巡检、在服务器上执行命令等。也可以随便聊聊。</p>
+          <div class="quick-actions">
+            <div v-for="q in quickQuestions" :key="q" class="quick-item" @click="handleQuickAsk(q)">
+              {{ q }}
+            </div>
           </div>
-          <div class="msg-body assistant-body">
-            <!-- 工具执行中 -->
-            <div v-if="msg.type === 'tool_start'" class="tool-card tool-running">
-              <div class="tool-card-header">
+        </div>
+
+        <!-- 消息列表 -->
+        <template v-for="(msg, idx) in displayMessages" :key="idx">
+          <!-- 用户消息 -->
+          <div v-if="msg.type === 'user'" class="msg-row user">
+            <div class="msg-meta">
+              <div class="msg-avatar user-avatar">U</div>
+              <span class="msg-role">你</span>
+              <span class="msg-time">{{ msg.time }}</span>
+            </div>
+            <div class="msg-bubble user-bubble">{{ msg.content }}</div>
+          </div>
+
+          <!-- 工具执行中 -->
+          <div v-else-if="msg.type === 'tool_start'" class="msg-row assistant">
+            <div class="msg-meta">
+              <div class="msg-avatar assistant-avatar">A</div>
+              <span class="msg-role assistant-role">AI</span>
+            </div>
+            <div class="tool-panel tool-running">
+              <div class="tool-header">
                 <el-icon class="is-loading"><Loading /></el-icon>
-                <span>执行中: {{ toolDisplayName(msg.tool) }}</span>
+                <span class="tool-name">{{ toolDisplayName(msg.tool) }}</span>
+                <span class="tool-args">{{ formatArgs(msg.args) }}</span>
               </div>
             </div>
+          </div>
 
-            <!-- 工具执行结果（折叠） -->
-            <div v-if="msg.type === 'tool_result'" class="tool-card tool-done">
+          <!-- 工具结果（折叠） -->
+          <div v-else-if="msg.type === 'tool_result'" class="msg-row assistant">
+            <div class="msg-meta">
+              <div class="msg-avatar assistant-avatar">A</div>
+              <span class="msg-role assistant-role">AI</span>
+            </div>
+            <div class="tool-panel tool-done">
               <details>
-                <summary class="tool-card-header tool-card-summary">
+                <summary class="tool-header">
                   <el-icon color="#67c23a"><CircleCheckFilled /></el-icon>
-                  <span>{{ toolDisplayName(msg.tool) }} 完成</span>
+                  <span class="tool-name">{{ toolDisplayName(msg.tool) }}</span>
+                  <span class="tool-time" v-if="msg.elapsed">{{ msg.elapsed }}ms</span>
                   <el-icon class="expand-icon"><ArrowRight /></el-icon>
                 </summary>
-                <div class="tool-card-body" v-html="renderMarkdown(msg.result || '')" />
+                <div class="tool-body">
+                  <div v-if="msg.args" class="tool-section">
+                    <div class="tool-label">参数:</div>
+                    <div class="tool-code">{{ formatArgs(msg.args) }}</div>
+                  </div>
+                  <div class="tool-section">
+                    <div class="tool-label">结果:</div>
+                    <div class="tool-code" v-html="renderMarkdown(msg.result || '')" />
+                  </div>
+                </div>
               </details>
             </div>
+          </div>
 
-            <!-- 写操作确认 -->
-            <div v-if="msg.type === 'tool_confirm'" class="tool-card tool-confirm">
-              <div class="tool-card-header">
+          <!-- 写操作确认 -->
+          <div v-else-if="msg.type === 'tool_confirm'" class="msg-row assistant">
+            <div class="msg-meta">
+              <div class="msg-avatar assistant-avatar">A</div>
+              <span class="msg-role assistant-role">AI</span>
+            </div>
+            <div class="tool-panel tool-confirm">
+              <div class="tool-header">
                 <el-icon color="#e6a23c"><WarningFilled /></el-icon>
-                <span>需要确认: {{ toolDisplayName(msg.tool) }}</span>
+                <span class="tool-name">{{ toolDisplayName(msg.tool) }} — 需要确认</span>
               </div>
-              <div class="tool-card-body">
+              <div class="tool-body">
                 <pre class="confirm-desc">{{ msg.description }}</pre>
               </div>
-              <div class="tool-card-actions">
+              <div class="tool-actions">
                 <el-button size="small" @click="handleReject(msg)">拒绝</el-button>
                 <el-button size="small" type="primary" :loading="confirmLoading" @click="handleConfirm(msg)">
                   确认执行
                 </el-button>
               </div>
             </div>
+          </div>
 
-            <!-- 文本消息 -->
-            <div v-if="msg.content && msg.type === 'text'" class="msg-content assistant-content markdown-body" v-html="renderMarkdown(msg.content)" />
-            <div v-if="msg.type === 'text'" class="msg-time">{{ msg.time }}</div>
+          <!-- AI 文本回复 -->
+          <div v-else-if="msg.type === 'text'" class="msg-row assistant">
+            <div class="msg-meta">
+              <div class="msg-avatar assistant-avatar">A</div>
+              <span class="msg-role assistant-role">AI</span>
+              <span class="msg-time">{{ msg.time }}</span>
+            </div>
+            <div class="msg-text markdown-body" v-html="renderMarkdown(msg.content || '')" />
           </div>
         </template>
-      </div>
 
-      <!-- 加载中 -->
-      <div v-if="loading" class="msg-row assistant">
-        <div class="msg-avatar assistant-avatar">
-          <el-icon :size="18"><Monitor /></el-icon>
-        </div>
-        <div class="msg-body assistant-body">
-          <div class="typing-indicator">
-            <span /><span /><span />
+        <!-- 加载中 -->
+        <div v-if="loading" class="msg-row assistant">
+          <div class="msg-meta">
+            <div class="msg-avatar assistant-avatar">A</div>
+            <span class="msg-role assistant-role">AI</span>
           </div>
+          <div class="typing-indicator"><span /><span /><span /></div>
         </div>
       </div>
-    </div>
 
-    <!-- 输入区域 -->
-    <div class="ai-input">
-      <div class="input-wrap">
-        <el-input
-          v-model="inputText"
-          type="textarea"
-          :rows="1"
-          :autosize="{ minRows: 1, maxRows: 4 }"
-          placeholder="输入消息…（Shift+Enter 换行）"
-          resize="none"
-          @keydown="handleKeydown"
-        />
-        <el-button
-          type="primary"
-          :icon="Promotion"
-          :loading="loading"
-          :disabled="!inputText.trim()"
-          circle
-          @click="handleSend"
-        />
+      <!-- 输入区 -->
+      <div class="ai-input">
+        <div class="input-wrap">
+          <el-input
+            v-model="inputText"
+            type="textarea"
+            :rows="1"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            placeholder="输入消息... (Shift+Enter 换行)"
+            resize="none"
+            @keydown="handleKeydown"
+          />
+          <el-button
+            type="primary"
+            :icon="Promotion"
+            :loading="loading"
+            :disabled="!inputText.trim()"
+            circle
+            @click="handleSend"
+          />
+        </div>
+        <div class="input-tip">基于大语言模型，回答仅供参考</div>
       </div>
-      <div class="input-tip">
-        基于大语言模型，回答仅供参考，请以实际系统数据为准
-      </div>
-    </div>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import {
-  Promotion,
-  Delete,
-  Loading,
-  WarningFilled,
-  CircleCheckFilled,
-  ChatDotRound,
-  User,
-  Monitor,
-  ArrowRight,
+  Promotion, Delete, Loading, WarningFilled, CircleCheckFilled,
+  ChatDotRound, Monitor, ArrowRight, Search, Plus,
 } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
-import 'highlight.js/styles/github-dark.css'
+import 'highlight.js/styles/github.css'
 import {
-  sendAiMessageStream,
-  confirmAiActionStream,
-  rejectAiActionStream,
-  getAiInfo,
-  type SSEEvent,
+  getAiInfo, getConversations, getMessages, deleteConversation,
+  sendAiMessageStream, confirmAiActionStream, rejectAiActionStream,
+  type SSEEvent, type Conversation, type ChatMessage,
 } from '@/api/ai'
 
-interface Message {
-  role: 'user' | 'assistant'
+interface DisplayMessage {
+  type: 'user' | 'text' | 'tool_start' | 'tool_result' | 'tool_confirm'
   content?: string
-  time: string
-  type?: 'text' | 'tool_start' | 'tool_result' | 'tool_confirm'
   tool?: string
+  args?: Record<string, unknown>
   result?: string
   description?: string
   pending_id?: string
-  args?: Record<string, unknown>
+  time?: string
+  elapsed?: number
 }
 
-const messages = ref<Message[]>([])
+const searchText = ref('')
+const conversations = ref<Conversation[]>([])
+const currentConvId = ref<number | null>(null)
+const displayMessages = ref<DisplayMessage[]>([])
 const inputText = ref('')
 const loading = ref(false)
 const confirmLoading = ref(false)
-const chatRef = ref<HTMLElement>()
-const conversationId = ref('')
+const messagesRef = ref<HTMLElement>()
 const aiModel = ref('')
 
 const quickQuestions = [
@@ -184,10 +231,14 @@ const quickQuestions = [
   '你是什么模型？',
 ]
 
-// 配置 marked
-const renderer = new marked.Renderer()
+const filteredConversations = computed(() => {
+  if (!searchText.value) return conversations.value
+  const q = searchText.value.toLowerCase()
+  return conversations.value.filter(c => c.title.toLowerCase().includes(q))
+})
 
-// 代码块高亮
+// Markdown 渲染
+const renderer = new marked.Renderer()
 renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
   let highlighted: string
   if (lang && hljs.getLanguage(lang)) {
@@ -197,28 +248,18 @@ renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
   }
   return `<pre><code class="hljs${lang ? ` language-${lang}` : ''}">${highlighted}</code></pre>`
 }
-
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  renderer,
-})
+marked.setOptions({ breaks: true, gfm: true, renderer })
 
 function renderMarkdown(text: string): string {
   return marked.parse(text) as string
 }
 
 const TOOL_NAMES: Record<string, string> = {
-  query_assets: '查询服务器',
-  query_host_metrics: '查询主机指标',
-  query_alerts: '查询告警',
-  query_containers: '查询容器',
-  query_k8s: '查询 K8s 集群',
-  query_tickets: '查询工单',
-  get_patrol_reports: '查询巡检报告',
-  execute_command: '执行命令',
-  run_patrol: '执行巡检',
-  create_ticket: '创建工单',
+  query_assets: '查询服务器', query_host_metrics: '查询主机指标',
+  query_alerts: '查询告警', query_containers: '查询容器',
+  query_k8s: '查询 K8s 集群', query_tickets: '查询工单',
+  get_patrol_reports: '查询巡检报告', execute_command: '执行命令',
+  run_patrol: '执行巡检', create_ticket: '创建工单',
 }
 
 function toolDisplayName(tool?: string): string {
@@ -227,9 +268,18 @@ function toolDisplayName(tool?: string): string {
 
 function formatArgs(args?: Record<string, unknown>): string {
   if (!args) return ''
-  return Object.entries(args)
-    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-    .join('  |  ')
+  return Object.entries(args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  |  ')
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
+  return d.toLocaleDateString('zh-CN')
 }
 
 function now(): string {
@@ -238,147 +288,62 @@ function now(): string {
 
 function scrollToBottom() {
   nextTick(() => {
-    if (chatRef.value) {
-      chatRef.value.scrollTop = chatRef.value.scrollHeight
-    }
+    if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
   })
 }
 
-async function sendMessage(text: string) {
-  if (!text.trim() || loading.value) return
-
-  messages.value.push({ role: 'user', content: text, time: now(), type: 'text' })
-  scrollToBottom()
-
-  loading.value = true
-  const assistantMsg: Message = { role: 'assistant', content: '', time: now(), type: 'text' }
-  messages.value.push(assistantMsg)
-
+async function loadConversations() {
   try {
-    for await (const event of sendAiMessageStream(text, conversationId.value || undefined)) {
-      handleSSEEvent(event, assistantMsg)
-    }
-  } catch (e: any) {
-    assistantMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
-  } finally {
-    loading.value = false
-    scrollToBottom()
-  }
+    conversations.value = await getConversations()
+  } catch { /* ignore */ }
 }
 
-function handleSSEEvent(event: SSEEvent, assistantMsg: Message) {
-  switch (event.type) {
-    case 'text':
-      assistantMsg.content = (assistantMsg.content || '') + event.content
-      scrollToBottom()
-      break
-
-    case 'tool_start':
-      messages.value.push({
-        role: 'assistant',
-        time: now(),
-        type: 'tool_start',
-        tool: event.tool,
-        args: event.args,
-      })
-      scrollToBottom()
-      break
-
-    case 'tool_result': {
-      // 移除对应的 tool_start 卡片
-      const startIdx = messages.value.findIndex(
-        m => m.type === 'tool_start' && m.tool === event.tool,
-      )
-      if (startIdx !== -1) messages.value.splice(startIdx, 1)
-      messages.value.push({
-        role: 'assistant',
-        time: now(),
-        type: 'tool_result',
-        tool: event.tool,
-        result: event.result,
-      })
-      scrollToBottom()
-      break
-    }
-
-    case 'tool_confirm':
-      messages.value.push({
-        role: 'assistant',
-        time: now(),
-        type: 'tool_confirm',
-        tool: event.tool,
-        description: event.description,
-        pending_id: event.pending_id,
-        args: event.args,
-      })
-      scrollToBottom()
-      break
-
-    case 'error':
-      assistantMsg.content = (assistantMsg.content || '') + '\n\n' + event.content
-      scrollToBottom()
-      break
-
-    case 'done':
-      if (event.conversation_id) {
-        conversationId.value = event.conversation_id
-      }
-      break
-  }
-}
-
-async function handleConfirm(msg: Message) {
-  if (!msg.pending_id || !conversationId.value) return
-
-  confirmLoading.value = true
-  const assistantMsg: Message = { role: 'assistant', content: '', time: now(), type: 'text' }
-  messages.value.push(assistantMsg)
-
-  // 移除确认卡片
-  const idx = messages.value.indexOf(msg)
-  if (idx !== -1) messages.value.splice(idx, 1)
-
+async function loadMessages(convId: number) {
   try {
-    for await (const event of confirmAiActionStream(msg.pending_id, conversationId.value)) {
-      handleSSEEvent(event, assistantMsg)
-    }
-  } catch (e: any) {
-    assistantMsg.content = '操作失败：' + (e.message || '服务暂时不可用')
-  } finally {
-    confirmLoading.value = false
+    const msgs = await getMessages(convId)
+    displayMessages.value = msgs
+      .filter(m => m.role !== 'tool')
+      .map(m => {
+        if (m.role === 'user') {
+          return { type: 'user' as const, content: m.content || '', time: formatTime(m.created_at) }
+        }
+        return { type: 'text' as const, content: m.content || '', time: formatTime(m.created_at) }
+      })
     scrollToBottom()
-  }
+  } catch { /* ignore */ }
 }
 
-async function handleReject(msg: Message) {
-  if (!msg.pending_id || !conversationId.value) return
+function handleNewChat() {
+  currentConvId.value = null
+  displayMessages.value = []
+}
 
-  // 移除确认卡片
-  const idx = messages.value.indexOf(msg)
-  if (idx !== -1) messages.value.splice(idx, 1)
+async function handleSelectConversation(id: number) {
+  currentConvId.value = id
+  await loadMessages(id)
+}
 
-  const assistantMsg: Message = { role: 'assistant', content: '', time: now(), type: 'text' }
-  messages.value.push(assistantMsg)
-
+async function handleDeleteConversation(id: number) {
   try {
-    for await (const event of rejectAiActionStream(msg.pending_id, conversationId.value)) {
-      handleSSEEvent(event, assistantMsg)
+    await ElMessageBox.confirm('确定删除这个对话？', '提示', { type: 'warning' })
+    await deleteConversation(id)
+    conversations.value = conversations.value.filter(c => c.id !== id)
+    if (currentConvId.value === id) {
+      currentConvId.value = null
+      displayMessages.value = []
     }
-  } catch (e: any) {
-    assistantMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
-  } finally {
-    scrollToBottom()
-  }
+  } catch { /* cancelled */ }
 }
 
-function handleSend() {
+async function handleSend() {
   const text = inputText.value.trim()
+  if (!text || loading.value) return
   inputText.value = ''
-  sendMessage(text)
+  await sendMessage(text)
 }
 
-function handleQuickAsk(question: string) {
-  sendMessage(question)
+function handleQuickAsk(q: string) {
+  sendMessage(q)
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -388,9 +353,147 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-function handleClear() {
-  messages.value = []
-  conversationId.value = ''
+async function sendMessage(text: string) {
+  displayMessages.value.push({ type: 'user', content: text, time: now() })
+  scrollToBottom()
+
+  loading.value = true
+  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
+  let textMsgPushed = false
+  const toolStartTime: Record<string, number> = {}
+
+  try {
+    for await (const event of sendAiMessageStream(text, currentConvId.value || undefined)) {
+      handleEvent(event, textMsg, () => {
+        if (!textMsgPushed) {
+          displayMessages.value.push(textMsg)
+          textMsgPushed = true
+        }
+      }, toolStartTime)
+    }
+    if (!textMsgPushed) {
+      displayMessages.value.push(textMsg)
+    }
+    await loadConversations()
+  } catch (e: any) {
+    textMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
+    if (!textMsgPushed) displayMessages.value.push(textMsg)
+  } finally {
+    loading.value = false
+    scrollToBottom()
+  }
+}
+
+function handleEvent(
+  event: SSEEvent,
+  textMsg: DisplayMessage,
+  ensureTextMsg: () => void,
+  toolStartTime: Record<string, number>,
+) {
+  switch (event.type) {
+    case 'text':
+      ensureTextMsg()
+      textMsg.content = (textMsg.content || '') + event.content
+      scrollToBottom()
+      break
+    case 'tool_start':
+      toolStartTime[event.tool || ''] = Date.now()
+      displayMessages.value.push({ type: 'tool_start', tool: event.tool, args: event.args })
+      scrollToBottom()
+      break
+    case 'tool_result': {
+      const startIdx = displayMessages.value.findIndex(
+        m => m.type === 'tool_start' && m.tool === event.tool,
+      )
+      if (startIdx !== -1) displayMessages.value.splice(startIdx, 1)
+      const elapsed = toolStartTime[event.tool || '']
+        ? Date.now() - toolStartTime[event.tool || '']
+        : undefined
+      displayMessages.value.push({
+        type: 'tool_result', tool: event.tool, result: event.result,
+        args: event.args, elapsed,
+      })
+      scrollToBottom()
+      break
+    }
+    case 'tool_confirm':
+      displayMessages.value.push({
+        type: 'tool_confirm', tool: event.tool,
+        description: event.description, pending_id: event.pending_id,
+        args: event.args,
+      })
+      scrollToBottom()
+      break
+    case 'error':
+      ensureTextMsg()
+      textMsg.content = (textMsg.content || '') + '\n\n' + event.content
+      scrollToBottom()
+      break
+    case 'done':
+      if (event.conversation_id && !currentConvId.value) {
+        currentConvId.value = event.conversation_id
+      }
+      break
+  }
+}
+
+async function handleConfirm(msg: DisplayMessage) {
+  if (!msg.pending_id || !currentConvId.value) return
+  confirmLoading.value = true
+
+  const idx = displayMessages.value.indexOf(msg)
+  if (idx !== -1) displayMessages.value.splice(idx, 1)
+
+  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
+  let textMsgPushed = false
+  const toolStartTime: Record<string, number> = {}
+
+  try {
+    for await (const event of confirmAiActionStream(msg.pending_id, currentConvId.value)) {
+      handleEvent(event, textMsg, () => {
+        if (!textMsgPushed) {
+          displayMessages.value.push(textMsg)
+          textMsgPushed = true
+        }
+      }, toolStartTime)
+    }
+    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    await loadConversations()
+  } catch (e: any) {
+    textMsg.content = '操作失败：' + (e.message || '服务暂时不可用')
+    if (!textMsgPushed) displayMessages.value.push(textMsg)
+  } finally {
+    confirmLoading.value = false
+    scrollToBottom()
+  }
+}
+
+async function handleReject(msg: DisplayMessage) {
+  if (!msg.pending_id || !currentConvId.value) return
+
+  const idx = displayMessages.value.indexOf(msg)
+  if (idx !== -1) displayMessages.value.splice(idx, 1)
+
+  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
+  let textMsgPushed = false
+  const toolStartTime: Record<string, number> = {}
+
+  try {
+    for await (const event of rejectAiActionStream(msg.pending_id, currentConvId.value)) {
+      handleEvent(event, textMsg, () => {
+        if (!textMsgPushed) {
+          displayMessages.value.push(textMsg)
+          textMsgPushed = true
+        }
+      }, toolStartTime)
+    }
+    if (!textMsgPushed) displayMessages.value.push(textMsg)
+  } catch (e: any) {
+    textMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
+    if (!textMsgPushed) displayMessages.value.push(textMsg)
+  } finally {
+    scrollToBottom()
+  }
 }
 
 onMounted(async () => {
@@ -399,43 +502,127 @@ onMounted(async () => {
     const info = await getAiInfo()
     aiModel.value = info.configured ? info.model : ''
   } catch { /* ignore */ }
+  await loadConversations()
 })
 </script>
 
 <style lang="scss" scoped>
 .ai-page {
   display: flex;
-  flex-direction: column;
   height: calc(100vh - 56px);
-  background: #f5f7fa;
+  background: #fff;
 }
 
-// ── Header ──
-.ai-header {
+// ── 左侧栏 ──
+.ai-sidebar {
+  width: 220px;
+  background: #f8f9fa;
+  border-right: 1px solid #e4e7ed;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  background: #fff;
-  border-bottom: 1px solid var(--border-color);
+  flex-direction: column;
   flex-shrink: 0;
+}
 
-  .ai-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    h2 { margin: 0; font-size: 16px; }
+.sidebar-header {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conv-item {
+  padding: 10px 12px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+
+  &:hover {
+    background: #ecf5ff;
+    .conv-delete { opacity: 1; }
+  }
+
+  &.active {
+    background: #ecf5ff;
+    border-left-color: #409eff;
+    .conv-title { color: #303133; font-weight: 500; }
   }
 }
 
-// ── Chat ──
-.ai-chat {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 20px;
+.conv-title {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 20px;
 }
 
-// ── Welcome ──
+.conv-time {
+  font-size: 11px;
+  color: #c0c4cc;
+  margin-top: 2px;
+}
+
+.conv-delete {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  color: #909399;
+  font-size: 14px;
+  transition: opacity 0.15s;
+}
+
+.conv-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+// ── 右侧主区域 ──
+.ai-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ai-header {
+  padding: 10px 20px;
+  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+// ── 消息区域 ──
+.ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+// ── 欢迎页 ──
 .ai-welcome {
   display: flex;
   flex-direction: column;
@@ -444,295 +631,235 @@ onMounted(async () => {
   height: 100%;
   text-align: center;
 
-  .welcome-icon { margin-bottom: 16px; }
-  h3 { font-size: 20px; margin: 0 0 8px; color: #303133; }
-  p { color: #909399; margin: 0 0 24px; max-width: 420px; line-height: 1.6; }
+  h3 { margin: 12px 0 4px; font-size: 18px; color: #303133; }
+  p { color: #909399; margin: 0 0 20px; max-width: 400px; line-height: 1.6; font-size: 13px; }
+}
 
-  .quick-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-    max-width: 500px;
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 460px;
+}
+
+.quick-item {
+  padding: 8px 16px;
+  background: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover { border-color: #409eff; color: #409eff; }
+}
+
+// ── 消息行 ──
+.msg-row {
+  margin-bottom: 16px;
+
+  &.user {
+    .msg-bubble { margin-left: 28px; }
   }
 
-  .quick-item {
-    padding: 8px 16px;
-    background: #fff;
-    border: 1px solid #dcdfe6;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-      border-color: #409eff;
-      color: #409eff;
-    }
+  &.assistant {
+    .msg-text, .tool-panel { margin-left: 28px; }
   }
 }
 
-// ── Messages ──
-.msg-row {
+.msg-meta {
   display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-  max-width: 860px;
-
-  &.user {
-    margin-left: auto;
-    flex-direction: row-reverse;
-  }
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .msg-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
   flex-shrink: 0;
 
-  &.user-avatar {
-    background: #409eff;
-    color: #fff;
-  }
-
-  &.assistant-avatar {
-    background: #f0f2f5;
-    color: #606266;
-  }
+  &.user-avatar { background: #409eff; color: #fff; }
+  &.assistant-avatar { background: #67c23a; color: #fff; }
 }
 
-.msg-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 75%;
-  min-width: 0;
-
-  &.user-body { align-items: flex-end; }
-  &.assistant-body { align-items: flex-start; }
-}
-
-.msg-content {
-  padding: 10px 14px;
-  font-size: 14px;
-  line-height: 1.7;
-  word-break: break-word;
-
-  &.user-content {
-    background: #409eff;
-    color: #fff;
-    border-radius: 12px 12px 2px 12px;
-  }
-
-  &.assistant-content {
-    background: #fff;
-    color: #303133;
-    border-radius: 12px 12px 12px 2px;
-    border: 1px solid #e4e7ed;
-    white-space: pre-wrap;
-    font-family: inherit;
-  }
+.msg-role {
+  font-size: 11px;
+  color: #409eff;
+  &.assistant-role { color: #67c23a; }
 }
 
 .msg-time {
-  font-size: 11px;
+  font-size: 10px;
   color: #c0c4cc;
-  padding: 0 4px;
 }
 
-// ── Markdown in assistant messages ──
-.markdown-body {
-  :deep(h1), :deep(h2), :deep(h3) {
-    margin: 8px 0 4px;
-    font-size: 15px;
-    font-weight: 600;
-    white-space: normal;
-  }
-
-  :deep(p) {
-    margin: 4px 0;
-    white-space: normal;
-  }
-
-  :deep(ul), :deep(ol) {
-    margin: 4px 0;
-    padding-left: 20px;
-    white-space: normal;
-  }
-
-  :deep(li) {
-    margin: 2px 0;
-  }
-
-  :deep(code) {
-    background: rgba(0, 0, 0, 0.06);
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    white-space: normal;
-  }
-
-  :deep(pre) {
-    background: #1e1e1e;
-    border-radius: 8px;
-    overflow-x: auto;
-    margin: 8px 0;
-    white-space: pre;
-
-    code {
-      display: block;
-      padding: 12px 14px;
-      background: none;
-      color: #d4d4d4;
-      font-size: 13px;
-      line-height: 1.5;
-      white-space: pre;
-    }
-  }
-
-  :deep(blockquote) {
-    border-left: 3px solid #dcdfe6;
-    margin: 8px 0;
-    padding: 4px 12px;
-    color: #909399;
-    white-space: normal;
-  }
-
-  :deep(table) {
-    border-collapse: collapse;
-    margin: 8px 0;
-    font-size: 13px;
-    white-space: normal;
-
-    th, td {
-      border: 1px solid #e4e7ed;
-      padding: 6px 10px;
-    }
-
-    th {
-      background: #f5f7fa;
-      font-weight: 600;
-    }
-  }
-
-  :deep(strong) { font-weight: 600; }
-
-  :deep(hr) {
-    border: none;
-    border-top: 1px solid #e4e7ed;
-    margin: 8px 0;
-  }
-}
-
-// ── Tool cards ──
-.tool-card {
-  border-radius: 10px;
-  overflow: hidden;
+// ── 用户消息气泡 ──
+.msg-bubble {
+  padding: 8px 14px;
   font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+
+  &.user-bubble {
+    background: #ecf5ff;
+    border-left: 3px solid #409eff;
+    border-radius: 0 8px 8px 0;
+    color: #303133;
+  }
+}
+
+// ── AI 文本消息 ──
+.msg-text {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #303133;
+}
+
+// ── 工具面板 ──
+.tool-panel {
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
   max-width: 100%;
 
-  .tool-card-header {
+  .tool-header {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    font-weight: 500;
   }
 
-  .tool-card-body {
-    padding: 10px 12px;
+  .tool-name { font-weight: 500; }
+  .tool-args { color: #909399; font-family: monospace; font-size: 11px; }
+  .tool-time { color: #c0c4cc; font-size: 10px; margin-left: auto; }
 
-    :deep(pre) {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-all;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    :deep(code) {
-      background: rgba(0, 0, 0, 0.06);
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 12px;
-    }
-
-    :deep(pre > code) {
-      background: none;
-      padding: 0;
-    }
-  }
-
-  .tool-card-args {
-    padding: 0 12px 8px;
-    code {
-      font-size: 12px;
-      color: #909399;
-    }
-  }
-
-  .tool-card-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
+  .tool-body {
     padding: 8px 12px;
     border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .tool-section { margin-bottom: 6px; }
+  .tool-label { font-size: 10px; color: #909399; margin-bottom: 2px; }
+  .tool-code {
+    font-family: monospace;
+    font-size: 11px;
+    color: #606266;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .tool-actions {
+    padding: 6px 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
   }
 
   &.tool-running {
     background: #f0f9ff;
     border: 1px solid #bae6fd;
-    .tool-card-header { color: #0369a1; }
+    .tool-header { color: #0369a1; }
   }
 
   &.tool-done {
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
-    .tool-card-header { color: #15803d; }
+    .tool-header { color: #15803d; }
 
     details {
-      &[open] {
-        .expand-icon { transform: rotate(90deg); }
-      }
+      &[open] .expand-icon { transform: rotate(90deg); }
     }
 
-    .tool-card-summary {
+    summary {
       cursor: pointer;
-      user-select: none;
       list-style: none;
       &::-webkit-details-marker { display: none; }
+    }
 
-      .expand-icon {
-        margin-left: auto;
-        font-size: 12px;
-        transition: transform 0.2s;
-      }
+    .expand-icon {
+      margin-left: auto;
+      font-size: 12px;
+      transition: transform 0.2s;
     }
   }
 
   &.tool-confirm {
-    background: #fffbeb;
-    border: 1px solid #fcd34d;
-    .tool-card-header { color: #92400e; }
+    background: #fdf6ec;
+    border: 1px solid #f5dab1;
+    .tool-header { color: #92400e; }
+  }
 
-    .confirm-desc {
-      margin: 0;
-      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-      white-space: pre-wrap;
-      word-break: break-all;
-      font-size: 12px;
-      line-height: 1.5;
-      color: #78350f;
-    }
+  .confirm-desc {
+    margin: 0;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #78350f;
   }
 }
 
-// ── Typing indicator ──
+// ── Markdown ──
+.markdown-body {
+  :deep(h1), :deep(h2), :deep(h3) {
+    margin: 8px 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  :deep(p) { margin: 4px 0; }
+  :deep(ul), :deep(ol) { margin: 4px 0; padding-left: 20px; }
+  :deep(li) { margin: 2px 0; }
+  :deep(code) {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  :deep(pre) {
+    background: #1e1e1e;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 8px 0;
+    code {
+      display: block;
+      padding: 12px 14px;
+      background: none;
+      color: #d4d4d4;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+  }
+  :deep(blockquote) {
+    border-left: 3px solid #dcdfe6;
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: #909399;
+  }
+  :deep(table) {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+    th, td { border: 1px solid #e4e7ed; padding: 6px 10px; }
+    th { background: #f5f7fa; font-weight: 600; }
+  }
+  :deep(strong) { font-weight: 600; }
+  :deep(hr) { border: none; border-top: 1px solid #e4e7ed; margin: 8px 0; }
+}
+
+// ── 打字指示器 ──
 .typing-indicator {
   display: flex;
   gap: 4px;
@@ -744,7 +871,6 @@ onMounted(async () => {
     border-radius: 50%;
     background: #c0c4cc;
     animation: dot-bounce 1.4s ease-in-out infinite;
-
     &:nth-child(2) { animation-delay: 0.2s; }
     &:nth-child(3) { animation-delay: 0.4s; }
   }
@@ -755,36 +881,33 @@ onMounted(async () => {
   40% { transform: scale(1); opacity: 1; }
 }
 
-// ── Input ──
+// ── 输入区 ──
 .ai-input {
   padding: 12px 20px 16px;
-  background: #fff;
   border-top: 1px solid #e4e7ed;
   flex-shrink: 0;
+}
 
-  .input-wrap {
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
+.input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
 
-    :deep(.el-textarea__inner) {
-      border-radius: 20px;
-      padding: 8px 16px;
-      resize: none;
-    }
-
-    .el-button {
-      flex-shrink: 0;
-      width: 40px;
-      height: 40px;
-    }
+  :deep(.el-textarea__inner) {
+    border-radius: 8px;
+    padding: 8px 14px;
+    resize: none;
   }
 
-  .input-tip {
-    text-align: center;
-    font-size: 11px;
-    color: #c0c4cc;
-    margin-top: 8px;
+  .el-button {
+    flex-shrink: 0;
   }
+}
+
+.input-tip {
+  font-size: 10px;
+  color: #c0c4cc;
+  margin-top: 4px;
+  text-align: center;
 }
 </style>
