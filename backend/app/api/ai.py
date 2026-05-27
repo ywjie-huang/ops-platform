@@ -235,6 +235,7 @@ async def api_chat(
                         "pending_id": pending_id,
                         "tool": tool_name,
                         "args": tool_args,
+                        "conversation_id": cid,
                         "description": f"{asset_info}操作: {tool_name}\n参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}",
                     })
                     db.commit()

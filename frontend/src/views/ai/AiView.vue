@@ -187,12 +187,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onActivated } from 'vue'
 import {
   Promotion, Delete, Loading, WarningFilled, CircleCheckFilled,
   ChatDotRound, Monitor, ArrowRight, Search, Plus,
 } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
@@ -417,6 +417,9 @@ function handleEvent(
       break
     }
     case 'tool_confirm':
+      if (event.conversation_id && !currentConvId.value) {
+        currentConvId.value = event.conversation_id
+      }
       displayMessages.value.push({
         type: 'tool_confirm', tool: event.tool,
         description: event.description, pending_id: event.pending_id,
@@ -496,7 +499,7 @@ async function handleReject(msg: DisplayMessage) {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   scrollToBottom()
   try {
     const info = await getAiInfo()

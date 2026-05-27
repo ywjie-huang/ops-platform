@@ -255,9 +255,9 @@ def handle_query_assets(db: Session, args: dict[str, Any]) -> str:
     if not assets:
         return "未找到匹配的资产。"
 
-    lines = [f"共找到 {len(assets)} 台资产：\n"]
+    lines = [f"共找到 {len(assets)} 台资产："]
     for a in assets[:20]:
-        lines.append(f"- ID:{a.id} {a.name} | {a.ip_address} | 状态:{a.status} | 类型:{a.asset_type or 'N/A'}")
+        lines.append(f"ID: {a.id}, 名称: {a.name}, IP: {a.ip_address}, 状态: {a.status}, 类型: {a.asset_type or 'N/A'}")
     if len(assets) > 20:
         lines.append(f"... 还有 {len(assets) - 20} 台未显示")
     return "\n".join(lines)
@@ -284,13 +284,9 @@ async def handle_query_host_metrics(db: Session, args: dict[str, Any]) -> str:
         return f"{asset.name} ({asset.ip_address}) 未采集到 Prometheus 指标，请检查 node_exporter 是否运行。"
 
     return (
-        f"**{asset.name}** ({asset.ip_address}) 实时指标：\n"
-        f"- CPU: {r['cpu']}%\n"
-        f"- 内存: {r['memory']}%\n"
-        f"- 磁盘: {r['disk']}%\n"
-        f"- 负载: {r['load']}\n"
-        f"- 网络入: {r['network_in']} Mbps\n"
-        f"- 网络出: {r['network_out']} Mbps"
+        f"{asset.name} ({asset.ip_address}) 实时指标：\n"
+        f"CPU: {r['cpu']}%, 内存: {r['memory']}%, 磁盘: {r['disk']}%, "
+        f"负载: {r['load']}, 网络入: {r['network_in']} Mbps, 网络出: {r['network_out']} Mbps"
     )
 
 
@@ -308,10 +304,9 @@ def handle_query_alerts(db: Session, args: dict[str, Any]) -> str:
     if not alerts:
         return "没有告警事件。"
 
-    lines = [f"最近 {len(alerts)} 条告警：\n"]
+    lines = [f"最近 {len(alerts)} 条告警："]
     for a in alerts:
-        emoji = {"critical": "🔴", "warning": "🟡", "info": "🔵"}.get(a.severity, "⚪")
-        lines.append(f"- {emoji} [{a.severity}] {a.alert_name} | {a.instance or 'N/A'} | {a.status}")
+        lines.append(f"[{a.severity}] {a.alert_name}, 实例: {a.instance or 'N/A'}, 状态: {a.status}")
     return "\n".join(lines)
 
 
@@ -327,9 +322,9 @@ def handle_query_containers(db: Session, args: dict[str, Any]) -> str:
     if not containers:
         return "没有找到容器。"
 
-    lines = [f"共 {len(containers)} 个容器：\n"]
+    lines = [f"共 {len(containers)} 个容器："]
     for c in containers[:20]:
-        lines.append(f"- {c.name} | {c.image} | {c.status} | CPU:{c.cpu_percent}% | 内存:{c.memory_usage}")
+        lines.append(f"名称: {c.name}, 镜像: {c.image}, 状态: {c.status}, CPU: {c.cpu_percent}%, 内存: {c.memory_usage}")
     if len(containers) > 20:
         lines.append(f"... 还有 {len(containers) - 20} 个未显示")
     return "\n".join(lines)
@@ -356,16 +351,16 @@ def handle_query_k8s(db: Session, args: dict[str, Any]) -> str:
     lines = []
     for c in clusters:
         if not c.agent_key:
-            lines.append(f"- {c.name}: 未配置 token，跳过")
+            lines.append(f"{c.name}: 未配置 token，跳过")
             continue
         info = get_cluster_info(c.api_endpoint or "", c.agent_key)
-        status = "✅ 正常" if info.get("ok") else "❌ 异常"
-        lines.append(f"**{c.name}** {status}")
+        status = "正常" if info.get("ok") else "异常"
+        lines.append(f"{c.name}: {status}")
         if info.get("nodes"):
             for n in info["nodes"][:5]:
-                lines.append(f"  - 节点 {n.get('name', '?')}: {n.get('status', '?')}")
+                lines.append(f"  节点 {n.get('name', '?')}: {n.get('status', '?')}")
         if info.get("pods_failed"):
-            lines.append(f"  - ⚠️ {info['pods_failed']} 个 Pod 异常")
+            lines.append(f"  {info['pods_failed']} 个 Pod 异常")
     return "\n".join(lines)
 
 
@@ -383,9 +378,9 @@ def handle_query_tickets(db: Session, args: dict[str, Any]) -> str:
     if not tickets:
         return "没有工单记录。"
 
-    lines = [f"最近 {len(tickets)} 个工单：\n"]
+    lines = [f"最近 {len(tickets)} 个工单："]
     for t in tickets:
-        lines.append(f"- [{t.priority}] {t.title} | 状态:{t.status} | 负责人:{t.assignee or '未分配'}")
+        lines.append(f"[{t.priority}] {t.title}, 状态: {t.status}, 负责人: {t.assignee or '未分配'}")
     return "\n".join(lines)
 
 
@@ -399,11 +394,10 @@ def handle_get_patrol_reports(db: Session, args: dict[str, Any]) -> str:
     if not reports:
         return "暂无巡检报告。"
 
-    lines = [f"最近 {len(reports)} 份巡检报告：\n"]
+    lines = [f"最近 {len(reports)} 份巡检报告："]
     for r in reports:
-        emoji = {"normal": "✅", "warning": "⚠️", "critical": "🔴"}.get(r.status, "❓")
         time_str = r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "N/A"
-        lines.append(f"- {emoji} {r.title} | {r.status} | 正常:{r.normal_count} 警告:{r.warning_count} 严重:{r.critical_count} | {time_str}")
+        lines.append(f"{r.title}, 状态: {r.status}, 正常: {r.normal_count}, 警告: {r.warning_count}, 严重: {r.critical_count}, 时间: {time_str}")
     return "\n".join(lines)
 
 
@@ -447,15 +441,15 @@ def handle_execute_command(db: Session, args: dict[str, Any]) -> str:
         timeout=timeout,
     )
 
-    lines = [f"在 **{asset.name}** ({asset.ip_address}) 上执行: `{command}`\n"]
+    lines = [f"在 {asset.name} ({asset.ip_address}) 上执行: {command}"]
     if result["ok"]:
         lines.append(f"退出码: {result['exit_code']}")
         if result["stdout"]:
-            lines.append(f"**输出：**\n```\n{result['stdout'][:3000]}\n```")
+            lines.append(f"输出:\n{result['stdout'][:3000]}")
         if result["stderr"]:
-            lines.append(f"**错误输出：**\n```\n{result['stderr'][:1000]}\n```")
+            lines.append(f"错误输出:\n{result['stderr'][:1000]}")
     else:
-        lines.append(f"❌ 执行失败: {result['stderr']}")
+        lines.append(f"执行失败: {result['stderr']}")
 
     return "\n".join(lines)
 
@@ -467,12 +461,9 @@ async def handle_run_patrol(db: Session, args: dict[str, Any]) -> str:
     report = await run_patrol(db, operator="AI助手")
     db.commit()
 
-    emoji = {"normal": "✅", "warning": "⚠️", "critical": "🔴"}.get(report.status, "❓")
     return (
-        f"巡检完成！{emoji} 状态: {report.status}\n\n"
-        f"- 正常: {report.normal_count}\n"
-        f"- 警告: {report.warning_count}\n"
-        f"- 严重: {report.critical_count}\n\n"
+        f"巡检完成，状态: {report.status}\n"
+        f"正常: {report.normal_count}, 警告: {report.warning_count}, 严重: {report.critical_count}\n"
         f"报告 ID: {report.id}，可在巡检中心查看详情。"
     )
 
@@ -492,4 +483,4 @@ def handle_create_ticket(db: Session, args: dict[str, Any]) -> str:
     db.add(ticket)
     db.flush()
 
-    return f"工单已创建：#{ticket.id} {title}（优先级: {ticket.priority}）"
+    return f"工单已创建: #{ticket.id} {title}, 优先级: {ticket.priority}"
