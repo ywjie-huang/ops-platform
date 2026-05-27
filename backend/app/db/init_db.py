@@ -12,6 +12,7 @@ from app.models.alert import Alert
 from app.models.asset import Asset
 from app.models.rbac import Permission, Role
 from app.models.ticket import Ticket
+from app.models.conversation import Conversation, Message
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
