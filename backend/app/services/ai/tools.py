@@ -78,13 +78,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "query_containers",
-            "description": "查询 Docker 容器列表和状态。",
+            "description": "查询 Docker 容器列表和状态。可通过 host_id 或 host_ip 指定主机。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "host_id": {
                         "type": "integer",
                         "description": "Docker 主机 ID",
+                    },
+                    "host_ip": {
+                        "type": "string",
+                        "description": "Docker 主机 IP 地址（如 172.16.100.1），会自动查找对应主机",
                     },
                     "keyword": {
                         "type": "string",
@@ -312,11 +316,26 @@ def handle_query_alerts(db: Session, args: dict[str, Any]) -> str:
 
 def handle_query_containers(db: Session, args: dict[str, Any]) -> str:
     """查询 Docker 容器。"""
+    from app.models.container import ContainerCluster
     from app.services.docker_agent import list_docker_containers
 
     host_id = args.get("host_id")
     keyword = args.get("keyword", "")
     status = args.get("status", "")
+
+    # 支持通过 IP 查找主机
+    if not host_id and args.get("host_ip"):
+        from sqlalchemy import select as _select
+        cluster = db.scalars(
+            _select(ContainerCluster).where(
+                ContainerCluster.host_ip == args["host_ip"],
+                ContainerCluster.provider == "docker",
+            )
+        ).first()
+        if cluster:
+            host_id = cluster.id
+        else:
+            return f"未找到 IP 为 {args['host_ip']} 的 Docker 主机。"
 
     containers = list_docker_containers(db, host_id=host_id, keyword=keyword, status=status)
     if not containers:
