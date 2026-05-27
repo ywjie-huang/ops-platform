@@ -371,7 +371,7 @@ async function sendMessage(text: string) {
         }
       }, toolStartTime)
     }
-    if (!textMsgPushed) {
+    if (!textMsgPushed && textMsg.content) {
       displayMessages.value.push(textMsg)
     }
     await loadConversations()
@@ -460,7 +460,9 @@ async function handleConfirm(msg: DisplayMessage) {
         }
       }, toolStartTime)
     }
-    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    if (!textMsgPushed && textMsg.content) {
+      displayMessages.value.push(textMsg)
+    }
     await loadConversations()
   } catch (e: any) {
     textMsg.content = '操作失败：' + (e.message || '服务暂时不可用')
@@ -490,7 +492,9 @@ async function handleReject(msg: DisplayMessage) {
         }
       }, toolStartTime)
     }
-    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    if (!textMsgPushed && textMsg.content) {
+      displayMessages.value.push(textMsg)
+    }
   } catch (e: any) {
     textMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
     if (!textMsgPushed) displayMessages.value.push(textMsg)
