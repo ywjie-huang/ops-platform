@@ -1,6 +1,4 @@
-"""
-AI 运维助手 API — SSE 流式对话 + 工具调用 + 写操作确认。
-"""
+"""AI 运维助手 API — SSE 流式对话 + 工具调用 + 写操作确认。"""
 from __future__ import annotations
 
 import json
@@ -20,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["AI 助手"])
 
+
 def _build_system_prompt(model_name: str) -> str:
     return f"""你是 {model_name}，一个真实存在的大语言模型。你不是什么"运维助手"，不要编造身份。
 
@@ -29,7 +28,7 @@ def _build_system_prompt(model_name: str) -> str:
 - 不需要工具的问题直接回答，就像普通聊天一样
 
 当用户问你是什么模型、你是谁时，如实回答你是 {model_name}。
-回复使用中文，简洁明了。"""
+回复使用中文，简洁明了。工具返回的是原始数据，由你来决定如何组织和呈现给用户。"""
 
 
 @router.get("/info")
@@ -51,14 +50,77 @@ def api_ai_info(
     }
 
 
+@router.get("/conversations")
+def api_list_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
+):
+    """获取对话列表。"""
+    from app.services.ai.conversations import get_conversations
+
+    convs = get_conversations(db, user_id=current_user.id)
+    return {
+        "code": 0,
+        "data": [
+            {
+                "id": c.id,
+                "title": c.title,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            }
+            for c in convs
+        ],
+    }
+
+
+@router.get("/conversations/{conversation_id}/messages")
+def api_get_messages(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_api_user),
+):
+    """获取对话的消息列表。"""
+    from app.services.ai.conversations import get_messages
+
+    messages = get_messages(db, conversation_id)
+    return {
+        "code": 0,
+        "data": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "tool_calls": json.loads(m.tool_calls) if m.tool_calls else None,
+                "tool_call_id": m.tool_call_id,
+                "tool_name": m.tool_name,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in messages
+        ],
+    }
+
+
+@router.delete("/conversations/{conversation_id}")
+def api_delete_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_api_user),
+):
+    """删除对话。"""
+    from app.services.ai.conversations import delete_conversation
+
+    delete_conversation(db, conversation_id)
+    return {"code": 0, "msg": "已删除"}
+
+
 class ChatRequest(BaseModel):
     message: str
-    conversation_id: str = ""
+    conversation_id: int | None = None
 
 
 class ConfirmRequest(BaseModel):
     pending_id: str
-    conversation_id: str
+    conversation_id: int
 
 
 @router.post("/chat")
@@ -72,8 +134,9 @@ async def api_chat(
     from app.core.settings import get_llm_config
     from app.services.ai.conversations import (
         add_message,
+        build_llm_messages,
+        create_conversation,
         get_conversation,
-        new_conversation,
         store_pending_action,
     )
     from app.services.ai.dispatcher import dispatch_tool, is_readonly
@@ -86,24 +149,33 @@ async def api_chat(
             yield _sse_event({"type": "error", "content": "LLM 未配置，请在系统设置中配置 AI 模型。"})
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    # 初始化对话
-    cid = body.conversation_id or new_conversation()
-    history = get_conversation(cid)
+    # 获取或创建对话
+    if body.conversation_id:
+        conv = get_conversation(db, body.conversation_id)
+        if not conv:
+            async def error_stream():
+                yield _sse_event({"type": "error", "content": "对话不存在。"})
+            return StreamingResponse(error_stream(), media_type="text/event-stream")
+        cid = conv.id
+    else:
+        conv = create_conversation(db, user_id=current_user.id)
+        cid = conv.id
 
     # 追加用户消息
-    add_message(cid, {"role": "user", "content": body.message})
+    add_message(db, cid, "user", body.message)
+    db.commit()
 
     client = LLMClient(config["base_url"], config["api_key"], config["model"])
 
     async def event_stream():
-        # 循环处理（可能有多轮 tool call）
-        max_rounds = 10  # 防止无限循环
-        for round_idx in range(max_rounds):
-            # 每轮重新构建 messages，确保包含最新的工具结果
-            messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
-            # 检查客户端是否断开
+        max_rounds = 10
+        for _round in range(max_rounds):
             if await request.is_disconnected():
                 break
+
+            # 构建消息列表
+            history = build_llm_messages(db, cid)
+            messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
 
             full_text = ""
             tool_calls = []
@@ -113,10 +185,8 @@ async def api_chat(
                     if event["type"] == "text":
                         full_text += event["content"]
                         yield _sse_event({"type": "text", "content": event["content"]})
-
                     elif event["type"] == "tool_call":
                         tool_calls.append(event)
-
                     elif event["type"] == "done":
                         break
             except Exception as e:
@@ -124,23 +194,22 @@ async def api_chat(
                 yield _sse_event({"type": "error", "content": f"LLM 调用失败: {str(e)}"})
                 return
 
-            # 没有工具调用 — 对话结束
             if not tool_calls:
                 if full_text:
-                    add_message(cid, {"role": "assistant", "content": full_text})
+                    add_message(db, cid, "assistant", full_text)
+                    db.commit()
                 yield _sse_event({"type": "done", "conversation_id": cid})
                 return
 
-            # 有工具调用 — 处理每个 tool call
-            # 先把 assistant 的 tool_calls 消息加入历史
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_text or None, "tool_calls": []}
+            # 处理工具调用
+            assistant_tool_calls = []
             for tc in tool_calls:
-                assistant_msg["tool_calls"].append({
+                assistant_tool_calls.append({
                     "id": tc["id"],
                     "type": "function",
                     "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)},
                 })
-            add_message(cid, assistant_msg)
+            add_message(db, cid, "assistant", full_text or None, tool_calls=assistant_tool_calls)
 
             for tc in tool_calls:
                 tool_name = tc["name"]
@@ -148,14 +217,12 @@ async def api_chat(
                 tool_call_id = tc["id"]
 
                 if is_readonly(tool_name):
-                    # 只读 — 直接执行
                     yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
                     result = await dispatch_tool(db, tool_name, tool_args)
                     result_text = result.get("result", result.get("error", "执行失败"))
                     yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
-                    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": result_text})
+                    add_message(db, cid, "tool", result_text, tool_call_id=tool_call_id, tool_name=tool_name)
                 else:
-                    # 写操作 — 返回确认请求
                     pending_id = store_pending_action(cid, tool_name, tool_args, tool_call_id)
                     asset_info = ""
                     if tool_name == "execute_command" and "asset_id" in tool_args:
@@ -170,10 +237,10 @@ async def api_chat(
                         "args": tool_args,
                         "description": f"{asset_info}操作: {tool_name}\n参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}",
                     })
-                    # 暂停此轮，等用户确认后通过 /confirm 接口继续
+                    db.commit()
                     return
 
-            # 所有工具执行完毕，继续下一轮 LLM 调用
+            db.commit()
 
         yield _sse_event({"type": "done", "conversation_id": cid})
 
@@ -185,13 +252,13 @@ async def api_chat_confirm(
     body: ConfirmRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_api_user),
+    _: User = Depends(get_current_api_user),
 ):
     """确认执行写操作，继续 LLM 对话。"""
     from app.core.settings import get_llm_config
     from app.services.ai.conversations import (
         add_message,
-        get_conversation,
+        build_llm_messages,
         get_pending_action,
         remove_pending_action,
     )
@@ -212,22 +279,20 @@ async def api_chat_confirm(
 
     remove_pending_action(body.pending_id)
 
-    # 执行工具
     result = await dispatch_tool(db, tool_name, tool_args)
     result_text = result.get("result", result.get("error", "执行失败"))
 
-    # 把工具结果加入对话历史
-    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": result_text})
+    add_message(db, cid, "tool", result_text, tool_call_id=tool_call_id, tool_name=tool_name)
+    db.commit()
 
-    # 继续 LLM 对话
     config = get_llm_config(db)
     client = LLMClient(config["base_url"], config["api_key"], config["model"])
-    history = get_conversation(cid)
 
     async def event_stream():
         yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
         yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
 
+        history = build_llm_messages(db, cid)
         messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
         full_text = ""
 
@@ -244,7 +309,8 @@ async def api_chat_confirm(
             return
 
         if full_text:
-            add_message(cid, {"role": "assistant", "content": full_text})
+            add_message(db, cid, "assistant", full_text)
+            db.commit()
         yield _sse_event({"type": "done", "conversation_id": cid})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -254,13 +320,13 @@ async def api_chat_confirm(
 async def api_chat_reject(
     body: ConfirmRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_api_user),
+    _: User = Depends(get_current_api_user),
 ):
     """拒绝写操作，告知 LLM 用户拒绝了。"""
     from app.core.settings import get_llm_config
     from app.services.ai.conversations import (
         add_message,
-        get_conversation,
+        build_llm_messages,
         get_pending_action,
         remove_pending_action,
     )
@@ -277,14 +343,14 @@ async def api_chat_reject(
     tool_call_id = pending["tool_call_id"]
     remove_pending_action(body.pending_id)
 
-    # 告知 LLM 用户拒绝了
-    add_message(cid, {"role": "tool", "tool_call_id": tool_call_id, "content": "用户拒绝了该操作的执行。"})
+    add_message(db, cid, "tool", "用户拒绝了该操作的执行。", tool_call_id=tool_call_id)
+    db.commit()
 
     config = get_llm_config(db)
     client = LLMClient(config["base_url"], config["api_key"], config["model"])
-    history = get_conversation(cid)
 
     async def event_stream():
+        history = build_llm_messages(db, cid)
         messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
         full_text = ""
 
@@ -300,7 +366,8 @@ async def api_chat_reject(
             return
 
         if full_text:
-            add_message(cid, {"role": "assistant", "content": full_text})
+            add_message(db, cid, "assistant", full_text)
+            db.commit()
         yield _sse_event({"type": "done", "conversation_id": cid})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
