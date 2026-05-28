@@ -23,7 +23,7 @@
         </el-select>
       </div>
 
-      <el-table :data="filteredRules" stripe v-loading="loading">
+      <el-table :data="paginatedRules" stripe v-loading="loading">
         <el-table-column prop="name" label="规则名称" min-width="200">
           <template #default="{ row }">
             <strong>{{ row.name }}</strong>
@@ -62,12 +62,24 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div v-if="filteredRules.length > 0" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredRules.length"
+          layout="total, sizes, prev, pager, next"
+          @current-change="currentPage = $event"
+          @size-change="(s: number) => { pageSize = s; currentPage = 1 }"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { getAlertManagerRules, getAlertManagerStatus } from '@/api/alertmanager'
 
 interface Rule {
@@ -88,6 +100,8 @@ const connected = ref(false)
 const rules = ref<Rule[]>([])
 const filterSeverity = ref('')
 const filterState = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const filteredRules = computed(() => {
   return rules.value.filter(r => {
@@ -96,6 +110,13 @@ const filteredRules = computed(() => {
     return true
   })
 })
+
+const paginatedRules = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredRules.value.slice(start, start + pageSize.value)
+})
+
+watch([filterSeverity, filterState], () => { currentPage.value = 1 })
 
 function severityType(severity?: string) {
   if (severity === 'critical') return 'danger'
@@ -162,6 +183,11 @@ onMounted(fetchData)
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
+}
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .promql {
   font-size: 12px;

@@ -65,7 +65,7 @@
     <!-- 卡片视图 -->
     <div v-if="viewMode === 'card'" v-loading="loading" class="host-grid">
       <div
-        v-for="row in filteredItems"
+        v-for="row in paginatedItems"
         :key="row.id"
         class="host-card"
         @click="$router.push(`/monitoring/hosts/${row.id}`)"
@@ -116,7 +116,7 @@
 
     <!-- 表格视图 -->
     <div v-else class="data-card">
-      <el-table :data="filteredItems" stripe v-loading="loading">
+      <el-table :data="paginatedItems" stripe v-loading="loading">
         <el-table-column label="主机" width="200">
           <template #default="{row}">
             <div style="display:flex;align-items:center;gap:8px">
@@ -172,11 +172,23 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <div v-if="filteredItems.length > 0" class="pagination-wrap">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50]"
+        :total="filteredItems.length"
+        layout="total, sizes, prev, pager, next"
+        @current-change="currentPage = $event"
+        @size-change="(s: number) => { pageSize = s; currentPage = 1 }"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { getHosts } from '@/api/monitoring'
 import { Refresh, Grid, List, Upload, Download, Search } from '@element-plus/icons-vue'
 
@@ -188,6 +200,9 @@ const statusFilter = ref('')
 const sortBy = ref('cpu_desc')
 const viewMode = ref<'card' | 'table'>('card')
 let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const onlineCount = computed(() => items.value.filter(r => r.prometheus_ok).length)
 const offlineCount = computed(() => items.value.filter(r => !r.prometheus_ok).length)
@@ -219,6 +234,13 @@ const filteredItems = computed(() => {
 
   return result
 })
+
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredItems.value.slice(start, start + pageSize.value)
+})
+
+watch([keyword, statusFilter, sortBy], () => { currentPage.value = 1 })
 
 const metricColor = (v: number) => v > 90 ? '#ef4444' : v > 70 ? '#f59e0b' : '#22c55e'
 
@@ -416,6 +438,12 @@ onDeactivated(stopAutoRefresh)
 .empty-state {
   grid-column: 1 / -1;
   padding: 60px 0;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 /* 响应式 */
