@@ -1,5 +1,7 @@
 """Audit log service — write + query."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.core.config import CHINA_TZ
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -61,7 +63,7 @@ def list_logs(
     if target_type:
         stmt = stmt.where(AuditLog.target_type == target_type)
     if days > 0:
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(CHINA_TZ) - timedelta(days=days)
         stmt = stmt.where(AuditLog.created_at >= since)
 
     stmt = stmt.order_by(AuditLog.id.desc())

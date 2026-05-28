@@ -6,7 +6,9 @@ Kubernetes API 客户端
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 from typing import Any
 from urllib.parse import quote
 
@@ -337,7 +339,7 @@ def restart_deployment(endpoint: str, token: str, namespace: str, deployment_nam
     ns = quote(namespace, safe="")
     dep = quote(deployment_name, safe="")
     url = f"{_clean(endpoint)}/apis/apps/v1/namespaces/{ns}/deployments/{dep}"
-    restarted_at = datetime.now(timezone.utc).isoformat()
+    restarted_at = datetime.now(CHINA_TZ).isoformat()
     payload = {
         "spec": {
             "template": {

@@ -1,6 +1,10 @@
 import os
+from datetime import timezone, timedelta
 from pathlib import Path
 from typing import Final
+
+# 中国时区 (UTC+8)
+CHINA_TZ: Final = timezone(timedelta(hours=8))
 
 # core/config.py 在 app/core/ 下，APP_DIR 需要上溯两级到 app/
 APP_DIR: Final = Path(__file__).resolve().parent.parent

@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
@@ -51,7 +53,7 @@ def _save_execution(command: str, asset_ids: list[int], asset_names: list[str],
             failed_hosts=failed,
             status=status,
             operator=operator,
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(CHINA_TZ),
         )
         db.add(record)
         db.commit()

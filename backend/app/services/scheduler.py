@@ -3,7 +3,9 @@ import asyncio
 import importlib
 import logging
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -90,10 +92,10 @@ async def execute_task(task_id: int) -> None:
             result_text = str(result) if result else "执行完成"
 
         # 更新日志和任务状态
-        log_entry.finished_at = datetime.now(timezone.utc)
+        log_entry.finished_at = datetime.now(CHINA_TZ)
         log_entry.status = "success"
         log_entry.result = result_text
-        task.last_run_at = datetime.now(timezone.utc)
+        task.last_run_at = datetime.now(CHINA_TZ)
         task.last_status = "success"
         db.commit()
 
@@ -102,12 +104,12 @@ async def execute_task(task_id: int) -> None:
     except Exception as e:
         logger.error("定时任务执行失败 (id=%d): %s", task_id, e, exc_info=True)
         if log_entry:
-            log_entry.finished_at = datetime.now(timezone.utc)
+            log_entry.finished_at = datetime.now(CHINA_TZ)
             log_entry.status = "failed"
             log_entry.error = traceback.format_exc()[:4000]
         # 更新任务状态
         if task is not None:
-            task.last_run_at = datetime.now(timezone.utc)
+            task.last_run_at = datetime.now(CHINA_TZ)
             task.last_status = "failed"
         try:
             db.commit()

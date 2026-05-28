@@ -1,4 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.core.config import CHINA_TZ
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -33,7 +35,7 @@ def list_recent_users(db: Session, limit: int = 5) -> list[User]:
 
 
 def count_new_users_since(db: Session, days: int = 7) -> int:
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(CHINA_TZ) - timedelta(days=days)
     stmt = select(User).where(User.created_at >= since)
     return len(db.scalars(stmt).all())
 

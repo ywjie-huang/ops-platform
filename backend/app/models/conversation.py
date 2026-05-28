@@ -1,11 +1,12 @@
 """对话和消息模型。"""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import CHINA_TZ
 from app.db.database import Base
 
 
@@ -16,12 +17,12 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(200), default="新对话")
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime, default=lambda: datetime.now(CHINA_TZ)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(CHINA_TZ),
+        onupdate=lambda: datetime.now(CHINA_TZ),
     )
 
 
@@ -38,5 +39,5 @@ class Message(Base):
     tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime, default=lambda: datetime.now(CHINA_TZ)
     )

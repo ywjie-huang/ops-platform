@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 from typing import Any
 
 from sqlalchemy import select
@@ -70,7 +72,7 @@ def add_message(
     # 更新对话的 updated_at
     conv = db.get(Conversation, conversation_id)
     if conv:
-        conv.updated_at = datetime.now(timezone.utc)
+        conv.updated_at = datetime.now(CHINA_TZ)
 
     return msg
 

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+
+from app.core.config import CHINA_TZ
 from typing import Any
 
 from sqlalchemy import func, select
@@ -80,7 +82,7 @@ async def run_patrol(db: Session, operator: str = "") -> PatrolReport:
 
     # 保存报告
     report = PatrolReport(
-        title=f"巡检报告 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        title=f"巡检报告 {datetime.now(CHINA_TZ).strftime('%Y-%m-%d %H:%M')}",
         status=report_status,
         total_checks=len(items),
         normal_count=normal,

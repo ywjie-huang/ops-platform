@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 from typing import Any
 
 import requests
@@ -82,9 +84,9 @@ def count_docker_hosts(db: Session) -> int:
 
 
 def _ensure_utc(dt: datetime) -> datetime:
-    """给 naive datetime 补上 UTC 时区信息。"""
+    """给 naive datetime 补上中国时区信息。"""
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=CHINA_TZ)
     return dt
 
 
@@ -92,7 +94,7 @@ def is_host_online(host: ContainerCluster) -> bool:
     """判断主机是否在线（基于最后成功拉取时间）。"""
     if not host.last_heartbeat:
         return False
-    return (datetime.now(timezone.utc) - _ensure_utc(host.last_heartbeat)).total_seconds() < OFFLINE_TIMEOUT
+    return (datetime.now(CHINA_TZ) - _ensure_utc(host.last_heartbeat)).total_seconds() < OFFLINE_TIMEOUT
 
 
 # ─── 从 Agent 拉取数据 ────────────────────────────────────
@@ -131,7 +133,7 @@ def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
     if not data:
         return False
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(CHINA_TZ)
     host_info = data.get("host_info", {})
     containers_data = data.get("containers", [])
 
@@ -165,7 +167,7 @@ def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
 
 def _sync_containers(db: Session, host_id: int, containers_data: list[dict]) -> None:
     """同步容器列表到数据库。"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(CHINA_TZ)
     reported_ids = {c["id"][:12] for c in containers_data if c.get("id")}
 
     # 删除已不存在的容器
@@ -223,7 +225,7 @@ def sync_all_hosts(db: Session) -> None:
             ok = sync_host_from_agent(db, host)
             if not ok:
                 # 拉取失败，标记离线
-                if host.last_heartbeat and (datetime.now(timezone.utc) - _ensure_utc(host.last_heartbeat)).total_seconds() > OFFLINE_TIMEOUT:
+                if host.last_heartbeat and (datetime.now(CHINA_TZ) - _ensure_utc(host.last_heartbeat)).total_seconds() > OFFLINE_TIMEOUT:
                     if host.status != "stopped":
                         host.status = "stopped"
                         host.status_message = "Agent 连接失败"

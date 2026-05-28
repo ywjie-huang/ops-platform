@@ -8,7 +8,8 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ops_platform}
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone='+08:00'
     ports:
       - "3306:3306"
     volumes:
@@ -31,6 +32,7 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ops_platform}
+      TZ: Asia/Shanghai
     ports:
       - "8000:8000"
     depends_on:

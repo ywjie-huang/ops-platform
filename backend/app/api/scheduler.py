@@ -1,5 +1,7 @@
 """定时任务 API。"""
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.config import CHINA_TZ
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -165,7 +167,7 @@ def api_update_task(
     if body.enabled is not None:
         task.enabled = body.enabled
 
-    task.updated_at = datetime.now(timezone.utc)
+    task.updated_at = datetime.now(CHINA_TZ)
     db.commit()
 
     sync_task_to_scheduler(task.id)
@@ -217,7 +219,7 @@ def api_toggle_task(
         raise HTTPException(status_code=404, detail="任务不存在")
 
     task.enabled = not task.enabled
-    task.updated_at = datetime.now(timezone.utc)
+    task.updated_at = datetime.now(CHINA_TZ)
     db.commit()
 
     sync_task_to_scheduler(task.id)

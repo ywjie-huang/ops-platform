@@ -5,6 +5,8 @@ import os
 import stat
 from datetime import datetime
 
+from app.core.config import CHINA_TZ
+
 import paramiko
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
@@ -32,7 +34,7 @@ def _sftp_list(sftp: paramiko.SFTPClient, path: str) -> list[dict]:
             "is_dir": is_dir,
             "size": entry.st_size if not is_dir else 0,
             "permissions": stat.filemode(entry.st_mode),
-            "modified": datetime.fromtimestamp(entry.st_mtime).strftime("%Y-%m-%d %H:%M:%S") if entry.st_mtime else "",
+            "modified": datetime.fromtimestamp(entry.st_mtime, tz=CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S") if entry.st_mtime else "",
             "owner": str(entry.st_uid),
             "group": str(entry.st_gid),
         })
@@ -361,7 +363,7 @@ def sftp_stat(
                 "size": st.st_size,
                 "is_dir": stat.S_ISDIR(st.st_mode),
                 "permissions": stat.filemode(st.st_mode),
-                "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S") if st.st_mtime else "",
+                "modified": datetime.fromtimestamp(st.st_mtime, tz=CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S") if st.st_mtime else "",
                 "owner": str(st.st_uid),
                 "group": str(st.st_gid),
             }}

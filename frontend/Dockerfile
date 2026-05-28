@@ -1,5 +1,7 @@
 FROM node:20-alpine AS build
 
+ENV TZ=Asia/Shanghai
+
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json ./

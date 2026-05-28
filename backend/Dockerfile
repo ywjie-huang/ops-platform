@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ENV TZ=Asia/Shanghai
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+
 WORKDIR /app
 
 COPY backend/requirements.txt .

@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
+
+from app.core.config import CHINA_TZ
 from typing import Any
 
 import httpx
@@ -102,7 +104,7 @@ def _parse_iso(ts: str) -> datetime | None:
     if not ts or ts in ("0001-01-01T00:00:00Z", "0001-01-01T00:00:00"):
         return None
     try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(CHINA_TZ).replace(tzinfo=None)
         if dt.year < 2000:
             return None
         return dt

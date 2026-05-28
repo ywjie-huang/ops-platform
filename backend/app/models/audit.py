@@ -1,9 +1,10 @@
 """Audit log data model — SQLAlchemy ORM."""
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import CHINA_TZ
 from app.db.database import Base
 
 
@@ -19,6 +20,6 @@ class AuditLog(Base):
     target_name: Mapped[str] = mapped_column(String(200), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
     ip_address: Mapped[str] = mapped_column(String(50), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
 
     user = relationship("User", foreign_keys=[user_id], lazy="joined")

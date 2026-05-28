@@ -1,9 +1,10 @@
 """巡检中心模型。"""
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import CHINA_TZ
 from app.db.database import Base
 
 
@@ -20,7 +21,7 @@ class PatrolReport(Base):
     critical_count: Mapped[int] = mapped_column(Integer, default=0)
     summary: Mapped[str] = mapped_column(Text, default="")  # 文字摘要
     operator: Mapped[str] = mapped_column(String(100), default="")  # 操作人（手动触发时记录）
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
 
 
 class PatrolItem(Base):
