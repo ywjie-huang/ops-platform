@@ -28,30 +28,6 @@
           </el-tag>
         </el-form-item>
 
-        <el-divider content-position="left">AI 模型</el-divider>
-
-        <el-form-item label="API 地址">
-          <el-input v-model="configs['llm.base_url']" placeholder="https://api.openai.com/v1" />
-          <div class="form-tip">OpenAI 兼容 API 地址，支持 OpenAI / DeepSeek / Qwen / Ollama 等</div>
-        </el-form-item>
-
-        <el-form-item label="API Key">
-          <el-input v-model="configs['llm.api_key']" placeholder="sk-xxx" show-password />
-          <div class="form-tip">API 密钥</div>
-        </el-form-item>
-
-        <el-form-item label="模型名称">
-          <el-input v-model="configs['llm.model']" placeholder="gpt-4o" />
-          <div class="form-tip">模型标识，如 gpt-4o、deepseek-chat、qwen-plus</div>
-        </el-form-item>
-
-        <el-form-item>
-          <el-button :loading="testing === 'llm'" @click="handleTestLLM">测试连接</el-button>
-          <el-tag v-if="testResults['llm'] !== undefined" :type="testResults['llm'] ? 'success' : 'danger'" style="margin-left:8px">
-            {{ testResults['llm'] ? '连接成功' : '连接失败' }}
-          </el-tag>
-        </el-form-item>
-
         <el-form-item>
           <el-button type="primary" :loading="saving" @click="handleSave">保存配置</el-button>
         </el-form-item>
@@ -63,7 +39,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getSettings, updateSetting, testConnection, testLLMConnection } from '@/api/settings'
+import { getSettings, updateSetting, testConnection } from '@/api/settings'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -89,30 +65,6 @@ async function handleSave() {
     }
     ElMessage.success('配置保存成功')
   } finally { saving.value = false }
-}
-
-async function handleTestLLM() {
-  testing.value = 'llm'
-  testResults['llm'] = undefined
-  const base_url = configs['llm.base_url']?.trim()
-  const api_key = configs['llm.api_key']?.trim()
-  const model = configs['llm.model']?.trim()
-  if (!base_url || !api_key || !model) {
-    ElMessage.warning('请填写完整的 LLM 配置')
-    testing.value = ''
-    return
-  }
-  try {
-    const res: any = await testLLMConnection({ base_url, api_key, model })
-    testResults['llm'] = res.data?.ok ?? false
-    if (testResults['llm']) {
-      ElMessage.success(res.msg)
-    } else {
-      ElMessage.warning(res.msg)
-    }
-  } catch {
-    testResults['llm'] = false
-  } finally { testing.value = '' }
 }
 
 async function handleTest(service: string) {

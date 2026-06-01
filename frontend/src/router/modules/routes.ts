@@ -214,12 +214,20 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/ai',
     component: Layout,
+    redirect: '/ai/chat',
+    meta: { title: '智能中心', icon: 'Cpu' },
     children: [
       {
-        path: '',
+        path: 'chat',
         name: 'AiAssistant',
         component: () => import('@/views/ai/AiView.vue'),
-        meta: { title: 'AI 助手', icon: 'ChatDotRound' },
+        meta: { title: '智能助手', icon: 'ChatDotRound' },
+      },
+      {
+        path: 'model',
+        name: 'ModelConfig',
+        component: () => import('@/views/ai/ModelConfigView.vue'),
+        meta: { title: '模型配置', icon: 'Setting' },
       },
     ],
   },
