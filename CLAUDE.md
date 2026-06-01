@@ -55,7 +55,7 @@ docker compose up -d --build                  # Rebuild images
 ### Frontend SPA (`frontend/src/`)
 
 - **`api/`** — 20 API modules + shared Axios instance (`request.ts`) with JWT injection, 401 auto-redirect.
-- **`views/`** — 15 view directories matching navigation structure.
+- **`views/`** — 16 view directories matching navigation structure.
 - **`stores/`** — Pinia: `auth.ts` (login/user/permissions), `app.ts` (sidebar state).
 - **`router/`** — `routes.ts` with lazy-loaded views, route guards check JWT + permissions via `meta.permission`.
 - **`components/`** — Shared components (Sparkline, AlertTrendChart — pure SVG, no chart library).
@@ -75,7 +75,7 @@ docker compose up -d --build                  # Rebuild images
 - **Timezone**: All datetime generation uses `datetime.now(CHINA_TZ)` (UTC+8) from `app/core/config.py`. MySQL strips timezone info, so naive datetimes stored are China time. API serializes with `.isoformat()`, frontend `new Date()` interprets as local time — correct on China machines. Docker files set `TZ=Asia/Shanghai`. Alertmanager webhook timestamps are converted to China time on ingestion.
 - **keep-alive + onActivated**: Frontend uses `<keep-alive :max="10">` in `AppMain.vue`. Detail views MUST use `onActivated` for data fetching (not `onMounted` + `watch(route.params.id)`), and pair `onActivated`/`onDeactivated` for timers. See `HostDetailView` as reference pattern.
 - **Scheduled tasks**: APScheduler `AsyncIOScheduler` with in-memory jobstore. Task definitions in `scheduled_tasks` table, execution logs in `task_execution_logs`. `core/scheduler.py` manages lifecycle (startup loads enabled tasks, shutdown graceful). `services/scheduler.py` handles execution callback with dynamic function import via `_TASK_FUNCTIONS` registry. API layer calls `sync_task_to_scheduler()` after every create/update/delete to keep scheduler in sync. Currently supports `patrol` task type; `report` and `backup` are reserved.
-- **AI assistant**: OpenAI-compatible LLM with SSE streaming + function calling. `services/ai/llm_client.py` handles streaming with chunked tool_call accumulation. `services/ai/tools.py` defines 10 tools (7 read-only, 3 write). Read-only tools auto-execute; write tools require user confirmation via `/ai/chat/confirm` or `/ai/chat/reject`. System prompt is dynamic — model name injected from DB config. Conversations persisted to MySQL (`conversations` + `messages` tables, `services/ai/conversations.py`). Frontend uses IDE split-panel layout (`views/ai/AiView.vue`): left sidebar conversation list + right chat area with markdown rendering, tool panels, and confirm/reject flow. `query_containers` tool supports both `host_id` and `host_ip` for IP-based host lookup. LLM config via `settings.py` keys: `llm.base_url`, `llm.api_key`, `llm.model`.
+- **AI assistant**: OpenAI-compatible LLM with SSE streaming + function calling. `services/ai/llm_client.py` handles streaming with chunked tool_call accumulation. `services/ai/tools.py` defines 10 tools (7 read-only, 3 write). Read-only tools auto-execute; write tools require user confirmation via `/ai/chat/confirm` or `/ai/chat/reject`. System prompt is dynamic — model name injected from DB config. Conversations persisted to MySQL (`conversations` + `messages` tables, `services/ai/conversations.py`). Frontend uses IDE split-panel layout (`views/ai/AiView.vue`): left sidebar conversation list + right chat area with markdown rendering, tool panels, and confirm/reject flow. `query_containers` tool supports both `host_id` and `host_ip` for IP-based host lookup. LLM config supports **multi-profile** (`llm.profiles` JSON in DB), with provider presets (OpenAI, DeepSeek, Qwen, Ollama), per-profile parameters (temperature, max_tokens, top_p, system_prompt), and a quick-test chat area. Active profile syncs to legacy `llm.base_url/api_key/model` keys for backward compatibility.
 
 ### External Dependencies
 
@@ -91,6 +91,17 @@ docker compose up -d --build                  # Rebuild images
 ### Commit Style
 
 Conventional commits (Chinese/English mix): `feat(scope):`, `fix(scope):`, `refactor:`, `docs:`, `perf:`.
+
+### UI Design Guidelines
+
+- **Design system**: CSS custom properties in `frontend/src/assets/styles/index.scss` (`--primary-color`, `--success-color`, `--warning-color`, `--danger-color`, `--bg-color`, `--surface-color`, `--border-color`, `--text-primary/secondary/muted`).
+- **Accessibility**: WCAG 2.1 AA baseline. All interactive elements need `tabindex`, `role`, `aria-*` attributes. Use `focus-visible` for keyboard focus indicators. Add `@media (prefers-reduced-motion: reduce)` for animations.
+- **Responsive**: Use `@media (max-width: 768px)` for mobile. Tables should be wrapped in `.table-wrapper { overflow-x: auto }`. Use CSS Grid for 2D layouts, Flexbox for 1D.
+- **Icons**: Use inline SVG icons (consistent stroke-width, viewBox="0 0 24 24"). Avoid emoji as icons.
+- **Colors**: Always use project design tokens, not Element Plus `--el-color-*` tokens.
+- **No inline styles**: Extract all inline `style=""` to scoped CSS classes.
+- **Animations**: Use `ease-out` curves, 150-250ms duration. Avoid `max-height` transitions; use `grid-template-rows: 0fr/1fr` instead.
+- **impeccable plugin**: Use `/impeccable audit <file>` for technical quality checks, `/impeccable critique <file>` for UX review. See `.claude/plugins/marketplaces/impeccable/` for reference docs.
 
 ### Workflow
 
