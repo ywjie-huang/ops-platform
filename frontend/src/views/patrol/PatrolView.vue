@@ -54,7 +54,15 @@
         </el-select>
       </div>
 
-      <el-table :data="reports" stripe v-loading="loading" @row-click="handleRowClick" style="cursor:pointer">
+      <el-table
+        :data="reports"
+        stripe
+        v-loading="loading"
+        row-key="id"
+        :row-class-name="() => 'clickable-row'"
+        @row-click="handleRowClick"
+        @keydown.enter="handleRowKeydown"
+      >
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="title" label="报告标题" min-width="200" />
         <el-table-column prop="status" label="状态" width="80">
@@ -130,7 +138,14 @@
         <!-- 主机巡检：卡片折叠布局 -->
         <template v-if="group.category === 'host'">
           <div v-for="host in group.hosts" :key="host.name" class="host-card">
-            <div class="host-card-header" @click="toggleHost(host.name)">
+            <div
+              class="host-card-header"
+              role="button"
+              :aria-expanded="expandedHosts.has(host.name)"
+              tabindex="0"
+              @click="toggleHost(host.name)"
+              @keydown.enter.space.prevent="toggleHost(host.name)"
+            >
               <div class="host-card-left">
                 <el-icon class="expand-icon" :class="{ expanded: expandedHosts.has(host.name) }"><ArrowRight /></el-icon>
                 <span class="host-name">{{ host.name }}</span>
@@ -143,7 +158,7 @@
                 <span v-if="host.normal > 0 && (host.critical > 0 || host.warning > 0)" class="host-normal-count">{{ host.normal }} 正常</span>
               </div>
             </div>
-            <div class="host-card-body" :class="{ expanded: expandedHosts.has(host.name) }">
+            <div class="host-card-body" :class="{ expanded: expandedHosts.has(host.name) }" role="region" :aria-hidden="!expandedHosts.has(host.name)">
               <el-table :data="host.items" stripe size="small">
                 <el-table-column prop="check_name" label="检查项" width="130" />
                 <el-table-column prop="status" label="状态" width="80">
@@ -183,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay, ArrowRight } from '@element-plus/icons-vue'
 import { runPatrol, getPatrolReports, getPatrolReportDetail, deletePatrolReport, exportPatrolReport } from '@/api/patrol'
@@ -216,7 +231,23 @@ const CATEGORY_LABELS: Record<string, string> = {
   asset: '📦 资产状态巡检',
 }
 
-const groupedItems = computed(() => {
+interface HostGroup {
+  name: string
+  ip: string
+  items: any[]
+  normal: number
+  warning: number
+  critical: number
+}
+
+interface GroupItem {
+  category: string
+  label: string
+  items: any[]
+  hosts?: HostGroup[]
+}
+
+const groupedItems = computed<GroupItem[]>(() => {
   const groups: Record<string, any[]> = {}
   for (const item of detailItems.value) {
     const cat = item.category || 'other'
@@ -224,10 +255,10 @@ const groupedItems = computed(() => {
     groups[cat].push(item)
   }
   return Object.entries(groups).map(([cat, items]) => {
-    const base = { category: cat, label: CATEGORY_LABELS[cat] || cat, items }
+    const base: GroupItem = { category: cat, label: CATEGORY_LABELS[cat] || cat, items }
     // 主机巡检：按主机名分组
     if (cat === 'host') {
-      const hostMap: Record<string, { name: string; ip: string; items: any[]; normal: number; warning: number; critical: number }> = {}
+      const hostMap: Record<string, HostGroup> = {}
       for (const item of items) {
         const key = item.target_name || 'unknown'
         if (!hostMap[key]) {
@@ -285,6 +316,10 @@ async function handleRowClick(row: any) {
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
+function handleRowKeydown(row: any) {
+  handleRowClick(row)
+}
+
 async function handleExport(row: any) {
   try {
     const res: any = await exportPatrolReport(row.id)
@@ -308,10 +343,32 @@ async function handleDelete(row: any) {
   fetchReports()
 }
 
+// 为可点击行添加 tabindex 以支持键盘导航
+watch(reports, async () => {
+  await nextTick()
+  document.querySelectorAll('.el-table .clickable-row').forEach(row => {
+    row.setAttribute('tabindex', '0')
+    row.setAttribute('role', 'row')
+    row.setAttribute('aria-label', `巡检报告: ${(row as HTMLElement).querySelector('.cell')?.textContent || ''}`)
+  })
+})
+
 onMounted(fetchReports)
 </script>
 
 <style scoped>
+/* 可点击表格行 - 无障碍支持 */
+:deep(.clickable-row) {
+  cursor: pointer;
+}
+:deep(.clickable-row td) {
+  outline: none;
+}
+:deep(.clickable-row:focus-visible) {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
 .mini-stat { text-align: center; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); }
 .mini-stat-value { font-size: 28px; font-weight: 700; }
 .mini-stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
@@ -345,5 +402,17 @@ onMounted(fetchReports)
 .host-card-body.expanded {
   max-height: 600px;
   padding: 0 16px 12px;
+}
+
+/* 折叠面板焦点样式 */
+.host-card-header:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+/* 减少动画支持 */
+@media (prefers-reduced-motion: reduce) {
+  .expand-icon { transition: none; }
+  .host-card-body { transition: none; }
 }
 </style>
