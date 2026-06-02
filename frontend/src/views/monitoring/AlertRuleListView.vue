@@ -10,19 +10,20 @@
 
     <div class="data-card">
       <div class="toolbar">
-        <el-select v-model="filterSeverity" placeholder="严重程度" clearable size="small" style="width: 140px">
+        <el-select v-model="filterSeverity" placeholder="严重程度" clearable size="small" style="width: 140px" aria-label="严重程度筛选">
           <el-option label="critical" value="critical" />
           <el-option label="warn" value="warn" />
           <el-option label="warning" value="warning" />
           <el-option label="info" value="info" />
         </el-select>
-        <el-select v-model="filterState" placeholder="状态" clearable size="small" style="width: 140px">
+        <el-select v-model="filterState" placeholder="状态" clearable size="small" style="width: 140px" aria-label="状态筛选">
           <el-option label="firing" value="firing" />
           <el-option label="pending" value="pending" />
           <el-option label="inactive" value="inactive" />
         </el-select>
       </div>
 
+      <div class="table-wrapper">
       <el-table :data="paginatedRules" stripe v-loading="loading">
         <el-table-column prop="name" label="规则名称" min-width="200">
           <template #default="{ row }">
@@ -61,7 +62,18 @@
             <el-tag v-else type="info" size="small">{{ row.health || '-' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="关联主机" min-width="200">
+          <template #default="{ row }">
+            <RuleHostCell
+              :hosts="getRuleHosts(row.name)"
+              :expanded="isRuleExpanded(row.name)"
+              @navigate="goToHost"
+              @toggle-expand="toggleRuleExpand(row.name)"
+            />
+          </template>
+        </el-table-column>
       </el-table>
+      </div>
 
       <div v-if="filteredRules.length > 0" class="pagination-wrap">
         <el-pagination
@@ -80,7 +92,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { getAlertManagerRules, getAlertManagerStatus } from '@/api/alertmanager'
+import { useRouter } from 'vue-router'
+import { getAlertManagerRules, getAlertManagerStatus, getAlertManagerRulesHosts } from '@/api/alertmanager'
+import RuleHostCell from './RuleHostCell.vue'
 
 interface Rule {
   name: string
@@ -95,9 +109,12 @@ interface Rule {
   file: string
 }
 
+const router = useRouter()
 const loading = ref(false)
 const connected = ref(false)
 const rules = ref<Rule[]>([])
+const rulesHosts = ref<Record<string, Array<{ id: number; name: string; ip: string }>>>({})
+const expandedRules = ref<Set<string>>(new Set())
 const filterSeverity = ref('')
 const filterState = ref('')
 const currentPage = ref(1)
@@ -137,18 +154,43 @@ function formatDuration(seconds: number) {
   return `${Math.floor(seconds / 3600)}h${Math.floor((seconds % 3600) / 60)}m`
 }
 
+function getRuleHosts(ruleName: string) {
+  return rulesHosts.value[ruleName] || []
+}
+
+function isRuleExpanded(ruleName: string) {
+  return expandedRules.value.has(ruleName)
+}
+
+function toggleRuleExpand(ruleName: string) {
+  const set = new Set(expandedRules.value)
+  if (set.has(ruleName)) {
+    set.delete(ruleName)
+  } else {
+    set.add(ruleName)
+  }
+  expandedRules.value = set
+}
+
+function goToHost(hostId: number) {
+  router.push(`/monitoring/hosts/${hostId}`)
+}
+
 async function fetchData() {
   loading.value = true
   try {
-    const [statusRes, rulesRes]: any[] = await Promise.all([
+    const [statusRes, rulesRes, hostsRes]: any[] = await Promise.all([
       getAlertManagerStatus(),
       getAlertManagerRules(),
+      getAlertManagerRulesHosts(),
     ])
     connected.value = statusRes?.data?.connected ?? false
     rules.value = rulesRes?.data ?? []
+    rulesHosts.value = hostsRes?.data ?? {}
   } catch {
     connected.value = false
     rules.value = []
+    rulesHosts.value = {}
   } finally {
     loading.value = false
   }
@@ -173,16 +215,11 @@ onMounted(fetchData)
   gap: 8px;
   align-items: center;
 }
-.data-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
 .toolbar {
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 .pagination-wrap {
   display: flex;
@@ -191,7 +228,7 @@ onMounted(fetchData)
 }
 .promql {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-secondary);
   word-break: break-all;
 }
 </style>

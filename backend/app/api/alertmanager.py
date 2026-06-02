@@ -10,6 +10,7 @@ from app.services.alertmanager import (
     check_alertmanager_health,
     get_alerts,
     get_rules,
+    get_rules_hosts,
     list_alert_events,
     process_webhook,
 )
@@ -45,6 +46,16 @@ async def api_rules(
     """获取告警规则。"""
     rules = await get_rules(db)
     return {"code": 0, "data": rules}
+
+
+@router.get("/rules/hosts")
+async def api_rules_hosts(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("monitoring.view")),
+):
+    """获取每条告警规则关联的主机列表。"""
+    mapping = await get_rules_hosts(db)
+    return {"code": 0, "data": mapping}
 
 
 @router.post("/webhook")

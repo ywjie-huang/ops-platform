@@ -62,7 +62,7 @@ def _extract_scalar(result: dict) -> float:
     return 0.0
 
 
-async def _discover_instances(prom_url: str = "") -> dict[str, str]:
+async def discover_instances(prom_url: str = "") -> dict[str, str]:
     """从 Prometheus targets 发现 instance 标签，带缓存。"""
     global _instance_cache, _instance_cache_ts
     now = time.time()
@@ -115,7 +115,7 @@ def _find_instance(ip: str, name: str, instances: dict[str, str]) -> str | None:
 async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
     """批量查询所有主机摘要，一次并发完成。"""
     prom_url = get_prometheus_url(db) if db else ""
-    instances = await _discover_instances(prom_url)
+    instances = await discover_instances(prom_url)
 
     # 构建所有查询
     all_exprs: dict[str, str] = {}  # key: "asset_0_cpu" -> expr
@@ -176,7 +176,7 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
 async def get_host_metrics(ip: str, name: str = "", db=None) -> dict[str, Any]:
     """查询单台主机的全部监控指标。"""
     prom_url = get_prometheus_url(db) if db else ""
-    instances = await _discover_instances(prom_url)
+    instances = await discover_instances(prom_url)
     inst = _find_instance(ip, name, instances)
     if not inst:
         return _empty_metrics()

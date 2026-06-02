@@ -5,8 +5,10 @@ Alertmanager 查询服务
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 
 from app.core.config import CHINA_TZ
@@ -16,7 +18,7 @@ import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.core.config import ALERTMANAGER_URL
+from app.core.config import ALERTMANAGER_URL, PROMETHEUS_URL
 from app.core.settings import get_alertmanager_url, get_prometheus_url
 from app.models.alert_event import AlertEvent
 
@@ -95,6 +97,117 @@ async def get_rules(db=None) -> list[dict[str, Any]]:
     except Exception as e:
         logger.error("Failed to get rules: %s", e)
         return []
+
+
+# ─── 规则关联主机 ────────────────────────────────────────────
+
+_rules_hosts_cache: dict[str, list[dict]] = {}
+_rules_hosts_cache_ts: float = 0
+_RULES_HOSTS_CACHE_TTL = 30  # 30 秒缓存
+
+
+async def get_rules_hosts(db=None) -> dict[str, list[dict]]:
+    """查询每条告警规则关联的主机列表。
+
+    流程：获取规则 → 并发执行每条规则的 PromQL → 提取 instance 标签 → 匹配资产。
+    返回 { rule_name: [{ id, name, ip }, ...] } 映射。
+    """
+    global _rules_hosts_cache, _rules_hosts_cache_ts
+    now = time.time()
+    if _rules_hosts_cache and (now - _rules_hosts_cache_ts) < _RULES_HOSTS_CACHE_TTL:
+        return _rules_hosts_cache
+
+    rules = await get_rules(db)
+    if not rules:
+        return {}
+
+    prom_url = get_prometheus_url(db) if db else PROMETHEUS_URL
+
+    # 发现 Prometheus 实例 → 资产匹配
+    from app.services.prometheus import discover_instances
+    instances = await discover_instances(prom_url)
+    # 构建反向映射：prometheus_instance_label → clean_ip
+    instance_to_ip: dict[str, str] = {}
+    for clean_addr, inst_label in instances.items():
+        instance_to_ip.setdefault(inst_label, clean_addr)
+
+    # 查询所有资产，构建 ip → asset 映射
+    from app.models.asset import Asset
+    if db:
+        assets = list(db.execute(select(Asset)).scalars().all())
+    else:
+        assets = []
+    ip_to_asset: dict[str, Asset] = {}
+    for asset in assets:
+        ip_to_asset[asset.ip_address] = asset
+        if asset.name:
+            ip_to_asset[asset.name] = asset
+
+    async def _query_rule_hosts(rule: dict) -> list[dict]:
+        """执行单条规则的 PromQL，提取关联主机。"""
+        query = rule.get("query", "")
+        if not query:
+            return []
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3, read=3, write=3, pool=3)) as client:
+                resp = await client.get(
+                    f"{prom_url}/api/v1/query",
+                    params={"query": query},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("status") != "success":
+                    return []
+
+                results = data.get("data", {}).get("result", [])
+                # 提取所有不重复的 instance 标签
+                seen_instances: set[str] = set()
+                seen_asset_ids: set[int] = set()
+                matched_hosts: list[dict] = []
+
+                for item in results:
+                    metric = item.get("metric", {})
+                    inst = metric.get("instance", "")
+                    if not inst or inst in seen_instances:
+                        continue
+                    seen_instances.add(inst)
+
+                    # 尝试匹配资产
+                    # 1. 直接用 instance 标签查
+                    clean_ip = inst.split(":")[0] if ":" in inst else inst
+                    asset = ip_to_asset.get(clean_ip) or ip_to_asset.get(inst)
+
+                    # 2. 通过 instance_to_ip 反查
+                    if not asset:
+                        real_ip = instance_to_ip.get(inst, "")
+                        if real_ip:
+                            asset = ip_to_asset.get(real_ip)
+
+                    if asset and asset.id not in seen_asset_ids:
+                        seen_asset_ids.add(asset.id)
+                        matched_hosts.append({
+                            "id": asset.id,
+                            "name": asset.name,
+                            "ip": asset.ip_address,
+                        })
+
+                return matched_hosts
+        except Exception as e:
+            logger.warning("Failed to query rule '%s': %s", rule.get("name"), e)
+            return []
+
+    # 并发查询所有规则
+    tasks = [_query_rule_hosts(rule) for rule in rules]
+    host_lists = await asyncio.gather(*tasks)
+
+    result: dict[str, list[dict]] = {}
+    for rule, hosts in zip(rules, host_lists):
+        result[rule["name"]] = hosts
+
+    _rules_hosts_cache = result
+    _rules_hosts_cache_ts = now
+    return result
 
 
 # ─── Webhook 处理 ────────────────────────────────────────────

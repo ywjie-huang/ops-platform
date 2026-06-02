@@ -1,20 +1,20 @@
 // ── 设计变量 ──
 :root {
-  --primary-color: #3b82f6;
-  --primary-hover: #2563eb;
-  --primary-bg: #eff6ff;
+  --primary-color: #5e6ad2;
+  --primary-hover: #4f5bc4;
+  --primary-bg: rgba(94, 106, 210, 0.08);
   --success-color: #22c55e;
-  --warning-color: #f59e0b;
-  --danger-color: #ef4444;
-  --bg-color: #f4f6fa;
+  --warning-color: #f5a623;
+  --danger-color: #e5484d;
+  --bg-color: #fafafa;
   --surface-color: #ffffff;
-  --border-color: #e4e9f0;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
-  --sidebar-width: 220px;
-  --sidebar-collapsed-width: 64px;
-  --header-height: 56px;
+  --border-color: #e8e8e8;
+  --text-primary: #111111;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 48px;
+  --header-height: 44px;
   --border-radius: 8px;
 }
 
@@ -78,6 +78,11 @@ a {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: 20px;
+}
+
+// ── 通用组件 ──
+.table-wrapper {
+  overflow-x: auto;
 }
 
 // ── 响应式 ──

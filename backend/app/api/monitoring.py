@@ -106,9 +106,9 @@ async def api_prometheus_instances(
 ):
     """调试：显示资产与 Prometheus instance 的匹配情况。"""
     from app.services.assets import list_assets
-    from app.services.prometheus import _discover_instances, _find_instance
+    from app.services.prometheus import discover_instances, _find_instance
     assets = list_assets(db)
-    instances = await _discover_instances()
+    instances = await discover_instances()
     results = []
     for asset in assets:
         matched = _find_instance(asset.ip_address, asset.name, instances)
