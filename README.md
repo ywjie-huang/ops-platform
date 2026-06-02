@@ -91,17 +91,18 @@
 - **Service 管理**：类型（ClusterIP/NodePort/LoadBalancer）、Cluster IP、端口、Selector；支持分页
 - **命名空间 / 节点**：概览表格均支持分页（10/20/50 条/页）
 
-### 6. Docker 监控（Agent 拉取模式）
+### 6. Docker 监控（Agent 拉取模式 + 容器操作）
 
 - 采用 **Portainer 风格**：目标主机部署轻量 Agent 容器，平台主动拉取数据
 - **一键部署**：注册主机时直接显示 `docker run` 命令，复制即可
 - **自动发现**：Agent 每 5 秒采集容器数据，平台每 10 秒自动拉取
 - **主机管理**：注册、编辑、删除 Docker 主机，自动检测在线/离线状态
 - **独立详情页**：点击主机进入独立详情页（路由 `/docker/:id`），展示主机信息、系统指标（CPU/内存/磁盘带进度条）、容器列表
-- **容器列表**：容器名称、镜像、状态、端口映射，支持搜索和状态筛选
-- **实时指标**：CPU%、内存使用（进度条+数值）、网络 I/O、磁盘 I/O、重启次数
-- **系统指标**：主机 CPU/内存/磁盘使用率、Docker 版本、系统信息
+- **容器操作**：支持启动、停止、重启、删除容器，操作通过 Agent 代理执行，删除有二次确认
+- **容器列表**：容器名称、镜像、状态、CPU、内存（进度条）、网络 I/O、重启次数、端口映射，支持搜索和状态筛选；低频信息（容器 ID、磁盘 I/O、更新时间）通过展开行查看
+- **概览指标**：CPU/内存/磁盘使用率 + 进度条、容器总数、运行中容器数、主机 IP
 - **手动刷新**：支持一键手动从 Agent 拉取最新数据
+- **自动刷新可控**：用户可开关自动刷新（默认关闭），tooltip 提示刷新间隔
 
 **Agent 部署：**
 
@@ -115,12 +116,16 @@ docker run -d -p 9001:9001 \
 
 **Agent API：**
 
-| 路径 | 说明 |
-|------|------|
-| `GET /ping` | 健康检查 |
-| `GET /info` | 主机系统信息 |
-| `GET /containers` | 容器列表及指标 |
-| `GET /snapshot` | 一次性返回全部数据 |
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/ping` | GET | 健康检查 |
+| `/info` | GET | 主机系统信息 |
+| `/containers` | GET | 容器列表及指标 |
+| `/snapshot` | GET | 一次性返回全部数据 |
+| `/containers/{id}/start` | POST | 启动容器 |
+| `/containers/{id}/stop` | POST | 停止容器 |
+| `/containers/{id}/restart` | POST | 重启容器 |
+| `/containers/{id}/delete` | POST | 删除容器（force） |
 
 ### 7. 主机监控（Prometheus）
 
@@ -145,6 +150,7 @@ docker run -d -p 9001:9001 \
 - 从 Prometheus `/api/v1/rules` 拉取告警规则
 - 展示：规则名称、PromQL 表达式、严重程度、状态（inactive/pending/firing）、持续时间、健康状态
 - 支持按 severity 和 state 筛选
+- **关联主机**：每条规则自动查询 Prometheus 获取命中的 instance 标签，匹配资产表展示关联主机列表；点击主机名可跳转详情；超过 3 台自动折叠
 
 ### 9. 告警事件（Alertmanager Webhook）
 
@@ -295,6 +301,9 @@ docker run -d -p 9001:9001 \
 - 弹窗表单、圆形进度条、药丸形状态标签、迷你进度条
 - 响应式：1100px / 860px / 600px 三档断点
 - **图标按需加载**：只打包实际使用的 Element Plus 图标（26 个 vs 300+），减小打包体积
+- **设计 token 体系**：CSS 自定义属性（`--primary-color`、`--success-color`、`--warning-color`、`--danger-color`、`--bg-color`、`--surface-color`、`--border-color`、`--text-primary/secondary/muted`），全部页面统一使用，不使用 Element Plus `--el-color-*` token
+- **可访问性**：WCAG 2.1 AA 基线，交互元素含 `tabindex`/`role`/`aria-*`，键盘焦点指示器，表格横向溢出用 `.table-wrapper` 包裹
+- **质量审计**：使用 `/impeccable audit` 进行技术质量检查（A11y/Performance/Theming/Responsive/Anti-Patterns），`/impeccable critique` 进行 UX 设计评审
 
 ---
 
@@ -665,6 +674,8 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | Docker | `POST /containers/docker/hosts/{id}/refresh` | 手动刷新（从 Agent 拉取） |
 | Docker | `GET /containers/docker/containers` | Docker 容器列表 |
 | Docker | `GET /containers/docker/hosts/{id}/containers` | 指定主机容器列表 |
+| Docker | `POST /containers/docker/hosts/{id}/containers/{cid}/{action}` | 容器操作（start/stop/restart/delete） |
+| 告警规则 | `GET /alertmanager/rules/hosts` | 告警规则关联主机映射 |
 | 批量执行 | `WS /batch-exec/ws/exec` | 批量命令执行（WebSocket） |
 | 批量执行 | `GET /batch-exec/history` | 执行历史 |
 | 命令预设 | `GET /batch-exec/presets/` | 命令预设列表 |
