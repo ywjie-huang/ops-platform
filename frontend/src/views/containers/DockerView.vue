@@ -1,9 +1,19 @@
 <template>
   <div>
-    <div class="page-header"><h2 class="page-title">Docker 监控</h2></div>
+    <div class="page-header">
+      <h2 class="page-title">Docker 监控</h2>
+      <div class="header-actions">
+        <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 15s 自动刷新数据'" placement="bottom">
+          <el-button :type="autoRefresh ? 'primary' : 'default'" size="small" @click="toggleAutoRefresh">
+            <el-icon><Refresh /></el-icon>
+            {{ autoRefresh ? '自动刷新中' : '自动刷新' }}
+          </el-button>
+        </el-tooltip>
+      </div>
+    </div>
 
     <!-- 概览卡片 -->
-    <el-row :gutter="16" style="margin-bottom:16px">
+    <el-row :gutter="16" class="overview-row">
       <el-col :span="6" v-for="item in overviewCards" :key="item.label">
         <div class="stat-card">
           <div class="stat-label">{{ item.label }}</div>
@@ -15,11 +25,12 @@
     <!-- Docker 主机列表 -->
     <div class="data-card">
       <div class="filter-bar">
-        <el-input v-model="hostKeyword" placeholder="搜索主机…" clearable style="width:220px" @keyup.enter="fetchHosts" />
+        <el-input v-model="hostKeyword" placeholder="搜索主机…" clearable class="search-input" aria-label="搜索主机" @keyup.enter="fetchHosts" />
         <el-button type="primary" @click="handleCreate">注册主机</el-button>
       </div>
 
-      <el-table :data="hosts" stripe v-loading="loading" @row-click="goDetail" style="cursor:pointer">
+      <div class="table-wrapper">
+      <el-table :data="hosts" stripe v-loading="loading" @row-click="goDetail" class="host-table">
         <el-table-column prop="name" label="主机名称" min-width="140">
           <template #default="{row}"><strong>{{ row.name }}</strong></template>
         </el-table-column>
@@ -47,20 +58,21 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </div>
 
     <!-- 注册/编辑主机弹窗 -->
-    <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="600px" destroy-on-close>
+    <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="min(600px, 90vw)" destroy-on-close>
       <!-- 新建时显示部署指南 -->
       <template v-if="!editingHostId">
-        <el-steps :active="setupStep" finish-status="success" align-center style="margin-bottom:20px">
+        <el-steps :active="setupStep" finish-status="success" align-center class="setup-steps">
           <el-step title="部署 Agent" />
           <el-step title="注册主机" />
         </el-steps>
 
         <!-- 步骤 1：部署说明 -->
         <div v-if="setupStep === 0">
-          <p style="margin:0 0 12px;color:var(--text-muted);font-size:14px">
+          <p class="setup-hint">
             在目标 Docker 主机上执行以下命令启动 Agent：
           </p>
           <div class="setup-command-box">
@@ -70,9 +82,9 @@
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   hub1.lczy.com/public/ops-agent:latest</pre>
-            <el-button type="primary" size="small" style="margin-top:8px" @click="copyAgentCmd">复制命令</el-button>
+            <el-button type="primary" size="small" class="copy-btn" @click="copyAgentCmd">复制命令</el-button>
           </div>
-          <el-button type="primary" style="margin-top:16px" @click="setupStep = 1">下一步，填写信息</el-button>
+          <el-button type="primary" class="next-btn" @click="setupStep = 1">下一步，填写信息</el-button>
         </div>
 
         <!-- 步骤 2：填写信息 -->
@@ -83,7 +95,7 @@
             </el-form-item>
             <el-form-item label="Agent 地址" prop="endpoint">
               <el-input v-model="hostForm.endpoint" placeholder="例：192.168.1.200:9001" />
-              <div class="el-form-item__tip" style="font-size:12px;color:var(--text-muted);margin-top:4px">
+              <div class="endpoint-tip">
                 填写目标主机 IP 和 Agent 端口（默认 9001）
               </div>
             </el-form-item>
@@ -123,6 +135,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
@@ -143,6 +156,7 @@ const saving = ref(false)
 const hosts = ref<any[]>([])
 const overview = ref<any>({})
 const hostKeyword = ref('')
+const autoRefresh = ref(false)
 
 // 主机弹窗
 const hostDialogVisible = ref(false)
@@ -166,9 +180,9 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const overviewCards = computed(() => [
   { label: '主机总数', value: overview.value.host_total ?? '-', color: '' },
-  { label: '在线主机', value: overview.value.host_online ?? '-', color: overview.value.host_online > 0 ? 'var(--el-color-success)' : 'var(--el-color-danger)' },
+  { label: '在线主机', value: overview.value.host_online ?? '-', color: overview.value.host_online > 0 ? 'var(--success-color)' : 'var(--danger-color)' },
   { label: '容器总数', value: overview.value.container_total ?? '-', color: '' },
-  { label: '运行中容器', value: overview.value.container_running ?? '-', color: overview.value.container_running > 0 ? 'var(--el-color-success)' : '' },
+  { label: '运行中容器', value: overview.value.container_running ?? '-', color: overview.value.container_running > 0 ? 'var(--success-color)' : '' },
 ])
 
 // ─── 工具函数 ──────────────────────────────────────────────
@@ -252,35 +266,77 @@ function goDetail(row: any) {
 
 // ─── 自动刷新 ──────────────────────────────────────────────
 
-function startAutoRefresh() {
-  refreshTimer = setInterval(() => {
-    fetchOverview()
-    fetchHosts()
-  }, 15000)
+function toggleAutoRefresh() {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) {
+    refreshTimer = setInterval(() => {
+      fetchOverview()
+      fetchHosts()
+    }, 15000)
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
 }
 
 onMounted(() => {
   fetchOverview()
   fetchHosts()
-  startAutoRefresh()
 })
 
-onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
-})
+onUnmounted(stopAutoRefresh)
 </script>
 
 <style scoped>
-.stat-card { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
-.stat-label { font-size: 13px; color: var(--text-muted); }
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.overview-row {
+  margin-bottom: 16px;
+}
+.search-input {
+  width: 220px;
+}
+.host-table {
+  cursor: pointer;
+}
+.stat-card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
+.stat-label { font-size: 13px; color: var(--text-secondary); }
 .stat-value { font-size: 24px; font-weight: 700; }
+.setup-steps {
+  margin-bottom: 20px;
+}
+.setup-hint {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.copy-btn {
+  margin-top: 8px;
+}
+.next-btn {
+  margin-top: 16px;
+}
+.endpoint-tip {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
 .setup-command-box {
-  background: #1e293b;
+  background: var(--text-primary);
   border-radius: 8px;
   padding: 16px;
 }
 .setup-command {
-  color: #e2e8f0;
+  color: var(--bg-color);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
