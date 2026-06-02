@@ -98,6 +98,35 @@
         <el-table-column label="端口映射" min-width="220" show-overflow-tooltip>
           <template #default="{row}">{{ formatPorts(row.ports) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{row}">
+            <div class="action-cell">
+              <el-button
+                v-if="row.status !== 'running'"
+                size="small" type="success" link
+                :aria-label="`启动容器 ${row.name}`"
+                @click.stop="handleContainerAction(row, 'start')"
+              >启动</el-button>
+              <el-button
+                v-if="row.status === 'running'"
+                size="small" type="warning" link
+                :aria-label="`停止容器 ${row.name}`"
+                @click.stop="handleContainerAction(row, 'stop')"
+              >停止</el-button>
+              <el-button
+                v-if="row.status === 'running'"
+                size="small" type="primary" link
+                :aria-label="`重启容器 ${row.name}`"
+                @click.stop="handleContainerAction(row, 'restart')"
+              >重启</el-button>
+              <el-button
+                size="small" type="danger" link
+                :aria-label="`删除容器 ${row.name}`"
+                @click.stop="handleContainerAction(row, 'delete')"
+              >删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column type="expand" width="40">
           <template #default="{row}">
             <div class="expand-detail">
@@ -129,7 +158,10 @@ import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
-import { getDockerHost, deleteDockerHost, refreshDockerHost, getHostContainers } from '@/api/containers'
+import {
+  getDockerHost, deleteDockerHost, refreshDockerHost, getHostContainers,
+  startDockerContainer, stopDockerContainer, restartDockerContainer, deleteDockerContainer,
+} from '@/api/containers'
 
 // ─── 阈值常量 ──────────────────────────────────────────────
 
@@ -238,6 +270,27 @@ const pagedContainers = computed(() => {
 
 watch(keyword, () => { page.value = 1 })
 watch(statusFilter, () => { page.value = 1 })
+
+// ─── 容器操作 ──────────────────────────────────────────────
+
+async function handleContainerAction(row: any, action: 'start' | 'stop' | 'restart' | 'delete') {
+  const labels = { start: '启动', stop: '停止', restart: '重启', delete: '删除' }
+
+  if (action === 'delete') {
+    try {
+      await ElMessageBox.confirm(`确定删除容器「${row.name}」？此操作不可恢复。`, '删除确认', { type: 'warning' })
+    } catch { return }
+  }
+
+  try {
+    const apiMap = { start: startDockerContainer, stop: stopDockerContainer, restart: restartDockerContainer, delete: deleteDockerContainer }
+    await apiMap[action](hostId.value, row.container_id)
+    ElMessage.success(`${labels[action]}成功`)
+    fetchContainers()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || `${labels[action]}失败`)
+  }
+}
 
 // ─── 数据获取 ──────────────────────────────────────────────
 
@@ -385,6 +438,11 @@ onDeactivated(stopAutoRefresh)
 }
 .value-danger {
   color: var(--danger-color);
+}
+.action-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

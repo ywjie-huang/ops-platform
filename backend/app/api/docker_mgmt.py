@@ -1,10 +1,12 @@
-"""Docker 管理 API — 平台端 Docker 主机管理 / 容器查询 / 主动拉取。"""
+"""Docker 管理 API — 平台端 Docker 主机管理 / 容器查询 / 容器操作 / 主动拉取。"""
 
+import requests as http_requests
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
+from app.core.config import CHINA_TZ
 from app.db.database import get_db
 from app.models.container import ContainerCluster
 from app.models.user import User
@@ -261,3 +263,52 @@ def api_host_containers(
         raise HTTPException(status_code=404, detail="主机不存在")
     containers = list_docker_containers(db, host_id=host_id, keyword=keyword, status=status)
     return {"code": 0, "data": [_container_dict(c) for c in containers]}
+
+
+# ─── 容器操作（代理到 Agent）─────────────────────────────────
+
+def _proxy_to_agent(host: ContainerCluster, method: str, path: str) -> dict:
+    """代理请求到 Docker Agent。"""
+    endpoint = host.endpoint
+    if not endpoint.startswith("http"):
+        endpoint = f"http://{endpoint}"
+
+    try:
+        resp = http_requests.request(method, f"{endpoint}{path}", timeout=15)
+        data = resp.json()
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=data.get("error", "Agent 请求失败"))
+        return data
+    except http_requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Agent 连接失败: {e}")
+
+
+@router.post("/hosts/{host_id}/containers/{container_id}/{action}")
+def api_container_action(
+    host_id: int,
+    container_id: str,
+    action: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """对容器执行操作：start / stop / restart / delete。"""
+    if action not in ("start", "stop", "restart", "delete"):
+        raise HTTPException(status_code=400, detail="不支持的操作")
+
+    h = get_docker_host(db, host_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="主机不存在")
+
+    result = _proxy_to_agent(h, "POST", f"/containers/{container_id}/{action}")
+
+    action_labels = {"start": "启动", "stop": "停止", "restart": "重启", "delete": "删除"}
+    write_log(
+        db, user=current_user, action=action, target_type="docker_container",
+        target_id=0, target_name=container_id,
+        detail=f"{action_labels[action]}容器 {container_id}（主机 {h.name}）",
+        ip_address=get_client_ip(request),
+    )
+    db.commit()
+
+    return {"code": 0, "msg": result.get("message", "操作成功")}

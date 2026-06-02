@@ -245,10 +245,57 @@ class AgentHandler(BaseHTTPRequestHandler):
         else:
             self._json_response({"error": "not found"}, 404)
 
+    def do_POST(self):
+        """处理容器操作请求。"""
+        import re
+
+        # POST /containers/<id>/<action>  (action: start|stop|restart|delete)
+        m = re.match(r'^/containers/([a-f0-9]{12,64})/(start|stop|restart|delete)$', self.path)
+        if not m:
+            self._json_response({"error": "not found"}, 404)
+            return
+
+        container_id = m.group(1)
+        action = m.group(2)
+
+        if not _docker_client:
+            self._json_response({"error": "docker client not available"}, 503)
+            return
+
+        try:
+            container = _docker_client.containers.get(container_id)
+        except docker.errors.NotFound:
+            self._json_response({"error": f"容器 {container_id} 不存在"}, 404)
+            return
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+            return
+
+        try:
+            if action == "start":
+                container.start()
+                msg = "容器已启动"
+            elif action == "stop":
+                container.stop(timeout=10)
+                msg = "容器已停止"
+            elif action == "restart":
+                container.restart(timeout=10)
+                msg = "容器已重启"
+            elif action == "delete":
+                container.remove(force=True)
+                msg = "容器已删除"
+            else:
+                self._json_response({"error": "unknown action"}, 400)
+                return
+
+            self._json_response({"status": "ok", "message": msg})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
         self.end_headers()
 

@@ -65,3 +65,17 @@ export function getDockerContainers(params?: { host_id?: number; keyword?: strin
 export function getHostContainers(hostId: number, params?: { keyword?: string; status?: string }) {
   return request.get(`/containers/docker/hosts/${hostId}/containers`, { params })
 }
+
+// Docker 容器操作
+export function startDockerContainer(hostId: number, containerId: string) {
+  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/start`)
+}
+export function stopDockerContainer(hostId: number, containerId: string) {
+  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/stop`)
+}
+export function restartDockerContainer(hostId: number, containerId: string) {
+  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/restart`)
+}
+export function deleteDockerContainer(hostId: number, containerId: string) {
+  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/delete`)
+}
