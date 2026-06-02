@@ -1,0 +1,201 @@
+<h2>AI 助手聊天界面风格</h2>
+<p class="subtitle">点击选择你喜欢的风格</p>
+
+<div class="cards">
+  <!-- Style A: Bubble Chat -->
+  <div class="card" data-choice="a-bubble" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:#f5f7fa;height:420px;display:flex;flex-direction:column;font-family:-apple-system,sans-serif;">
+        <!-- Header -->
+        <div style="background:#fff;padding:10px 16px;border-bottom:1px solid #e4e7ed;display:flex;align-items:center;gap:8px;">
+          <div style="width:20px;height:20px;background:#409eff;border-radius:4px;"></div>
+          <span style="font-size:13px;font-weight:600;color:#303133;">AI 助手</span>
+          <span style="font-size:10px;color:#909399;margin-left:auto;">gpt-4o</span>
+        </div>
+        <!-- Messages -->
+        <div style="flex:1;padding:12px;overflow:hidden;">
+          <!-- User -->
+          <div style="display:flex;gap:8px;margin-bottom:10px;flex-direction:row-reverse;">
+            <div style="width:24px;height:24px;background:#409eff;border-radius:6px;flex-shrink:0;"></div>
+            <div style="background:#409eff;color:#fff;padding:6px 10px;border-radius:10px 10px 2px 10px;font-size:11px;max-width:60%;">
+              今天哪台服务器资源异常？
+            </div>
+          </div>
+          <!-- Tool card -->
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <div style="width:24px;height:24px;background:#f0f2f5;border-radius:6px;flex-shrink:0;"></div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:6px 10px;font-size:10px;color:#15803d;max-width:60%;">
+              查询服务器 完成
+            </div>
+          </div>
+          <!-- Assistant -->
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <div style="width:24px;height:24px;background:#f0f2f5;border-radius:6px;flex-shrink:0;"></div>
+            <div style="background:#fff;border:1px solid #e4e7ed;padding:6px 10px;border-radius:10px 10px 10px 2px;font-size:11px;color:#303133;max-width:60%;line-height:1.5;">
+              检查发现 <b>web-prod-03</b> 的 CPU 使用率达到 92%，内存 87%。建议排查该服务器上的进程。
+            </div>
+          </div>
+        </div>
+        <!-- Input -->
+        <div style="padding:8px 12px;background:#fff;border-top:1px solid #e4e7ed;">
+          <div style="background:#f5f7fa;border:1px solid #dcdfe6;border-radius:16px;padding:6px 12px;font-size:10px;color:#c0c4cc;">输入消息...</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 气泡对话</h3>
+      <p>左右气泡布局，工具结果折叠卡片展示。传统聊天风格，适合简短交互。</p>
+    </div>
+  </div>
+
+  <!-- Style B: ChatGPT/Claude Style -->
+  <div class="card" data-choice="b-single" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:#212121;height:420px;display:flex;flex-direction:column;font-family:-apple-system,sans-serif;">
+        <!-- Header -->
+        <div style="padding:10px 16px;border-bottom:1px solid #333;display:flex;align-items:center;gap:8px;">
+          <div style="width:20px;height:20px;background:#10a37f;border-radius:50%;"></div>
+          <span style="font-size:13px;font-weight:600;color:#ececec;">AI 助手</span>
+        </div>
+        <!-- Messages single column -->
+        <div style="flex:1;padding:16px 20%;overflow:hidden;">
+          <!-- User -->
+          <div style="margin-bottom:16px;">
+            <div style="font-size:10px;color:#888;margin-bottom:4px;">你</div>
+            <div style="color:#ececec;font-size:12px;line-height:1.6;">今天哪台服务器资源异常？</div>
+          </div>
+          <!-- Assistant -->
+          <div style="margin-bottom:16px;">
+            <div style="font-size:10px;color:#10a37f;margin-bottom:4px;">AI 助手</div>
+            <!-- Tool inline -->
+            <div style="background:#2a2a2a;border:1px solid #444;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:10px;">
+              <span style="color:#10a37f;">调用工具:</span> <span style="color:#aaa;">query_assets</span>
+              <span style="color:#666;margin-left:8px;">7 台资产</span>
+            </div>
+            <!-- Text with markdown -->
+            <div style="color:#ececec;font-size:12px;line-height:1.7;">
+              <p style="margin:0 0 8px;">检查了所有服务器，发现以下异常：</p>
+              <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+                <tr style="border-bottom:1px solid #444;">
+                  <th style="text-align:left;padding:4px 8px;color:#888;">服务器</th>
+                  <th style="text-align:left;padding:4px 8px;color:#888;">CPU</th>
+                  <th style="text-align:left;padding:4px 8px;color:#888;">内存</th>
+                </tr>
+                <tr style="border-bottom:1px solid #333;">
+                  <td style="padding:4px 8px;color:#ececec;">web-prod-03</td>
+                  <td style="padding:4px 8px;color:#ef4444;">92%</td>
+                  <td style="padding:4px 8px;color:#f59e0b;">87%</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 8px;color:#ececec;">db-master-01</td>
+                  <td style="padding:4px 8px;color:#f59e0b;">78%</td>
+                  <td style="padding:4px 8px;color:#22c55e;">45%</td>
+                </tr>
+              </table>
+              <p style="margin:0;">建议优先排查 <code style="background:#3a3a3a;padding:1px 4px;border-radius:3px;font-size:11px;">web-prod-03</code> 的进程。</p>
+            </div>
+          </div>
+        </div>
+        <!-- Input -->
+        <div style="padding:12px 20%;">
+          <div style="background:#2f2f2f;border:1px solid #555;border-radius:12px;padding:8px 14px;font-size:10px;color:#666;">输入消息...</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 单列宽幅 (ChatGPT/Claude 风格)</h3>
+      <p>深色主题，单列居中。工具调用内联展示，支持 markdown 表格和代码块，侧重内容阅读。</p>
+    </div>
+  </div>
+
+  <!-- Style C: IDE Split Panel -->
+  <div class="card" data-choice="c-split" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:#1e1e1e;height:420px;display:flex;font-family:-apple-system,sans-serif;">
+        <!-- Left: Conversation list -->
+        <div style="width:180px;background:#252526;border-right:1px solid #3c3c3c;display:flex;flex-direction:column;">
+          <div style="padding:8px 10px;font-size:10px;color:#888;font-weight:600;">对话历史</div>
+          <div style="padding:6px 10px;background:#37373d;font-size:10px;color:#ccc;border-left:2px solid #007acc;">
+            服务器资源检查
+          </div>
+          <div style="padding:6px 10px;font-size:10px;color:#888;">
+            告警分析
+          </div>
+          <div style="padding:6px 10px;font-size:10px;color:#888;">
+            巡检报告
+          </div>
+          <div style="flex:1;"></div>
+          <div style="padding:6px 10px;border-top:1px solid #3c3c3c;">
+            <div style="background:#007acc;color:#fff;text-align:center;padding:4px;border-radius:3px;font-size:10px;">+ 新对话</div>
+          </div>
+        </div>
+        <!-- Right: Chat area -->
+        <div style="flex:1;display:flex;flex-direction:column;">
+          <!-- Header -->
+          <div style="padding:8px 12px;border-bottom:1px solid #3c3c3c;display:flex;align-items:center;gap:6px;">
+            <div style="width:16px;height:16px;background:#007acc;border-radius:50%;"></div>
+            <span style="font-size:12px;color:#ccc;font-weight:500;">AI 助手</span>
+            <span style="font-size:9px;color:#666;margin-left:auto;">gpt-4o</span>
+          </div>
+          <!-- Messages -->
+          <div style="flex:1;padding:12px;overflow:hidden;">
+            <!-- User -->
+            <div style="margin-bottom:12px;">
+              <div style="font-size:9px;color:#007acc;margin-bottom:3px;">你</div>
+              <div style="color:#d4d4d4;font-size:11px;line-height:1.5;background:#2d2d2d;padding:6px 10px;border-radius:6px;border-left:3px solid #007acc;">
+                今天哪台服务器资源异常？
+              </div>
+            </div>
+            <!-- Tool result panel -->
+            <div style="margin-bottom:10px;background:#1a1a2e;border:1px solid #2d2d44;border-radius:6px;overflow:hidden;">
+              <div style="padding:5px 10px;background:#1a1a2e;font-size:9px;color:#7c7cff;display:flex;align-items:center;gap:4px;">
+                <span style="color:#22c55e;">&#10003;</span> query_assets
+                <span style="color:#666;margin-left:auto;font-size:8px;">23ms</span>
+              </div>
+              <div style="padding:6px 10px;font-size:10px;color:#aaa;border-top:1px solid #2d2d44;font-family:monospace;line-height:1.4;">
+                共 7 台资产<br>
+                web-prod-01 ~ web-prod-04<br>
+                db-master-01, db-slave-01<br>
+                redis-01
+              </div>
+            </div>
+            <!-- Assistant -->
+            <div style="margin-bottom:12px;">
+              <div style="font-size:9px;color:#22c55e;margin-bottom:3px;">AI</div>
+              <div style="color:#d4d4d4;font-size:11px;line-height:1.6;">
+                <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                  <tr style="border-bottom:1px solid #3c3c3c;">
+                    <th style="text-align:left;padding:3px 6px;color:#888;">服务器</th>
+                    <th style="text-align:left;padding:3px 6px;color:#888;">CPU</th>
+                    <th style="text-align:left;padding:3px 6px;color:#888;">内存</th>
+                    <th style="text-align:left;padding:3px 6px;color:#888;">状态</th>
+                  </tr>
+                  <tr style="border-bottom:1px solid #2d2d2d;">
+                    <td style="padding:3px 6px;">web-prod-03</td>
+                    <td style="padding:3px 6px;color:#ef4444;">92%</td>
+                    <td style="padding:3px 6px;color:#f59e0b;">87%</td>
+                    <td style="padding:3px 6px;color:#ef4444;">异常</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:3px 6px;">db-master-01</td>
+                    <td style="padding:3px 6px;color:#f59e0b;">78%</td>
+                    <td style="padding:3px 6px;color:#22c55e;">45%</td>
+                    <td style="padding:3px 6px;color:#f59e0b;">警告</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </div>
+          <!-- Input -->
+          <div style="padding:8px 12px;border-top:1px solid #3c3c3c;">
+            <div style="background:#2d2d2d;border:1px solid #555;border-radius:6px;padding:6px 10px;font-size:10px;color:#666;">输入消息... (Enter 发送)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. IDE 分栏式</h3>
+      <p>左侧对话列表 + 右侧聊天区，工具结果独立面板展示。适合多对话管理和专业运维场景。</p>
+    </div>
+  </div>
+</div>

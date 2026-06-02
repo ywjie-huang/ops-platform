@@ -1,0 +1,133 @@
+<h2>下方主内容区布局</h2>
+<p class="subtitle">统计卡片下方的区域，决定信息密度和重点</p>
+
+<div class="cards">
+  <!-- Option 1 -->
+  <div class="card" data-choice="timeline" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background: #f8fafc; padding: 16px; border-radius: 8px;">
+        <div style="background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: #1e293b;">最近活动</div>
+            <div style="display: flex; gap: 4px;">
+              <span style="padding: 2px 6px; background: #e0e7ff; color: #4f46e5; border-radius: 3px; font-size: 9px;">全部</span>
+              <span style="padding: 2px 6px; background: #f1f5f9; color: #64748b; border-radius: 3px; font-size: 9px;">告警</span>
+              <span style="padding: 2px 6px; background: #f1f5f9; color: #64748b; border-radius: 3px; font-size: 9px;">工单</span>
+              <span style="padding: 2px 6px; background: #f1f5f9; color: #64748b; border-radius: 3px; font-size: 9px;">资产</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0;">
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #ef4444; margin-top: 5px; flex-shrink: 0;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #1e293b; font-weight: 600;">CPU 使用率告警 — web-01</div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">CPU 使用率超过 90% · 10:20</div>
+              </div>
+              <span style="padding: 2px 6px; background: #fef2f2; color: #ef4444; border-radius: 3px; font-size: 9px; height: fit-content;">告警</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-top: 5px; flex-shrink: 0;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #1e293b; font-weight: 600;">主机 web-01 上线</div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">资产状态变更为在线 · 10:23</div>
+              </div>
+              <span style="padding: 2px 6px; background: #f0fdf4; color: #22c55e; border-radius: 3px; font-size: 9px; height: fit-content;">资产</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; margin-top: 5px; flex-shrink: 0;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #1e293b; font-weight: 600;">工单 #123 已解决</div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">磁盘空间不足 · 由 admin 处理 · 10:15</div>
+              </div>
+              <span style="padding: 2px 6px; background: #eff6ff; color: #3b82f6; border-radius: 3px; font-size: 9px; height: fit-content;">工单</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; margin-top: 5px; flex-shrink: 0;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #1e293b; font-weight: 600;">巡检报告生成</div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">日常巡检完成，2 项异常 · 09:00</div>
+              </div>
+              <span style="padding: 2px 6px; background: #fffbeb; color: #f59e0b; border-radius: 3px; font-size: 9px; height: fit-content;">巡检</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 8px 0;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; margin-top: 5px; flex-shrink: 0;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #1e293b; font-weight: 600;">新用户 ops-user 加入</div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">角色：运维工程师 · 08:30</div>
+              </div>
+              <span style="padding: 2px 6px; background: #f5f3ff; color: #8b5cf6; border-radius: 3px; font-size: 9px; height: fit-content;">用户</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 统一活动时间线</h3>
+      <p>所有事件（告警、工单、资产变更、巡检、用户操作）按时间排序，支持分类筛选。信息最全面，但没有图表。</p>
+    </div>
+  </div>
+
+  <!-- Option 2 -->
+  <div class="card" data-choice="mixed" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background: #f8fafc; padding: 16px; border-radius: 8px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+          <!-- Left: timeline -->
+          <div style="background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+            <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 10px;">最近活动</div>
+            <div style="display: flex; flex-direction: column; gap: 0;">
+              <div style="display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">
+                <div style="width: 6px; height: 6px; border-radius: 50%; background: #ef4444; margin-top: 4px; flex-shrink: 0;"></div>
+                <div>
+                  <div style="font-size: 10px; color: #1e293b; font-weight: 600;">CPU 告警 — web-01</div>
+                  <div style="font-size: 8px; color: #94a3b8;">10:20</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">
+                <div style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e; margin-top: 4px; flex-shrink: 0;"></div>
+                <div>
+                  <div style="font-size: 10px; color: #1e293b; font-weight: 600;">web-01 上线</div>
+                  <div style="font-size: 8px; color: #94a3b8;">10:23</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 7px 0;">
+                <div style="width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; margin-top: 4px; flex-shrink: 0;"></div>
+                <div>
+                  <div style="font-size: 10px; color: #1e293b; font-weight: 600;">工单 #123 已解决</div>
+                  <div style="font-size: 8px; color: #94a3b8;">10:15</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Right: charts -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+              <div style="font-size: 10px; font-weight: 600; color: #475569; margin-bottom: 8px;">告警趋势</div>
+              <svg width="100%" height="35" viewBox="0 0 120 35">
+                <polyline points="0,30 15,25 30,28 45,15 60,20 75,10 90,12 105,8 120,5" fill="none" stroke="#ef4444" stroke-width="1.5"/>
+                <polygon points="0,30 15,25 30,28 45,15 60,20 75,10 90,12 105,8 120,5 120,35 0,35" fill="rgba(239,68,68,0.1)"/>
+              </svg>
+            </div>
+            <div style="background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+              <div style="font-size: 10px; font-weight: 600; color: #475569; margin-bottom: 8px;">资产类型</div>
+              <div style="display: flex; gap: 3px; height: 16px; border-radius: 4px; overflow: hidden;">
+                <div style="flex: 5; background: #3b82f6;"></div>
+                <div style="flex: 3; background: #22c55e;"></div>
+                <div style="flex: 2; background: #f59e0b;"></div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 6px; font-size: 8px; color: #94a3b8;">
+                <span>● Linux 50%</span>
+                <span>● K8s 30%</span>
+                <span>● Docker 20%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 时间线 + 图表混排</h3>
+      <p>左侧活动时间线 + 右侧告警趋势图和资产分布。兼顾事件流和数据可视化，信息密度适中。</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,235 @@
+<h2>CMDB 资产详情页 — 3 版设计方案</h2>
+<p class="subtitle">选择你最喜欢的风格</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>经典 CMDB — Header + 双栏卡片</h3>
+      <p>顶部大标题区 + 左右分栏卡片布局，信息密度高，专业感强</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Tab 页签 — 分标签展示</h3>
+      <p>顶部概览 + Tab 切换不同信息区块，适合未来扩展更多标签页</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>仪表盘风格 — 概览 + 侧边栏</h3>
+      <p>顶部状态概览条 + 主内容区与侧边快捷操作栏并排</p>
+    </div>
+  </div>
+</div>
+
+<!-- Version A -->
+<div class="mockup" style="margin-top: 32px;">
+  <div class="mockup-header">方案 A：经典 CMDB — Header + 双栏卡片</div>
+  <div class="mockup-body" style="padding: 0; overflow: hidden;">
+
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: #fff; padding: 24px 28px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="font-size: 13px; color: #94a3b8;">← 返回</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 44px; height: 44px; background: rgba(255,255,255,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px;">🖥</div>
+            <div>
+              <div style="font-size: 22px; font-weight: 700;">Web-Server-01</div>
+              <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                <span style="font-size: 14px; color: #94a3b8;">192.168.1.100</span>
+                <span style="background: #22c55e; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">使用中</span>
+                <span style="background: rgba(255,255,255,0.1); padding: 2px 10px; border-radius: 12px; font-size: 11px;">云主机</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer;">SSH 连接</div>
+          <div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer;">编辑</div>
+          <div style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; padding: 8px 16px; font-size: 13px; color: #fca5a5; cursor: pointer;">删除</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content: 2 columns -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px; padding: 20px; background: #f4f6fa;">
+
+      <!-- Left column -->
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Basic Info Card -->
+        <div style="background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 4px; height: 16px; background: #3b82f6; border-radius: 2px; display: inline-block;"></span>
+            基础信息
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">资产名称</div><div style="font-size: 13px; font-weight: 600;">Web-Server-01</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">资产类型</div><div style="font-size: 13px; font-weight: 600;">云主机</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">IP 地址</div><div style="font-size: 13px; font-weight: 600; font-family: monospace;">192.168.1.100</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">状态</div><div><span style="background: #dcfce7; color: #16a34a; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">使用中</span></div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">负责人</div><div style="font-size: 13px;">张三</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">创建时间</div><div style="font-size: 13px;">2026-05-15 10:30</div></div>
+          </div>
+        </div>
+
+        <!-- System Card -->
+        <div style="background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 4px; height: 16px; background: #22c55e; border-radius: 2px; display: inline-block;"></span>
+            系统规格
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">CPU / 内存</div><div style="font-size: 13px; font-weight: 600;">4C8G</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">操作系统</div><div style="font-size: 13px; font-weight: 600;">Ubuntu 22.04</div></div>
+          </div>
+        </div>
+
+        <!-- SSH Card -->
+        <div style="background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 4px; height: 16px; background: #f59e0b; border-radius: 2px; display: inline-block;"></span>
+            连接配置
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">SSH 端口</div><div style="font-size: 13px; font-weight: 600; font-family: monospace;">22</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">用户名</div><div style="font-size: 13px; font-weight: 600;">root</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">认证方式</div><div style="font-size: 13px;">密码</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Description Card -->
+        <div style="background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 4px; height: 16px; background: #8b5cf6; border-radius: 2px; display: inline-block;"></span>
+            说明
+          </div>
+          <div style="font-size: 13px; color: #64748b; line-height: 1.6;">生产环境 Web 服务器，承载主站业务。部署在阿里云 ECS 上，配有 SLB 负载均衡。</div>
+        </div>
+
+        <!-- Quick Actions Card -->
+        <div style="background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="width: 4px; height: 16px; background: #ec4899; border-radius: 2px; display: inline-block;"></span>
+            快捷操作
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="background: #eff6ff; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #3b82f6; cursor: pointer; display: flex; align-items: center; gap: 8px;">🖥 打开 SSH 终端</div>
+            <div style="background: #f0fdf4; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #16a34a; cursor: pointer; display: flex; align-items: center; gap: 8px;">📊 查看监控面板</div>
+            <div style="background: #fef2f2; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #dc2626; cursor: pointer; display: flex; align-items: center; gap: 8px;">📋 查看关联工单</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Version B -->
+<div class="mockup" style="margin-top: 32px;">
+  <div class="mockup-header">方案 B：Tab 页签 — 分标签展示</div>
+  <div class="mockup-body" style="padding: 0; overflow: hidden;">
+
+    <!-- Header (compact) -->
+    <div style="background: #fff; border-bottom: 1px solid #e4e9f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 13px; color: #94a3b8;">← 返回</span>
+        <span style="font-size: 18px; font-weight: 700; color: #1e293b;">Web-Server-01</span>
+        <span style="font-size: 13px; color: #94a3b8; font-family: monospace;">192.168.1.100</span>
+        <span style="background: #dcfce7; color: #16a34a; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;">使用中</span>
+        <span style="background: #f1f5f9; padding: 2px 10px; border-radius: 12px; font-size: 11px; color: #64748b;">云主机</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <div style="background: #3b82f6; color: #fff; border-radius: 6px; padding: 6px 14px; font-size: 13px;">SSH 连接</div>
+        <div style="background: #f1f5f9; border-radius: 6px; padding: 6px 14px; font-size: 13px; color: #64748b;">编辑</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="background: #fff; border-bottom: 1px solid #e4e9f0; padding: 0 24px; display: flex; gap: 0;">
+      <div style="padding: 10px 20px; font-size: 13px; font-weight: 600; color: #3b82f6; border-bottom: 2px solid #3b82f6;">基础信息</div>
+      <div style="padding: 10px 20px; font-size: 13px; color: #64748b;">连接配置</div>
+      <div style="padding: 10px 20px; font-size: 13px; color: #64748b;">关联工单</div>
+      <div style="padding: 10px 20px; font-size: 13px; color: #64748b;">变更记录</div>
+    </div>
+
+    <!-- Tab Content -->
+    <div style="padding: 20px 24px; background: #f4f6fa;">
+      <div style="background: #fff; border-radius: 10px; padding: 24px; border: 1px solid #e4e9f0;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">资产名称</div><div style="font-size: 14px; font-weight: 600;">Web-Server-01</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">资产类型</div><div style="font-size: 14px; font-weight: 600;">云主机</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">IP 地址</div><div style="font-size: 14px; font-weight: 600; font-family: monospace;">192.168.1.100</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">状态</div><div><span style="background: #dcfce7; color: #16a34a; padding: 2px 10px; border-radius: 12px; font-size: 12px;">使用中</span></div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">规格</div><div style="font-size: 14px; font-weight: 600;">4C8G</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">操作系统</div><div style="font-size: 14px; font-weight: 600;">Ubuntu 22.04</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">负责人</div><div style="font-size: 14px;">张三</div></div>
+          <div style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">创建时间</div><div style="font-size: 14px;">2026-05-15 10:30</div></div>
+          <div style="padding: 12px 0; grid-column: span 2;"><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">说明</div><div style="font-size: 14px; color: #64748b; line-height: 1.6;">生产环境 Web 服务器，承载主站业务。部署在阿里云 ECS 上，配有 SLB 负载均衡。</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Version C -->
+<div class="mockup" style="margin-top: 32px;">
+  <div class="mockup-header">方案 C：仪表盘风格 — 概览条 + 侧边栏</div>
+  <div class="mockup-body" style="padding: 0; overflow: hidden;">
+
+    <!-- Status bar -->
+    <div style="background: #fff; border-bottom: 1px solid #e4e9f0; padding: 12px 24px; display: flex; align-items: center; gap: 16px;">
+      <span style="font-size: 13px; color: #94a3b8;">← 返回</span>
+      <div style="width: 1px; height: 24px; background: #e4e9f0;"></div>
+      <span style="font-size: 16px; font-weight: 700; color: #1e293b;">Web-Server-01</span>
+      <span style="background: #dcfce7; color: #16a34a; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;">使用中</span>
+      <div style="flex: 1;"></div>
+      <div style="display: flex; gap: 12px; font-size: 12px; color: #64748b;">
+        <span>IP: <strong style="color: #1e293b; font-family: monospace;">192.168.1.100</strong></span>
+        <span>类型: <strong style="color: #1e293b;">云主机</strong></span>
+        <span>负责人: <strong style="color: #1e293b;">张三</strong></span>
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <div style="background: #eff6ff; color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 12px;">SSH</div>
+        <div style="background: #f1f5f9; color: #64748b; border-radius: 6px; padding: 6px 12px; font-size: 12px;">编辑</div>
+      </div>
+    </div>
+
+    <!-- Main: sidebar + content -->
+    <div style="display: grid; grid-template-columns: 200px 1fr; min-height: 400px;">
+
+      <!-- Sidebar -->
+      <div style="background: #fff; border-right: 1px solid #e4e9f0; padding: 16px 0;">
+        <div style="padding: 8px 16px; font-size: 13px; font-weight: 600; color: #3b82f6; background: #eff6ff; border-right: 3px solid #3b82f6;">基础信息</div>
+        <div style="padding: 8px 16px; font-size: 13px; color: #64748b;">系统规格</div>
+        <div style="padding: 8px 16px; font-size: 13px; color: #64748b;">连接配置</div>
+        <div style="padding: 8px 16px; font-size: 13px; color: #64748b;">说明</div>
+        <div style="height: 1px; background: #e4e9f0; margin: 12px 16px;"></div>
+        <div style="padding: 8px 16px; font-size: 13px; color: #64748b;">关联工单</div>
+        <div style="padding: 8px 16px; font-size: 13px; color: #64748b;">变更记录</div>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 20px; background: #f4f6fa;">
+        <div style="background: #fff; border-radius: 10px; padding: 24px; border: 1px solid #e4e9f0;">
+          <div style="font-size: 15px; font-weight: 700; margin-bottom: 20px; color: #1e293b;">基础信息</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">资产名称</div><div style="font-size: 14px; font-weight: 600;">Web-Server-01</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">资产类型</div><div style="font-size: 14px; font-weight: 600;">云主机</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">IP 地址</div><div style="font-size: 14px; font-weight: 600; font-family: monospace;">192.168.1.100</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">状态</div><div><span style="background: #dcfce7; color: #16a34a; padding: 2px 10px; border-radius: 12px; font-size: 12px;">使用中</span></div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">负责人</div><div style="font-size: 14px;">张三</div></div>
+            <div><div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">创建时间</div><div style="font-size: 14px;">2026-05-15 10:30</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

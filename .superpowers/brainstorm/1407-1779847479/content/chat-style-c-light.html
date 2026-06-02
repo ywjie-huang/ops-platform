@@ -1,0 +1,220 @@
+<h2>IDE 分栏式 — 浅色主题</h2>
+<p class="subtitle">白色底，清爽风格</p>
+
+<div style="background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e4e7ed;font-family:-apple-system,'Segoe UI',sans-serif;">
+  <!-- Top bar -->
+  <div style="background:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e4e7ed;">
+    <div style="width:14px;height:14px;background:#409eff;border-radius:50%;"></div>
+    <span style="font-size:13px;color:#303133;font-weight:600;">AI 助手</span>
+    <span style="font-size:10px;color:#909399;background:#f0f2f5;padding:1px 6px;border-radius:3px;">gpt-4o</span>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <span style="font-size:11px;color:#909399;cursor:pointer;">设置</span>
+      <span style="font-size:11px;color:#909399;cursor:pointer;">清空</span>
+    </div>
+  </div>
+
+  <div style="display:flex;height:520px;">
+    <!-- Left sidebar -->
+    <div style="width:200px;background:#f8f9fa;border-right:1px solid #e4e7ed;display:flex;flex-direction:column;">
+      <!-- Search -->
+      <div style="padding:10px 8px 6px;">
+        <div style="background:#fff;border:1px solid #dcdfe6;border-radius:4px;padding:5px 8px;font-size:11px;color:#c0c4cc;">搜索对话...</div>
+      </div>
+      <!-- New chat button -->
+      <div style="padding:0 8px 8px;">
+        <div style="background:#409eff;color:#fff;text-align:center;padding:5px;border-radius:4px;font-size:11px;cursor:pointer;">+ 新对话</div>
+      </div>
+      <!-- Conversation list -->
+      <div style="flex:1;overflow-y:auto;">
+        <div style="padding:8px 10px;background:#ecf5ff;border-left:3px solid #409eff;cursor:pointer;">
+          <div style="font-size:11px;color:#303133;font-weight:500;">服务器资源检查</div>
+          <div style="font-size:9px;color:#909399;margin-top:2px;">2 分钟前</div>
+        </div>
+        <div style="padding:8px 10px;border-left:3px solid transparent;cursor:pointer;">
+          <div style="font-size:11px;color:#606266;">告警分析</div>
+          <div style="font-size:9px;color:#c0c4cc;margin-top:2px;">1 小时前</div>
+        </div>
+        <div style="padding:8px 10px;border-left:3px solid transparent;cursor:pointer;">
+          <div style="font-size:11px;color:#606266;">巡检报告生成</div>
+          <div style="font-size:9px;color:#c0c4cc;margin-top:2px;">昨天</div>
+        </div>
+        <div style="padding:8px 10px;border-left:3px solid transparent;cursor:pointer;">
+          <div style="font-size:11px;color:#606266;">Docker 容器排查</div>
+          <div style="font-size:9px;color:#c0c4cc;margin-top:2px;">昨天</div>
+        </div>
+        <div style="padding:8px 10px;border-left:3px solid transparent;cursor:pointer;">
+          <div style="font-size:11px;color:#606266;">K8s 集群状态</div>
+          <div style="font-size:9px;color:#c0c4cc;margin-top:2px;">3 天前</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Chat area -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#fff;">
+      <!-- Messages -->
+      <div style="flex:1;overflow-y:auto;padding:16px 20px;">
+
+        <!-- User message -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <div style="width:20px;height:20px;background:#409eff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600;">U</div>
+            <span style="font-size:11px;color:#409eff;">你</span>
+            <span style="font-size:10px;color:#c0c4cc;">14:23</span>
+          </div>
+          <div style="background:#ecf5ff;border-left:3px solid #409eff;padding:8px 12px;border-radius:0 6px 6px 0;font-size:13px;color:#303133;line-height:1.6;">
+            今天哪台服务器资源异常？帮我查一下 CPU 和内存使用率最高的
+          </div>
+        </div>
+
+        <!-- Tool call: query_assets -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <div style="width:20px;height:20px;background:#67c23a;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;">A</div>
+            <span style="font-size:11px;color:#67c23a;">AI</span>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;overflow:hidden;margin-left:26px;">
+            <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span style="color:#67c23a;font-size:12px;">&#10003;</span>
+              <span style="font-size:11px;color:#409eff;font-weight:500;">query_assets</span>
+              <span style="font-size:9px;color:#c0c4cc;margin-left:auto;">12ms</span>
+            </div>
+            <div style="border-top:1px solid #e1f3d8;padding:8px 10px;">
+              <div style="font-size:10px;color:#909399;margin-bottom:4px;">参数:</div>
+              <div style="font-size:10px;color:#606266;font-family:monospace;">{ keyword: "", status: "" }</div>
+              <div style="font-size:10px;color:#909399;margin:6px 0 4px;">结果:</div>
+              <div style="font-size:10px;color:#606266;font-family:monospace;line-height:1.5;">
+                共找到 7 台资产：<br>
+                ID: 1, web-prod-01, 10.0.1.11, 使用中<br>
+                ID: 2, web-prod-02, 10.0.1.12, 使用中<br>
+                ID: 3, web-prod-03, 10.0.1.13, 使用中<br>
+                ...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tool call: query_host_metrics -->
+        <div style="margin-bottom:12px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;overflow:hidden;margin-left:26px;">
+            <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span style="color:#67c23a;font-size:12px;">&#10003;</span>
+              <span style="font-size:11px;color:#409eff;font-weight:500;">query_host_metrics</span>
+              <span style="font-size:9px;color:#c0c4cc;margin-left:auto;">234ms</span>
+            </div>
+            <div style="border-top:1px solid #e1f3d8;padding:8px 10px;">
+              <div style="font-size:10px;color:#909399;margin-bottom:4px;">参数:</div>
+              <div style="font-size:10px;color:#606266;font-family:monospace;">{ asset_id: 3 }</div>
+              <div style="font-size:10px;color:#909399;margin:6px 0 4px;">结果:</div>
+              <div style="font-size:10px;color:#606266;font-family:monospace;line-height:1.5;">
+                web-prod-03 (10.0.1.13) 实时指标：<br>
+                CPU: 92%, 内存: 87%, 磁盘: 65%
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI text response -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <div style="width:20px;height:20px;background:#67c23a;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;">A</div>
+            <span style="font-size:11px;color:#67c23a;">AI</span>
+            <span style="font-size:10px;color:#c0c4cc;">14:23</span>
+          </div>
+          <div style="margin-left:26px;font-size:13px;color:#303133;line-height:1.7;">
+            <p style="margin:0 0 8px;">检查了所有 7 台服务器，发现以下异常：</p>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
+              <tr style="background:#f5f7fa;">
+                <th style="text-align:left;padding:6px 10px;color:#606266;font-weight:600;border-bottom:1px solid #ebeef5;">服务器</th>
+                <th style="text-align:left;padding:6px 10px;color:#606266;font-weight:600;border-bottom:1px solid #ebeef5;">IP</th>
+                <th style="text-align:left;padding:6px 10px;color:#606266;font-weight:600;border-bottom:1px solid #ebeef5;">CPU</th>
+                <th style="text-align:left;padding:6px 10px;color:#606266;font-weight:600;border-bottom:1px solid #ebeef5;">内存</th>
+                <th style="text-align:left;padding:6px 10px;color:#606266;font-weight:600;border-bottom:1px solid #ebeef5;">状态</th>
+              </tr>
+              <tr style="border-bottom:1px solid #ebeef5;">
+                <td style="padding:6px 10px;font-weight:500;">web-prod-03</td>
+                <td style="padding:6px 10px;color:#909399;">10.0.1.13</td>
+                <td style="padding:6px 10px;color:#f56c6c;font-weight:600;">92%</td>
+                <td style="padding:6px 10px;color:#e6a23c;">87%</td>
+                <td style="padding:6px 10px;"><span style="background:#fef0f0;color:#f56c6c;padding:2px 8px;border-radius:3px;font-size:10px;">严重</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid #ebeef5;">
+                <td style="padding:6px 10px;font-weight:500;">db-master-01</td>
+                <td style="padding:6px 10px;color:#909399;">10.0.2.10</td>
+                <td style="padding:6px 10px;color:#e6a23c;">78%</td>
+                <td style="padding:6px 10px;color:#67c23a;">45%</td>
+                <td style="padding:6px 10px;"><span style="background:#fdf6ec;color:#e6a23c;padding:2px 8px;border-radius:3px;font-size:10px;">警告</span></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 10px;color:#c0c4cc;">其余 5 台</td>
+                <td style="padding:6px 10px;color:#c0c4cc;">-</td>
+                <td style="padding:6px 10px;color:#c0c4cc;">&lt;60%</td>
+                <td style="padding:6px 10px;color:#c0c4cc;">&lt;50%</td>
+                <td style="padding:6px 10px;"><span style="background:#f0f9eb;color:#67c23a;padding:2px 8px;border-radius:3px;font-size:10px;">正常</span></td>
+              </tr>
+            </table>
+            <div style="background:#ecf5ff;border-left:3px solid #409eff;padding:8px 12px;border-radius:0 4px 4px 0;margin-bottom:10px;">
+              <div style="font-size:11px;color:#409eff;font-weight:600;margin-bottom:4px;">建议</div>
+              <div style="font-size:12px;color:#606266;line-height:1.6;">
+                1. 优先排查 <code style="background:#e8e8e8;padding:1px 4px;border-radius:3px;font-size:11px;">web-prod-03</code> 的进程，可能是某个服务内存泄漏<br>
+                2. db-master-01 的 CPU 偏高，建议检查慢查询
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <span style="background:#f0f2f5;color:#606266;padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #dcdfe6;">查看 web-prod-03 详情</span>
+              <span style="background:#f0f2f5;color:#606266;padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #dcdfe6;">执行巡检</span>
+              <span style="background:#f0f2f5;color:#606266;padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #dcdfe6;">创建工单</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- User follow-up -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <div style="width:20px;height:20px;background:#409eff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600;">U</div>
+            <span style="font-size:11px;color:#409eff;">你</span>
+            <span style="font-size:10px;color:#c0c4cc;">14:24</span>
+          </div>
+          <div style="background:#ecf5ff;border-left:3px solid #409eff;padding:8px 12px;border-radius:0 6px 6px 0;font-size:13px;color:#303133;line-height:1.6;">
+            帮我在 web-prod-03 上执行 top -bn1 看看是哪个进程占用高
+          </div>
+        </div>
+
+        <!-- Tool confirm -->
+        <div style="margin-bottom:12px;">
+          <div style="background:#fdf6ec;border:1px solid #f5dab1;border-radius:6px;overflow:hidden;margin-left:26px;">
+            <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span style="color:#e6a23c;font-size:12px;">&#9888;</span>
+              <span style="font-size:11px;color:#e6a23c;font-weight:500;">execute_command — 需要确认</span>
+            </div>
+            <div style="border-top:1px solid #f5dab1;padding:8px 10px;">
+              <div style="font-size:10px;color:#909399;margin-bottom:4px;">目标:</div>
+              <div style="font-size:10px;color:#606266;font-family:monospace;">web-prod-03 (10.0.1.13)</div>
+              <div style="font-size:10px;color:#909399;margin:6px 0 4px;">命令:</div>
+              <div style="font-size:11px;color:#e6a23c;font-family:monospace;background:#fff;padding:6px 8px;border-radius:4px;border:1px solid #f5dab1;">top -bn1 | head -20</div>
+            </div>
+            <div style="padding:6px 10px;border-top:1px solid #f5dab1;display:flex;justify-content:flex-end;gap:6px;">
+              <span style="background:#fff;color:#606266;padding:4px 14px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #dcdfe6;">拒绝</span>
+              <span style="background:#409eff;color:#fff;padding:4px 14px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:500;">确认执行</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Input area -->
+      <div style="padding:12px 16px;border-top:1px solid #e4e7ed;background:#fff;">
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;background:#f5f7fa;border:1px solid #dcdfe6;border-radius:8px;padding:8px 12px;font-size:12px;color:#c0c4cc;min-height:18px;">
+            输入消息... (Shift+Enter 换行)
+          </div>
+          <div style="background:#409eff;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;flex-shrink:0;">
+            &#9654;
+          </div>
+        </div>
+        <div style="font-size:10px;color:#c0c4cc;margin-top:4px;text-align:center;">
+          基于大语言模型，回答仅供参考
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
