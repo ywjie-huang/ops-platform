@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- 统计卡片 -->
-    <div class="stat-grid">
+    <div class="stat-grid" role="region" aria-label="资产统计">
       <div class="stat-card">
         <div class="stat-icon stat-icon--blue">
           <el-icon size="20"><Monitor /></el-icon>
@@ -120,7 +120,7 @@
     </div>
 
     <!-- 新增资产弹窗 -->
-    <el-dialog v-model="dialogVisible" title="新增资产" width="580px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" title="新增资产" width="min(580px, 90vw)" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px" label-position="left">
         <!-- 第一组：基础信息 -->
         <div class="form-group">
@@ -361,14 +361,16 @@ onMounted(() => { fetchStats(); fetchData() })
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 16px;
 }
 .toolbar-title { margin: 0; font-size: 16px; font-weight: 700; }
-.toolbar-actions { display: flex; gap: 8px; align-items: center; }
+.toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 .cell-stack { display: flex; flex-direction: column; gap: 2px; }
 .cell-primary { font-weight: 600; font-size: 13px; color: var(--text-primary); }
-.cell-secondary { font-size: 12px; color: var(--text-muted); }
+.cell-secondary { font-size: 12px; color: var(--text-secondary); }
 .action-cell { display: flex; align-items: center; gap: 4px; }
 
 .pagination-wrap {
@@ -377,7 +379,7 @@ onMounted(() => { fetchStats(); fetchData() })
   align-items: center;
   margin-top: 16px;
 }
-.pagination-total { font-size: 13px; color: var(--text-muted); }
+.pagination-total { font-size: 13px; color: var(--text-secondary); }
 
 .form-group { margin-bottom: 20px; }
 .form-group-title {
@@ -404,5 +406,8 @@ onMounted(() => { fetchStats(); fetchData() })
 
 @media (max-width: 900px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
 }
 </style>
