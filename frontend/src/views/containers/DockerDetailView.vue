@@ -1,122 +1,115 @@
 <template>
   <div>
     <div class="page-header">
-      <div style="display:flex;align-items:center;gap:12px">
-        <el-button text @click="$router.push('/assets/docker')"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
-        <h2 class="page-title" style="margin:0">{{ host.name || '主机详情' }}</h2>
+      <div class="header-left">
+        <el-button text aria-label="返回 Docker 监控列表" @click="$router.push('/assets/docker')"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
+        <h2 class="page-title">{{ host.name || '主机详情' }}</h2>
         <el-tag :type="host.online ? 'success' : 'danger'" size="small">
           {{ host.online ? '在线' : '离线' }}
         </el-tag>
         <el-tag v-if="host.docker_version" type="info" size="small">Docker {{ host.docker_version }}</el-tag>
       </div>
-      <div style="display:flex;gap:8px">
-        <el-button :loading="refreshing" @click="handleRefresh"><el-icon><Refresh /></el-icon> 刷新</el-button>
-        <el-button type="danger" plain @click="handleDelete">删除主机</el-button>
+      <div class="header-right">
+        <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 15s 自动刷新数据'" placement="bottom">
+          <el-button :type="autoRefresh ? 'primary' : 'default'" size="small" @click="toggleAutoRefresh">
+            <el-icon><Refresh /></el-icon>
+            {{ autoRefresh ? '自动刷新中' : '自动刷新' }}
+          </el-button>
+        </el-tooltip>
+        <el-button :loading="refreshing" size="small" aria-label="立即刷新数据" @click="handleRefresh"><el-icon><Refresh /></el-icon> 刷新</el-button>
+        <el-button type="danger" plain size="small" :aria-label="`删除主机 ${host.name}`" @click="handleDelete">删除主机</el-button>
       </div>
     </div>
 
-    <!-- 主机信息卡片 -->
-    <el-row :gutter="16" style="margin-bottom:16px">
-      <el-col :span="4" v-for="item in hostInfoCards" :key="item.label">
-        <div class="stat-card">
-          <div class="stat-label">{{ item.label }}</div>
-          <div class="stat-value" :style="{ color: item.color }">{{ item.value }}</div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <!-- 主机系统指标 -->
-    <el-row :gutter="16" style="margin-bottom:16px">
-      <el-col :span="4" v-for="item in metricCards" :key="item.label">
-        <div class="stat-card metric-card">
-          <div class="stat-label">{{ item.label }}</div>
-          <div class="metric-value">
-            <span class="stat-value" :style="{ color: item.color }">{{ item.value }}</span>
-            <el-progress
-              v-if="item.percent != null"
-              :percentage="Math.min(item.percent, 100)"
-              :stroke-width="4"
-              :show-text="false"
-              :color="item.percent > 85 ? '#f56c6c' : item.percent > 70 ? '#e6a23c' : '#409eff'"
-              style="margin-top:6px"
-            />
-          </div>
-        </div>
-      </el-col>
-    </el-row>
+    <!-- 概览指标 -->
+    <div class="overview-grid" role="region" aria-label="主机指标概览">
+      <div v-for="item in overviewCards" :key="item.label" class="stat-card">
+        <div class="stat-label">{{ item.label }}</div>
+        <div class="stat-value" :style="item.color ? { color: item.color } : undefined">{{ item.value }}</div>
+        <el-progress
+          v-if="item.percent != null"
+          :percentage="Math.min(item.percent, 100)"
+          :stroke-width="4"
+          :show-text="false"
+          :color="progressColor(item.percent)"
+          class="stat-progress"
+        />
+      </div>
+    </div>
 
     <!-- 容器列表 -->
     <div class="data-card">
       <div class="filter-bar">
-        <el-input v-model="keyword" placeholder="搜索容器名称或镜像…" clearable style="width:260px" @keyup.enter="fetchContainers" />
-        <el-select v-model="statusFilter" placeholder="状态" clearable style="width:130px">
+        <el-input v-model="keyword" placeholder="搜索容器名称或镜像…" clearable class="search-input" aria-label="搜索容器" @keyup.enter="fetchContainers" />
+        <el-select v-model="statusFilter" placeholder="状态" clearable class="status-select" aria-label="容器状态筛选">
           <el-option label="运行中" value="running" />
           <el-option label="已停止" value="exited" />
           <el-option label="暂停" value="paused" />
         </el-select>
-        <span style="margin-left:auto;color:var(--text-muted);font-size:13px">
+        <span class="container-count">
           共 {{ filteredContainers.length }} 个容器
         </span>
       </div>
 
+      <div class="table-wrapper">
       <el-table :data="pagedContainers" stripe v-loading="loading">
         <el-table-column prop="name" label="容器名称" min-width="180" show-overflow-tooltip>
           <template #default="{row}">
             <strong>{{ row.name }}</strong>
           </template>
         </el-table-column>
-        <el-table-column prop="container_id" label="容器 ID" width="130">
-          <template #default="{row}"><code class="mono">{{ row.container_id }}</code></template>
-        </el-table-column>
         <el-table-column prop="image" label="镜像" min-width="240" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{row}">
-            <el-tag :type="containerStatusType(row.status)" size="small">{{ row.status }}</el-tag>
+            <el-tag :type="containerStatusType(row.status)" size="small">{{ containerStatusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="CPU" width="100" align="center">
           <template #default="{row}">
-            <span :style="{ color: row.cpu_percent > 80 ? 'var(--el-color-danger)' : '' }">
+            <span :class="{ 'value-danger': row.cpu_percent > THRESHOLD_WARN }">
               {{ row.cpu_percent.toFixed(1) }}%
             </span>
           </template>
         </el-table-column>
         <el-table-column label="内存" width="180">
           <template #default="{row}">
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="memory-cell">
               <el-progress
                 :percentage="Math.min(row.memory_percent, 100)"
                 :stroke-width="6"
                 :show-text="false"
-                :color="row.memory_percent > 80 ? '#f56c6c' : row.memory_percent > 60 ? '#e6a23c' : '#409eff'"
-                style="flex:1"
+                :color="progressColor(row.memory_percent)"
+                class="memory-progress"
               />
-              <span class="mono" style="font-size:12px;white-space:nowrap">{{ formatBytes(row.memory_usage) }}</span>
+              <span class="mono memory-text">{{ formatBytes(row.memory_usage) }}</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="网络 I/O" width="170">
           <template #default="{row}">
-            <span class="mono" style="font-size:12px">↓{{ formatBytes(row.net_rx_bytes) }} ↑{{ formatBytes(row.net_tx_bytes) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="磁盘 I/O" width="170">
-          <template #default="{row}">
-            <span class="mono" style="font-size:12px">R{{ formatBytes(row.block_read) }} W{{ formatBytes(row.block_write) }}</span>
+            <span class="mono io-text">↓{{ formatBytes(row.net_rx_bytes) }} ↑{{ formatBytes(row.net_tx_bytes) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="restart_count" label="重启" width="70" align="center">
           <template #default="{row}">
-            <span :style="{ color: row.restart_count > 3 ? 'var(--el-color-danger)' : '' }">{{ row.restart_count }}</span>
+            <span :class="{ 'value-danger': row.restart_count > 3 }">{{ row.restart_count }}</span>
           </template>
         </el-table-column>
         <el-table-column label="端口映射" min-width="220" show-overflow-tooltip>
           <template #default="{row}">{{ formatPorts(row.ports) }}</template>
         </el-table-column>
-        <el-table-column prop="updated_at" label="更新时间" width="170">
-          <template #default="{row}">{{ formatTime(row.updated_at) }}</template>
+        <el-table-column type="expand" width="40">
+          <template #default="{row}">
+            <div class="expand-detail">
+              <span class="expand-item"><strong>容器 ID:</strong> <code class="mono">{{ row.container_id }}</code></span>
+              <span class="expand-item"><strong>磁盘 I/O:</strong> <span class="mono">R {{ formatBytes(row.block_read) }} / W {{ formatBytes(row.block_write) }}</span></span>
+              <span class="expand-item"><strong>更新时间:</strong> {{ formatTime(row.updated_at) }}</span>
+            </div>
+          </template>
         </el-table-column>
       </el-table>
+      </div>
+
       <div class="pagination-wrap">
         <el-pagination
           v-model:current-page="page"
@@ -138,6 +131,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import { getDockerHost, deleteDockerHost, refreshDockerHost, getHostContainers } from '@/api/containers'
 
+// ─── 阈值常量 ──────────────────────────────────────────────
+
+const THRESHOLD_WARN = 70
+const THRESHOLD_DANGER = 85
+
 const route = useRoute()
 const router = useRouter()
 const hostId = computed(() => Number(route.params.id))
@@ -150,56 +148,17 @@ const keyword = ref('')
 const statusFilter = ref('')
 const page = ref(1)
 const pageSize = ref(20)
+const autoRefresh = ref(false)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
-// ─── 计算属性 ──────────────────────────────────────────────
-
-const hostInfoCards = computed(() => {
-  const h = host.value
-  return [
-    { label: '主机 IP', value: h.host_ip || '-', color: '' },
-    { label: 'Agent 地址', value: h.endpoint || '-', color: '' },
-    { label: '操作系统', value: h.host_os || '-', color: '' },
-    { label: 'Docker 版本', value: h.docker_version || '-', color: '' },
-    { label: '最后同步', value: h.last_heartbeat ? formatTime(h.last_heartbeat) : '从未', color: '' },
-    { label: '说明', value: h.description || '-', color: '' },
-  ]
-})
-
-const metricCards = computed(() => {
-  const m = host.value.metrics || {}
-  return [
-    { label: 'CPU 核心', value: m.cpu_count ?? '-', color: '', percent: null },
-    { label: 'CPU 使用率', value: m.cpu_percent != null ? m.cpu_percent.toFixed(1) + '%' : '-', color: m.cpu_percent > 80 ? 'var(--el-color-danger)' : '', percent: m.cpu_percent ?? null },
-    { label: '内存使用率', value: m.memory_percent != null ? m.memory_percent.toFixed(1) + '%' : '-', color: m.memory_percent > 80 ? 'var(--el-color-danger)' : '', percent: m.memory_percent ?? null },
-    { label: '磁盘使用率', value: m.disk_usage?.percent != null ? m.disk_usage.percent.toFixed(1) + '%' : '-', color: (m.disk_usage?.percent || 0) > 85 ? 'var(--el-color-danger)' : '', percent: m.disk_usage?.percent ?? null },
-    { label: '容器总数', value: containers.value.length, color: '', percent: null },
-    { label: '运行中', value: containers.value.filter(c => c.status === 'running').length, color: 'var(--el-color-success)', percent: null },
-  ]
-})
-
-const filteredContainers = computed(() => {
-  let list = containers.value
-  if (keyword.value) {
-    const kw = keyword.value.toLowerCase()
-    list = list.filter(c => c.name.toLowerCase().includes(kw) || c.image.toLowerCase().includes(kw))
-  }
-  if (statusFilter.value) {
-    list = list.filter(c => c.status === statusFilter.value)
-  }
-  return list
-})
-
-const pagedContainers = computed(() => {
-  const start = (page.value - 1) * pageSize.value
-  return filteredContainers.value.slice(start, start + pageSize.value)
-})
-
-watch(keyword, () => { page.value = 1 })
-watch(statusFilter, () => { page.value = 1 })
-
 // ─── 工具函数 ──────────────────────────────────────────────
+
+function progressColor(percent: number): string {
+  if (percent > THRESHOLD_DANGER) return 'var(--danger-color)'
+  if (percent > THRESHOLD_WARN) return 'var(--warning-color)'
+  return 'var(--primary-color)'
+}
 
 function formatTime(ts: string) {
   if (!ts) return '-'
@@ -237,6 +196,48 @@ function containerStatusType(s: string) {
   if (s === 'paused') return 'warning'
   return 'info'
 }
+
+function containerStatusLabel(s: string) {
+  if (s === 'running') return '运行中'
+  if (s === 'exited') return '已停止'
+  if (s === 'paused') return '暂停'
+  return s
+}
+
+// ─── 计算属性 ──────────────────────────────────────────────
+
+const overviewCards = computed(() => {
+  const h = host.value
+  const m = h.metrics || {}
+  return [
+    { label: 'CPU 使用率', value: m.cpu_percent != null ? m.cpu_percent.toFixed(1) + '%' : '-', color: m.cpu_percent != null ? progressColor(m.cpu_percent) : '', percent: m.cpu_percent ?? null },
+    { label: '内存使用率', value: m.memory_percent != null ? m.memory_percent.toFixed(1) + '%' : '-', color: m.memory_percent != null ? progressColor(m.memory_percent) : '', percent: m.memory_percent ?? null },
+    { label: '磁盘使用率', value: m.disk_usage?.percent != null ? m.disk_usage.percent.toFixed(1) + '%' : '-', color: m.disk_usage?.percent != null ? progressColor(m.disk_usage.percent) : '', percent: m.disk_usage?.percent ?? null },
+    { label: '容器总数', value: containers.value.length, color: '', percent: null },
+    { label: '运行中', value: containers.value.filter(c => c.status === 'running').length, color: 'var(--success-color)', percent: null },
+    { label: '主机 IP', value: h.host_ip || '-', color: '', percent: null },
+  ]
+})
+
+const filteredContainers = computed(() => {
+  let list = containers.value
+  if (keyword.value) {
+    const kw = keyword.value.toLowerCase()
+    list = list.filter(c => c.name.toLowerCase().includes(kw) || c.image.toLowerCase().includes(kw))
+  }
+  if (statusFilter.value) {
+    list = list.filter(c => c.status === statusFilter.value)
+  }
+  return list
+})
+
+const pagedContainers = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredContainers.value.slice(start, start + pageSize.value)
+})
+
+watch(keyword, () => { page.value = 1 })
+watch(statusFilter, () => { page.value = 1 })
 
 // ─── 数据获取 ──────────────────────────────────────────────
 
@@ -280,36 +281,149 @@ async function handleDelete() {
 
 // ─── 自动刷新 ──────────────────────────────────────────────
 
-function startAutoRefresh() {
-  refreshTimer = setInterval(() => {
-    fetchHost()
-    fetchContainers()
-  }, 15000)
+function toggleAutoRefresh() {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) {
+    refreshTimer = setInterval(() => {
+      fetchHost()
+      fetchContainers()
+    }, 15000)
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
 }
 
 onActivated(() => {
   fetchHost()
   fetchContainers()
-  startAutoRefresh()
 })
 
-onDeactivated(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
-})
+onDeactivated(stopAutoRefresh)
 </script>
 
 <style scoped>
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 概览指标 */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
 .stat-card {
-  background: #fff;
+  background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px 16px;
   overflow: hidden;
 }
-.stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stat-value { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.metric-card { min-height: 72px; }
-.metric-value { min-height: 36px; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+.stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.stat-progress {
+  margin-top: 6px;
+}
+
+/* 筛选栏 */
+.search-input {
+  width: 260px;
+}
+.status-select {
+  width: 130px;
+}
+.container-count {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* 表格 */
+.memory-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.memory-progress {
+  flex: 1;
+}
+.memory-text {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.io-text {
+  font-size: 12px;
+}
+.value-danger {
+  color: var(--danger-color);
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* 展开行 */
+.expand-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.expand-item {
+  color: var(--text-secondary);
+}
+.expand-item strong {
+  color: var(--text-primary);
+}
+
+/* 分页 */
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .overview-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 768px) {
+  .overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .search-input {
+    width: 100%;
+  }
+}
 </style>
