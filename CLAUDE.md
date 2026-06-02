@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring (agent pull model), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, RBAC permissions, and AI-powered ops assistant (LLM streaming + function calling).
+Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring with container operations (agent pull model + start/stop/restart/delete), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, RBAC permissions, and AI-powered ops assistant (LLM streaming + function calling).
 
 ## Development Commands
 
@@ -46,7 +46,7 @@ docker compose up -d --build                  # Rebuild images
 
 ### Three-Layer Backend (`backend/app/`)
 
-- **`api/`** — 24 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
+- **`api/`** — 25 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
 - **`services/`** — Business logic layer (22 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`. AI assistant: `services/ai/` (LLM client, tool definitions, dispatcher, conversations).
 - **`models/`** — 17 SQLAlchemy model files using `DeclarativeBase`.
 - **`core/`** — `config.py` (constants/env vars, `CHINA_TZ` timezone constant), `jwt.py` (HS256, 12h expiry), `settings.py` (DB-first config with fallback to `config.py`), `pagination.py`.
@@ -85,7 +85,7 @@ docker compose up -d --build                  # Rebuild images
 | Prometheus | Config center UI or `config.py` → `PROMETHEUS_URL` | Host metrics via node_exporter |
 | Alertmanager | Config center UI or `config.py` → `ALERTMANAGER_URL` | Webhook push to `/api/v1/alertmanager/webhook` |
 | Kubernetes | Per-cluster in DB | API Server URL + ServiceAccount Token |
-| Docker Agent | Per-host in DB | HTTP pull model, port 9001 |
+| Docker Agent | Per-host in DB | HTTP pull model + container ops (start/stop/restart/delete), port 9001 |
 | LLM (AI 助手) | Settings UI → `llm.base_url/api_key/model` | OpenAI-compatible API, configurable at runtime |
 
 ### Commit Style
@@ -101,7 +101,9 @@ Conventional commits (Chinese/English mix): `feat(scope):`, `fix(scope):`, `refa
 - **Colors**: Always use project design tokens, not Element Plus `--el-color-*` tokens.
 - **No inline styles**: Extract all inline `style=""` to scoped CSS classes.
 - **Animations**: Use `ease-out` curves, 150-250ms duration. Avoid `max-height` transitions; use `grid-template-rows: 0fr/1fr` instead.
-- **impeccable plugin**: Use `/impeccable audit <file>` for technical quality checks, `/impeccable critique <file>` for UX review. See `.claude/plugins/marketplaces/impeccable/` for reference docs.
+- **impeccable plugin**: Use `/impeccable audit <file>` for technical quality checks, `/impeccable critique <file>` for UX review. After fixing issues, re-run audit to verify score improvement. See `.claude/plugins/marketplaces/impeccable/` for reference docs.
+- **Docker Agent container operations**: Agent exposes `POST /containers/{id}/start|stop|restart|delete`. Backend proxies via `POST /api/v1/containers/docker/hosts/{host_id}/containers/{container_id}/{action}`. Frontend calls these from the container list action column.
+- **Alert rules host association**: `GET /api/v1/alertmanager/rules/hosts` returns a mapping of rule names to affected hosts. Backend executes each rule's PromQL against Prometheus, extracts `instance` labels, and matches to assets table. Results cached for 30 seconds.
 
 ### Workflow
 
