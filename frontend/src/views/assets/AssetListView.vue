@@ -45,11 +45,11 @@
       <div class="toolbar">
         <h3 class="toolbar-title">资产列表</h3>
         <div class="toolbar-actions">
-          <el-input v-model="filters.keyword" placeholder="搜索名称/IP…" clearable style="width:200px" @keyup.enter="fetchData" />
-          <el-select v-model="filters.asset_type" placeholder="类型" clearable style="width:120px" @change="fetchData">
+          <el-input v-model="filters.keyword" placeholder="搜索名称/IP…" clearable style="width:200px" aria-label="搜索名称或IP" @keyup.enter="fetchData" />
+          <el-select v-model="filters.asset_type" placeholder="类型" clearable style="width:120px" aria-label="资产类型筛选" @change="fetchData">
             <el-option v-for="t in assetTypes" :key="t" :label="t" :value="t" />
           </el-select>
-          <el-select v-model="filters.status" placeholder="状态" clearable style="width:120px" @change="fetchData">
+          <el-select v-model="filters.status" placeholder="状态" clearable style="width:120px" aria-label="状态筛选" @change="fetchData">
             <el-option v-for="s in statusList" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
           <el-button @click="resetFilters" text>重置</el-button>
@@ -57,6 +57,7 @@
         </div>
       </div>
 
+      <div class="table-wrapper">
       <el-table :data="items" stripe v-loading="loading">
         <el-table-column label="主机信息" min-width="180">
           <template #default="{ row }">
@@ -89,19 +90,20 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <div class="action-cell">
-              <el-button size="small" type="primary" link @click="$router.push(`/monitoring/hosts/${row.id}/ssh`)">
+              <el-button size="small" type="primary" link :aria-label="`SSH 连接 ${row.name}`" @click="$router.push(`/monitoring/hosts/${row.id}/ssh`)">
                 <el-icon><Monitor /></el-icon> SSH
               </el-button>
-              <el-button size="small" type="info" link @click="$router.push(`/assets/${row.id}`)">详情</el-button>
+              <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/${row.id}`)">详情</el-button>
               <el-popconfirm title="确认删除该资产？" @confirm="handleDelete(row.id)">
                 <template #reference>
-                  <el-button size="small" type="danger" link>删除</el-button>
+                  <el-button size="small" type="danger" link :aria-label="`删除 ${row.name}`">删除</el-button>
                 </template>
               </el-popconfirm>
             </div>
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div class="pagination-wrap">
         <span class="pagination-total">共 {{ total }} 条</span>
@@ -337,7 +339,7 @@ onMounted(() => { fetchStats(); fetchData() })
   gap: 12px;
   transition: box-shadow 0.2s;
 }
-.stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 .stat-icon {
   width: 40px;
   height: 40px;
@@ -348,11 +350,11 @@ onMounted(() => { fetchStats(); fetchData() })
   color: #fff;
   flex-shrink: 0;
 }
-.stat-icon--blue { background: #3b82f6; }
-.stat-icon--green { background: #22c55e; }
-.stat-icon--amber { background: #f59e0b; }
-.stat-icon--red { background: #ef4444; }
-.stat-label { font-size: 12px; color: var(--text-muted); }
+.stat-icon--blue { background: var(--primary-color); }
+.stat-icon--green { background: var(--success-color); }
+.stat-icon--amber { background: var(--warning-color); }
+.stat-icon--red { background: var(--danger-color); }
+.stat-label { font-size: 12px; color: var(--text-secondary); }
 .stat-value { font-size: 24px; font-weight: 800; color: var(--text-primary); }
 
 .toolbar {
