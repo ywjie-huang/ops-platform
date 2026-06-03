@@ -1,77 +1,82 @@
 <template>
   <div class="dashboard">
-    <!-- 顶部栏 -->
-    <div class="dashboard-header">
-      <div>
-        <h2 class="greeting">{{ greeting }}，{{ authStore.fullName || '管理员' }}</h2>
-        <p class="date-text">{{ currentDate }}</p>
-      </div>
-      <div class="time-tabs">
-        <span
-          v-for="tab in timeTabs"
-          :key="tab.key"
-          class="time-tab"
-          :class="{ active: activeTab === tab.key }"
-          @click="activeTab = tab.key"
-        >{{ tab.label }}</span>
+    <!-- 欢迎区 -->
+    <div class="welcome">
+      <h1>{{ greeting }}，{{ authStore.fullName || '管理员' }}</h1>
+      <p>{{ currentDate }}</p>
+    </div>
+
+    <!-- 快捷操作 -->
+    <div class="quick-actions">
+      <div v-for="action in quickActions" :key="action.label" class="action-item" @click="$router.push(action.path)">
+        <div class="action-icon" :style="{ background: action.bg }">
+          <el-icon :size="16" :style="{ color: action.color }"><component :is="action.icon" /></el-icon>
+        </div>
+        <span class="action-label">{{ action.label }}</span>
       </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stat-grid">
-      <div v-for="card in statCards" :key="card.label" class="stat-card">
-        <div class="stat-card-top">
-          <span class="stat-card-label">{{ card.label }}</span>
-          <div class="stat-card-icon" :style="{ background: card.iconBg }">
-            <el-icon :size="16" :style="{ color: card.iconColor }"><component :is="card.icon" /></el-icon>
-          </div>
+    <!-- 统计条 -->
+    <div class="stats-bar">
+      <div v-for="card in statCards" :key="card.label" class="stat-item">
+        <div class="stat-label">{{ card.label }}</div>
+        <div class="stat-row">
+          <span class="stat-value">{{ card.value }}</span>
+          <span class="stat-change" :class="card.changeType">{{ card.change }}</span>
         </div>
-        <div class="stat-card-value">{{ card.value }}</div>
-        <div class="stat-card-bottom">
-          <Sparkline :data="card.sparkline" :color="card.iconColor" :width="80" :height="28" />
-          <span class="stat-change" :class="card.changeType">
-            {{ card.change }}
-          </span>
-        </div>
+        <Sparkline :data="card.sparkline" :color="card.lineColor" :width="100" :height="20" />
       </div>
     </div>
 
     <!-- 主内容区 -->
     <div class="dashboard-grid">
       <!-- 左侧：活动时间线 -->
-      <div class="activity-panel">
+      <div class="panel">
         <div class="panel-header">
           <h3>最近活动</h3>
-          <div class="filter-tabs">
+          <div class="filter-pills">
             <span
               v-for="f in activityFilters"
               :key="f.key"
-              class="filter-tab"
+              class="pill"
               :class="{ active: activeFilter === f.key }"
               @click="handleFilterChange(f.key)"
             >{{ f.label }}</span>
           </div>
         </div>
         <div class="activity-list">
-          <div v-for="(item, i) in activities" :key="i" class="activity-item">
-            <div class="activity-dot" :class="'dot-' + item.type"></div>
-            <div class="activity-body">
-              <div class="activity-desc">{{ item.description }}</div>
-              <div class="activity-meta">
-                <span>{{ item.time }}</span>
-                <span v-if="item.username"> · {{ item.username }}</span>
+          <TransitionGroup name="act">
+            <div v-for="(item, i) in activities" :key="i" class="act-item">
+              <div class="act-dot" :class="'dot-' + item.type"></div>
+              <div class="act-body">
+                <div class="act-text">{{ item.description }}</div>
+                <div class="act-meta">
+                  <span>{{ item.time }}</span>
+                  <span v-if="item.username"> · {{ item.username }}</span>
+                </div>
               </div>
+              <span class="act-tag" :class="'tag-' + item.type">{{ item.type_label }}</span>
             </div>
-            <span class="activity-tag" :class="'tag-' + item.type">{{ item.type_label }}</span>
+          </TransitionGroup>
+          <div v-if="!activities.length" class="empty-state">
+            <p>暂无活动记录</p>
           </div>
-          <div v-if="!activities.length" class="empty-hint">暂无活动记录</div>
         </div>
       </div>
 
-      <!-- 右侧：图表 -->
-      <div class="side-charts">
-        <AlertTrendChart :dates="alertTrend.dates" :counts="alertTrend.counts" />
-        <div class="type-panel">
+      <!-- 右侧 -->
+      <div class="side-panels">
+        <!-- 告警趋势 -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>告警趋势</h3>
+            <span class="trend-meta">近 7 天 · {{ alertTrendTotal }} 次</span>
+          </div>
+          <AlertTrendChart :dates="alertTrend.dates" :counts="alertTrend.counts" />
+        </div>
+
+        <!-- 资产类型 -->
+        <div class="panel">
           <div class="panel-header">
             <h3>资产类型</h3>
           </div>
@@ -95,7 +100,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getDashboardStats, getSparkline, getActivities, getAlertTrend, getDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/modules/auth'
-import { Box, Monitor, Warning, Tickets } from '@element-plus/icons-vue'
+import { Box, Monitor, Warning, Tickets, Connection, Setting, Document } from '@element-plus/icons-vue'
 import Sparkline from '@/components/Sparkline.vue'
 import AlertTrendChart from '@/components/AlertTrendChart.vue'
 
@@ -107,13 +112,13 @@ const activities = ref<any[]>([])
 const alertTrend = ref<any>({ dates: [], counts: [] })
 const summary = ref<any>({})
 
-const activeTab = ref('today')
 const activeFilter = ref('all')
 
-const timeTabs = [
-  { key: 'today', label: '今天' },
-  { key: 'week', label: '本周' },
-  { key: 'month', label: '本月' },
+const quickActions = [
+  { label: 'SSH 终端', icon: Connection, color: '#5e6ad2', bg: 'rgba(94,106,210,0.08)', path: '/assets' },
+  { label: '批量执行', icon: Setting, color: '#7c3aed', bg: 'rgba(124,58,237,0.06)', path: '/batch-exec' },
+  { label: '巡检任务', icon: Monitor, color: '#22c55e', bg: 'rgba(34,197,94,0.08)', path: '/patrol' },
+  { label: '工单中心', icon: Document, color: '#f5a623', bg: 'rgba(245,166,35,0.08)', path: '/tickets' },
 ]
 
 const activityFilters = [
@@ -139,42 +144,22 @@ const currentDate = computed(() => {
 const statCards = computed(() => {
   const s = sparkline.value.series
   const changePct = (arr: number[]) => {
-    if (!arr || arr.length < 2 || arr[arr.length - 2] === 0) return { text: '持平', type: 'neutral' }
+    if (!arr || arr.length < 2 || arr[arr.length - 2] === 0) return { text: '—', type: 'flat' }
     const pct = Math.round(((arr[arr.length - 1] - arr[arr.length - 2]) / arr[arr.length - 2]) * 100)
     if (pct > 0) return { text: `+${pct}%`, type: 'up' }
     if (pct < 0) return { text: `${pct}%`, type: 'down' }
-    return { text: '持平', type: 'neutral' }
+    return { text: '—', type: 'flat' }
   }
 
-  const assets = changePct(s.assets)
-  const online = changePct(s.online)
-  const alertsChange = changePct(s.alerts)
-  const tickets = changePct(s.tickets)
-
   return [
-    {
-      label: '资产总数', value: stats.value.asset_total ?? '-',
-      icon: Box, iconBg: '#eff6ff', iconColor: '#3b82f6',
-      sparkline: s.assets || [], change: assets.text, changeType: assets.type,
-    },
-    {
-      label: '在线主机', value: stats.value.online_hosts ?? '-',
-      icon: Monitor, iconBg: '#f0fdf4', iconColor: '#22c55e',
-      sparkline: s.online || [], change: online.text, changeType: online.type,
-    },
-    {
-      label: '待处理告警', value: stats.value.open_alerts ?? '-',
-      icon: Warning, iconBg: '#fef2f2', iconColor: '#ef4444',
-      sparkline: s.alerts || [], change: alertsChange.text, changeType: alertsChange.type,
-    },
-    {
-      label: '待处理工单', value: stats.value.pending_tickets ?? '-',
-      icon: Tickets, iconBg: '#fffbeb', iconColor: '#f59e0b',
-      sparkline: s.tickets || [], change: tickets.text, changeType: tickets.type,
-    },
+    { label: '资产总数', value: stats.value.asset_total ?? '-', sparkline: s.assets || [], ...changePct(s.assets), lineColor: '#5e6ad2' },
+    { label: '在线主机', value: stats.value.online_hosts ?? '-', sparkline: s.online || [], ...changePct(s.online), lineColor: '#22c55e' },
+    { label: '待处理告警', value: stats.value.open_alerts ?? '-', sparkline: s.alerts || [], ...changePct(s.alerts), lineColor: '#e5484d' },
+    { label: '待处理工单', value: stats.value.pending_tickets ?? '-', sparkline: s.tickets || [], ...changePct(s.tickets), lineColor: '#f5a623' },
   ]
 })
 
+const alertTrendTotal = computed(() => (alertTrend.value.counts || []).reduce((a: number, b: number) => a + b, 0))
 const typeBreakdown = computed(() => summary.value.type_breakdown || [])
 const maxTypeValue = computed(() => summary.value.max_type_value || 1)
 function typePct(val: number) { return Math.round((val / maxTypeValue.value) * 100) }
@@ -215,268 +200,288 @@ onMounted(async () => {
   padding-right: 16px;
 }
 
-// ── 顶部栏 ──
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+// ── 欢迎区 ──
+.welcome {
   margin-bottom: 20px;
-}
-.greeting {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-.date-text {
-  font-size: 13px;
-  color: #94a3b8;
-}
-.time-tabs {
-  display: flex;
-  gap: 4px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  padding: 3px;
-}
-.time-tab {
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s;
-  &.active {
-    background: #fff;
-    color: #1e293b;
-    font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    margin-bottom: 2px;
+  }
+  p {
+    font-size: 13px;
+    color: var(--text-muted);
   }
 }
 
-// ── 统计卡片 ──
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+// ── 快捷操作 ──
+.quick-actions {
+  display: flex;
+  gap: 8px;
   margin-bottom: 16px;
 }
-.stat-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 18px;
-  transition: box-shadow 0.2s;
-  &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-}
-.stat-card-top {
+.action-item {
+  flex: 1;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 10px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  &:hover {
+    border-color: #5e6ad2;
+    box-shadow: 0 0 0 1px rgba(94, 106, 210, 0.08);
+  }
 }
-.stat-card-label {
-  font-size: 13px;
-  color: #94a3b8;
-}
-.stat-card-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+.action-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
-.stat-card-value {
-  font-size: 28px;
-  font-weight: 800;
-  color: #1e293b;
-  margin-bottom: 10px;
+.action-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
-.stat-card-bottom {
+
+// ── 统计条 ──
+.stats-bar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.stat-item {
+  flex: 1;
+  padding: 14px 16px;
+  & + & {
+    border-left: 1px solid var(--border-color);
+  }
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 .stat-change {
-  font-size: 12px;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 11px;
   font-weight: 600;
-  &.up { color: #22c55e; }
-  &.down { color: #ef4444; }
-  &.neutral { color: #94a3b8; }
+  padding: 2px 6px;
+  border-radius: 4px;
+  &.up { color: #22c55e; background: rgba(34, 197, 94, 0.08); }
+  &.down { color: #e5484d; background: rgba(229, 72, 77, 0.08); }
+  &.flat { color: var(--text-muted); background: #f5f5f5; }
 }
 
 // ── 主内容区 ──
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 320px;
   gap: 16px;
 }
 
-// ── 活动时间线 ──
-.activity-panel {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 18px;
+// ── 面板通用 ──
+.panel {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
 }
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f0f0;
   h3 {
-    font-size: 15px;
-    font-weight: 700;
-    color: #1e293b;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
   }
 }
-.filter-tabs {
+
+// ── Filter Pills ──
+.filter-pills {
   display: flex;
-  gap: 4px;
+  gap: 1px;
+  background: #f5f5f5;
+  border-radius: 5px;
+  padding: 1px;
 }
-.filter-tab {
-  padding: 4px 10px;
+.pill {
+  padding: 3px 10px;
   border-radius: 4px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s;
+  font-weight: 500;
+  transition: all 0.12s;
   &.active {
-    background: #e0e7ff;
-    color: #4f46e5;
-    font-weight: 600;
+    background: var(--surface-color);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   }
   &:hover:not(.active) {
-    background: #f1f5f9;
+    color: var(--text-secondary);
   }
 }
+
+// ── 活动流 ──
 .activity-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 480px;
+  padding: 8px 16px 16px;
+  max-height: 400px;
   overflow-y: auto;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
 }
-.activity-item {
+.act-item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f1f5f9;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
   &:last-child { border-bottom: none; }
 }
-.activity-dot {
-  width: 8px;
-  height: 8px;
+.act-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  margin-top: 6px;
+  margin-top: 7px;
   flex-shrink: 0;
-  &.dot-alert { background: #ef4444; }
-  &.dot-ticket { background: #f59e0b; }
-  &.dot-asset { background: #3b82f6; }
+  &.dot-alert { background: #e5484d; }
+  &.dot-ticket { background: #f5a623; }
+  &.dot-asset { background: #5e6ad2; }
   &.dot-patrol { background: #22c55e; }
-  &.dot-user { background: #8b5cf6; }
-  &.dot-system { background: #94a3b8; }
+  &.dot-user { background: #7c3aed; }
+  &.dot-system { background: var(--text-muted); }
 }
-.activity-body {
+.act-body {
   flex: 1;
   min-width: 0;
 }
-.activity-desc {
+.act-text {
   font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
 }
-.activity-meta {
-  font-size: 12px;
-  color: #94a3b8;
+.act-meta {
+  font-size: 11px;
+  color: #bbb;
   margin-top: 2px;
 }
-.activity-tag {
-  padding: 2px 8px;
+.act-tag {
+  padding: 2px 7px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 600;
   flex-shrink: 0;
-  &.tag-alert { background: #fef2f2; color: #ef4444; }
-  &.tag-ticket { background: #fffbeb; color: #f59e0b; }
-  &.tag-asset { background: #eff6ff; color: #3b82f6; }
-  &.tag-patrol { background: #f0fdf4; color: #22c55e; }
-  &.tag-user { background: #f5f3ff; color: #8b5cf6; }
-  &.tag-system { background: #f1f5f9; color: #64748b; }
+  align-self: center;
+  &.tag-alert { background: rgba(229, 72, 77, 0.08); color: #e5484d; }
+  &.tag-ticket { background: rgba(245, 166, 35, 0.08); color: #d4a017; }
+  &.tag-asset { background: rgba(94, 106, 210, 0.08); color: #5e6ad2; }
+  &.tag-patrol { background: rgba(34, 197, 94, 0.08); color: #22c55e; }
+  &.tag-user { background: rgba(124, 58, 237, 0.06); color: #7c3aed; }
+  &.tag-system { background: #f5f5f5; color: var(--text-muted); }
 }
-.empty-hint {
+.empty-state {
   text-align: center;
   padding: 40px 0;
-  color: #94a3b8;
-  font-size: 13px;
+  p { color: var(--text-muted); font-size: 13px; }
 }
 
-// ── 右侧图表 ──
-.side-charts {
+// ── 过渡动画 ──
+.act-enter-active { transition: all 0.2s ease; }
+.act-leave-active { transition: all 0.15s ease; }
+.act-enter-from { opacity: 0; transform: translateY(-4px); }
+.act-leave-to { opacity: 0; }
+
+// ── 右侧面板 ──
+.side-panels {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.type-panel {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 18px;
+.trend-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
+
+// ── 资产条形图 ──
 .bar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 12px 16px 16px;
 }
 .bar-item {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 6px 0;
+  & + & { border-top: 1px solid #f5f5f5; }
 }
 .bar-label {
-  width: 60px;
+  width: 48px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-secondary);
   text-align: right;
   flex-shrink: 0;
 }
 .bar-track {
   flex: 1;
-  height: 8px;
-  background: #f1f5f9;
-  border-radius: 4px;
+  height: 4px;
+  background: #f5f5f5;
+  border-radius: 2px;
   overflow: hidden;
 }
 .bar-fill {
   height: 100%;
-  border-radius: 4px;
-  transition: width 0.6s ease;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .bar-value {
-  width: 30px;
+  width: 24px;
   font-size: 12px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--text-primary);
   text-align: right;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
 
 // ── 响应式 ──
-@media (min-width: 1600px) {
-  .stat-card-value { font-size: 32px; }
-  .dashboard-grid { grid-template-columns: 2fr 420px; }
-}
-@media (min-width: 1920px) {
-  .stat-grid { gap: 20px; }
-  .stat-card { padding: 22px; }
-  .stat-card-value { font-size: 36px; }
-  .dashboard-grid { grid-template-columns: 2fr 480px; gap: 20px; }
-}
 @media (max-width: 1100px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-bar { flex-wrap: wrap; }
+  .stat-item { flex: 1 1 45%; }
+  .stat-item:nth-child(n+3) { border-top: 1px solid var(--border-color); }
   .dashboard-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
-  .stat-grid { grid-template-columns: 1fr; }
+  .stat-item { flex: 1 1 100%; border-left: none !important; }
+  .quick-actions { flex-wrap: wrap; }
+  .action-item { flex: 1 1 45%; }
 }
 </style>

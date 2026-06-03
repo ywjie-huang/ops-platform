@@ -15,6 +15,8 @@
 | **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
 | **巡检中心** | 巡检报告 / 阈值配置 / 定时任务 | 主机/K8s/资产自动巡检 + 报告管理 + 滑块式阈值配置 + 快捷预设 + Cron 定时调度 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
+| **应用发布** | 发布看板 / 应用管理 / 发布记录 | Jenkins 触发 / SSH 文件上传部署 / 发布状态矩阵 / 审批流程 / 一键回滚 |
+| **应用发布** | 发布看板 / 应用管理 / 发布记录 | Jenkins 触发 / SSH 文件上传部署 / 审批流程 / 一键回滚 |
 | **AI 助手** | AI 助手 | LLM 流式对话 + 工具调用 + 写操作确认 |
 | **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager 地址配置 + LLM 模型配置 |
 
@@ -268,7 +270,46 @@ docker run -d -p 9001:9001 \
 - **响应式布局**：600px / 1100px / 1600px / 1920px 四档断点
 - 所有图表纯 SVG 实现，无第三方图表库依赖
 
-### 18. AI 助手
+### 18. 应用发布
+
+统一的应用部署管理模块，支持 Jenkins 触发、SSH 文件上传部署、Docker 容器部署（规划中）、Kubernetes 部署（规划中）。
+
+**发布看板：**
+- 应用×环境状态矩阵：行=应用，列=环境，单元格=当前版本+状态
+- 概览统计：应用总数、构建中数量、成功率、待审批数
+- 快捷发布按钮，空状态引导
+
+**应用管理：**
+- 应用注册：名称、类型（后端/前端/服务/其他）、部署方式、仓库地址
+- 环境配置：每个应用在每个环境独立配置（Jenkins Job / SSH 主机 / Docker 镜像 / K8s 集群）
+- 支持 Jenkins、SSH 部署、Docker、Kubernetes 四种部署方式
+
+**Jenkins 触发发布：**
+- 填版本号，平台调用 Jenkins API 触发构建
+- 后台自动轮询构建状态，实时拉取构建日志
+- Jenkins 配置通过系统配置中心管理
+
+**SSH 文件上传部署：**
+- 拖拽或选择文件上传（jar、zip、tar.gz 等，最大 500MB）
+- SFTP 上传到目标服务器指定目录
+- 自动执行配置的部署脚本
+- 记录执行日志
+
+**审批流程：**
+- 生产环境发布自动进入待审批状态
+- 审批通过后自动触发发布
+- 审批记录可追溯
+
+**发布历史与回滚：**
+- 全局发布记录列表，按应用/环境/状态筛选
+- 一键重试失败的发布
+- 一键回滚到上一个成功版本
+
+**权限控制：** 6 个权限码（view/create/update/execute/approve/delete），集成 RBAC 体系。
+
+> 详细文档见 [DEPLOY.md](./DEPLOY.md)
+
+### 19. AI 助手
 
 基于 **OpenAI 兼容 API** 的智能运维助手，支持 SSE 流式对话 + function calling 工具调用。
 
@@ -369,6 +410,7 @@ my-project/
 │       │   ├── scheduler.py    # 定时任务 API
 │       │   ├── settings.py     # 配置中心
 │       │   ├── ai.py           # AI 助手（SSE 流式对话）
+│       │   ├── deploy.py       # 应用发布（Jenkins/SSH/Docker/K8s）
 │       │   ├── reports.py      # 报表
 │       │   ├── dashboard.py    # 仪表盘
 │       │   ├── users.py        # 用户
@@ -384,6 +426,7 @@ my-project/
 │       │   ├── audit.py        # 审计
 │       │   ├── batch_exec.py   # 批量执行记录
 │       │   ├── container.py    # 容器（集群/Pod/Service/Deployment）
+│       │   ├── deploy.py       # 应用发布（应用/环境/配置/记录/审批）
 │       │   ├── patrol.py       # 巡检报告 + 巡检项
 │       │   ├── scheduled_task.py # 定时任务 + 执行日志
 │       │   ├── rbac.py         # 角色权限
@@ -397,6 +440,13 @@ my-project/
 │           │   ├── tools.py        # 工具定义 + handler 函数（10 种工具）
 │           │   ├── dispatcher.py   # 工具调度器（动态导入 + async/sync 自动检测）
 │           │   └── conversations.py # 对话历史管理（内存存储）
+│           ├── deploy/         # 应用发布服务
+│           │   ├── apps.py     # 应用 CRUD
+│           │   ├── envs.py     # 环境 CRUD
+│           │   ├── records.py  # 发布记录 + 执行调度 + 回滚
+│           │   ├── approvals.py # 审批逻辑
+│           │   ├── jenkins.py  # Jenkins REST API 客户端
+│           │   └── ssh_deployer.py # SSH 文件上传 + 脚本执行
 │           ├── prometheus.py   # Prometheus 查询服务
 │           ├── alertmanager.py # Alertmanager 查询 + Webhook 处理
 │           ├── k8s.py          # Kubernetes API 客户端
@@ -433,6 +483,7 @@ my-project/
 │           ├── tickets/        # 工单
 │           ├── reports/        # 报表
 │           ├── ai/             # AI 助手
+│           ├── deploy/         # 应用发布（看板/应用管理/发布记录/详情）
 │           ├── settings/       # 配置中心
 │           ├── users/          # 用户
 │           ├── roles/          # 角色
@@ -725,6 +776,19 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 仪表盘 | `GET /dashboard/sparkline` | 近 7 天趋势数据 |
 | 仪表盘 | `GET /dashboard/activities` | 活动时间线（审计日志） |
 | 仪表盘 | `GET /dashboard/alert-trend` | 近 7 天告警趋势 |
+| 应用发布 | `GET /deploy/status` | 发布状态矩阵（看板） |
+| 应用发布 | `GET /deploy/overview` | 发布概览统计 |
+| 应用发布 | `GET/POST/PUT/DELETE /deploy/apps` | 应用 CRUD |
+| 应用发布 | `GET/POST/PUT/DELETE /deploy/envs` | 环境 CRUD |
+| 应用发布 | `GET/POST/DELETE /deploy/apps/{id}/envs` | 环境配置 |
+| 应用发布 | `GET /deploy/records` | 发布记录列表 |
+| 应用发布 | `POST /deploy/records` | 触发发布（Jenkins/Docker/K8s） |
+| 应用发布 | `POST /deploy/records/upload` | 上传文件并部署（SSH） |
+| 应用发布 | `POST /deploy/records/{id}/retry` | 重试发布 |
+| 应用发布 | `POST /deploy/records/{id}/rollback` | 回滚 |
+| 应用发布 | `GET /deploy/records/{id}/logs` | 发布日志 |
+| 应用发布 | `GET /deploy/pending` | 待审批列表 |
+| 应用发布 | `POST /deploy/records/{id}/approve` | 审批/驳回 |
 | 审计 | `GET /audit/` | 审计日志 |
 
 详见 Swagger 文档：`http://localhost:8000/docs`

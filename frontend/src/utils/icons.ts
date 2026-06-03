@@ -14,6 +14,7 @@ import {
   DataLine,
   Document,
   Download,
+  Files,
   Finished,
   Grid,
   Key,
@@ -26,6 +27,7 @@ import {
   Promotion,
   Search,
   Setting,
+  Stamp,
   Tools,
   Upload,
   User,
@@ -40,9 +42,9 @@ import {
 
 const icons = {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
-  DataAnalysis, DataLine, Document, Download, Finished, Grid,
+  DataAnalysis, DataLine, Document, Download, Files, Finished, Grid,
   Key, List, Monitor, Notebook, Odometer, PieChart, Platform,
-  Promotion, Search, Setting, Tools, Upload, User, Warning,
+  Promotion, Search, Setting, Stamp, Tools, Upload, User, Warning,
   // 布局组件
   Fold, Expand, ArrowDown, ArrowRight, ArrowLeft, Refresh,
 }

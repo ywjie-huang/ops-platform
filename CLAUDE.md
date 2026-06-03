@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring with container operations (agent pull model + start/stop/restart/delete), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, RBAC permissions, and AI-powered ops assistant (LLM streaming + function calling).
+Enterprise-grade Ops Management Platform (运维管理平台) with fully decoupled frontend/backend architecture. Provides host monitoring (Prometheus), alert management (Alertmanager webhook), Kubernetes container discovery, Docker monitoring with container operations (agent pull model + start/stop/restart/delete), SSH web terminal (xterm.js + paramiko + WebSocket + SFTP), batch execution, patrol/inspection, ticket collaboration, RBAC permissions, application deployment management (Jenkins trigger + SSH file upload + approval workflow + rollback), and AI-powered ops assistant (LLM streaming + function calling).
 
 ## Development Commands
 
@@ -46,21 +46,21 @@ docker compose up -d --build                  # Rebuild images
 
 ### Three-Layer Backend (`backend/app/`)
 
-- **`api/`** — 25 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
-- **`services/`** — Business logic layer (22 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`. AI assistant: `services/ai/` (LLM client, tool definitions, dispatcher, conversations).
-- **`models/`** — 17 SQLAlchemy model files using `DeclarativeBase`.
+- **`api/`** — 26 FastAPI route modules. All endpoints prefixed `/api/v1`. Unified response: `{ "code": 0, "msg": "...", "data": {...} }`. Pagination: `{ items, total, page, page_size }`.
+- **`services/`** — Business logic layer (23 modules). External integrations: `prometheus.py`, `alertmanager.py`, `k8s.py`, `docker_agent.py`. AI assistant: `services/ai/` (LLM client, tool definitions, dispatcher, conversations). Deploy: `services/deploy/` (Jenkins client, SSH deployer, records, approvals).
+- **`models/`** — 18 SQLAlchemy model files using `DeclarativeBase`.
 - **`core/`** — `config.py` (constants/env vars, `CHINA_TZ` timezone constant), `jwt.py` (HS256, 12h expiry), `settings.py` (DB-first config with fallback to `config.py`), `pagination.py`.
 - **`db/`** — `database.py` (PyMySQL + SQLAlchemy, pool_size=10), `init_db.py` (auto-create DB, run ALTER TABLE migrations, seed defaults).
 
 ### Frontend SPA (`frontend/src/`)
 
-- **`api/`** — 20 API modules + shared Axios instance (`request.ts`) with JWT injection, 401 auto-redirect.
-- **`views/`** — 16 view directories matching navigation structure.
+- **`api/`** — 21 API modules + shared Axios instance (`request.ts`) with JWT injection, 401 auto-redirect.
+- **`views/`** — 17 view directories matching navigation structure.
 - **`stores/`** — Pinia: `auth.ts` (login/user/permissions), `app.ts` (sidebar state).
 - **`router/`** — `routes.ts` with lazy-loaded views, route guards check JWT + permissions via `meta.permission`.
 - **`components/`** — Shared components (Sparkline, AlertTrendChart — pure SVG, no chart library).
 - **`hooks/`** — `usePagination.ts` composable.
-- **`utils/`** — `auth.ts` (localStorage token), `icons.ts` (26 Element Plus icons registered selectively).
+- **`utils/`** — `auth.ts` (localStorage token), `icons.ts` (28 Element Plus icons registered selectively).
 - Path alias: `@` → `src/`. Element Plus auto-imported via `unplugin-auto-import` + `unplugin-vue-components`.
 
 ### Key Architectural Patterns
@@ -76,6 +76,7 @@ docker compose up -d --build                  # Rebuild images
 - **keep-alive + onActivated**: Frontend uses `<keep-alive :max="10">` in `AppMain.vue`. Detail views MUST use `onActivated` for data fetching (not `onMounted` + `watch(route.params.id)`), and pair `onActivated`/`onDeactivated` for timers. See `HostDetailView` as reference pattern.
 - **Scheduled tasks**: APScheduler `AsyncIOScheduler` with in-memory jobstore. Task definitions in `scheduled_tasks` table, execution logs in `task_execution_logs`. `core/scheduler.py` manages lifecycle (startup loads enabled tasks, shutdown graceful). `services/scheduler.py` handles execution callback with dynamic function import via `_TASK_FUNCTIONS` registry. API layer calls `sync_task_to_scheduler()` after every create/update/delete to keep scheduler in sync. Currently supports `patrol` task type; `report` and `backup` are reserved.
 - **AI assistant**: OpenAI-compatible LLM with SSE streaming + function calling. `services/ai/llm_client.py` handles streaming with chunked tool_call accumulation. `services/ai/tools.py` defines 10 tools (7 read-only, 3 write). Read-only tools auto-execute; write tools require user confirmation via `/ai/chat/confirm` or `/ai/chat/reject`. System prompt is dynamic — model name injected from DB config. Conversations persisted to MySQL (`conversations` + `messages` tables, `services/ai/conversations.py`). Frontend uses IDE split-panel layout (`views/ai/AiView.vue`): left sidebar conversation list + right chat area with markdown rendering, tool panels, and confirm/reject flow. `query_containers` tool supports both `host_id` and `host_ip` for IP-based host lookup. LLM config supports **multi-profile** (`llm.profiles` JSON in DB), with provider presets (OpenAI, DeepSeek, Qwen, Ollama), per-profile parameters (temperature, max_tokens, top_p, system_prompt), and a quick-test chat area. Active profile syncs to legacy `llm.base_url/api_key/model` keys for backward compatibility.
+- **Application deployment**: `services/deploy/` sub-package with `jenkins.py` (httpx REST client for Jenkins API: trigger_build, get_build_info, get_build_log), `ssh_deployer.py` (paramiko SFTP upload + SSH script execution), `records.py` (deployment execution dispatch, Jenkins status polling, rollback), `approvals.py` (approval workflow). 5 DB tables: `deploy_applications`, `deploy_environments`, `deploy_app_envs`, `deploy_records`, `deploy_approvals`. Frontend: status matrix dashboard (apps × environments), app management, deploy records, file upload dialog for SSH deployment. Jenkins config stored in `system_config` table (key=`jenkins_config`).
 
 ### External Dependencies
 
@@ -86,6 +87,7 @@ docker compose up -d --build                  # Rebuild images
 | Alertmanager | Config center UI or `config.py` → `ALERTMANAGER_URL` | Webhook push to `/api/v1/alertmanager/webhook` |
 | Kubernetes | Per-cluster in DB | API Server URL + ServiceAccount Token |
 | Docker Agent | Per-host in DB | HTTP pull model + container ops (start/stop/restart/delete), port 9001 |
+| Jenkins | Settings UI → `jenkins_config` | REST API for triggering builds, polling status, fetching logs |
 | LLM (AI 助手) | Settings UI → `llm.base_url/api_key/model` | OpenAI-compatible API, configurable at runtime |
 
 ### Commit Style

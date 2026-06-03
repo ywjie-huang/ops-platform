@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["AI 助手"])
 
 
-def _build_system_prompt(model_name: str) -> str:
-    return f"""你是 {model_name}，一个真实存在的大语言模型。你不是什么"运维助手"，不要编造身份。
+def _build_system_prompt(model_name: str, custom_prompt: str = "") -> str:
+    base = f"""你是 {model_name}，一个真实存在的大语言模型。你不是什么"运维助手"，不要编造身份。
 
 你可以使用提供的工具来帮助用户完成运维操作：
 - 查询类操作直接执行
@@ -29,6 +29,9 @@ def _build_system_prompt(model_name: str) -> str:
 
 当用户问你是什么模型、你是谁时，如实回答你是 {model_name}。
 回复使用中文，简洁明了。工具返回的是原始数据，由你来决定如何组织和呈现给用户。"""
+    if custom_prompt:
+        return custom_prompt
+    return base
 
 
 @router.get("/info")
@@ -165,7 +168,13 @@ async def api_chat(
     add_message(db, cid, "user", body.message)
     db.commit()
 
-    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+    temperature = float(config.get("temperature") or 0.7)
+    max_tokens = int(float(config.get("max_tokens") or 4096))
+    top_p = float(config.get("top_p") or 1.0)
+    client = LLMClient(
+        config["base_url"], config["api_key"], config["model"],
+        temperature=temperature, max_tokens=max_tokens, top_p=top_p,
+    )
 
     async def event_stream():
         max_rounds = 10
@@ -175,7 +184,7 @@ async def api_chat(
 
             # 构建消息列表
             history = build_llm_messages(db, cid)
-            messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
+            messages = [{"role": "system", "content": _build_system_prompt(config["model"], config.get("system_prompt", ""))}] + history
 
             full_text = ""
             tool_calls = []
@@ -287,14 +296,20 @@ async def api_chat_confirm(
     db.commit()
 
     config = get_llm_config(db)
-    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+    temperature = float(config.get("temperature") or 0.7)
+    max_tokens = int(float(config.get("max_tokens") or 4096))
+    top_p = float(config.get("top_p") or 1.0)
+    client = LLMClient(
+        config["base_url"], config["api_key"], config["model"],
+        temperature=temperature, max_tokens=max_tokens, top_p=top_p,
+    )
 
     async def event_stream():
         yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
         yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
 
         history = build_llm_messages(db, cid)
-        messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
+        messages = [{"role": "system", "content": _build_system_prompt(config["model"], config.get("system_prompt", ""))}] + history
         full_text = ""
 
         try:
@@ -348,11 +363,17 @@ async def api_chat_reject(
     db.commit()
 
     config = get_llm_config(db)
-    client = LLMClient(config["base_url"], config["api_key"], config["model"])
+    temperature = float(config.get("temperature") or 0.7)
+    max_tokens = int(float(config.get("max_tokens") or 4096))
+    top_p = float(config.get("top_p") or 1.0)
+    client = LLMClient(
+        config["base_url"], config["api_key"], config["model"],
+        temperature=temperature, max_tokens=max_tokens, top_p=top_p,
+    )
 
     async def event_stream():
         history = build_llm_messages(db, cid)
-        messages = [{"role": "system", "content": _build_system_prompt(config["model"])}] + history
+        messages = [{"role": "system", "content": _build_system_prompt(config["model"], config.get("system_prompt", ""))}] + history
         full_text = ""
 
         try:

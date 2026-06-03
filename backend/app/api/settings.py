@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
-from app.core.settings import get_config, set_config
+from app.core.settings import get_config, set_config, get_llm_profiles, set_llm_profiles
 from app.db.database import get_db
 from app.models.system_config import SystemConfig
 from app.models.user import User
@@ -20,6 +20,11 @@ _CONFIG_SPECS: dict[str, str] = {
     "llm.base_url": "LLM API 地址（OpenAI 兼容，例：https://api.openai.com/v1）",
     "llm.api_key": "LLM API Key",
     "llm.model": "LLM 模型名称（例：gpt-4o、deepseek-chat、qwen-plus）",
+    "llm.temperature": "模型温度（0-2，越低越精确）",
+    "llm.max_tokens": "最大输出 Token 数",
+    "llm.top_p": "Top P 采样参数（0-1）",
+    "llm.system_prompt": "自定义系统提示词",
+    "llm.profiles": "LLM 模型配置列表（JSON）",
 }
 
 
@@ -86,6 +91,65 @@ class LLMTestBody(BaseModel):
     base_url: str
     api_key: str
     model: str
+
+
+@router.get("/llm/profiles")
+def api_get_llm_profiles(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """获取 LLM 模型配置列表。"""
+    profiles = get_llm_profiles(db)
+    return {"code": 0, "data": {"items": profiles}}
+
+
+class LLMProfile(BaseModel):
+    id: str
+    name: str
+    provider: str
+    icon: str
+    base_url: str
+    api_key: str = ""
+    model: str
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    top_p: float = 1.0
+    system_prompt: str = ""
+    is_active: bool = False
+
+
+class LLMProfilesUpdate(BaseModel):
+    profiles: list[LLMProfile]
+
+
+@router.put("/llm/profiles")
+def api_update_llm_profiles(
+    body: LLMProfilesUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("settings.update")),
+):
+    """更新 LLM 模型配置列表（全量替换）。"""
+    profiles_data = [p.model_dump() for p in body.profiles]
+    set_llm_profiles(db, profiles_data)
+
+    # 同步激活配置到独立的 key
+    active = next((p for p in body.profiles if p.is_active), None)
+    if active:
+        set_config(db, "llm.base_url", active.base_url, _CONFIG_SPECS["llm.base_url"])
+        set_config(db, "llm.api_key", active.api_key, _CONFIG_SPECS["llm.api_key"])
+        set_config(db, "llm.model", active.model, _CONFIG_SPECS["llm.model"])
+        set_config(db, "llm.temperature", str(active.temperature), _CONFIG_SPECS["llm.temperature"])
+        set_config(db, "llm.max_tokens", str(active.max_tokens), _CONFIG_SPECS["llm.max_tokens"])
+        set_config(db, "llm.top_p", str(active.top_p), _CONFIG_SPECS["llm.top_p"])
+        set_config(db, "llm.system_prompt", active.system_prompt, _CONFIG_SPECS["llm.system_prompt"])
+
+    write_log(db, user=current_user, action="update", target_type="settings",
+              target_id=0, target_name="llm.profiles",
+              detail=f"更新模型配置列表，共 {len(profiles_data)} 个配置",
+              ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "模型配置已更新"}
 
 
 @router.post("/test-connection/llm")

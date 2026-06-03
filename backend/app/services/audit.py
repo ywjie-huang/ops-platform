@@ -90,4 +90,7 @@ TARGET_LABELS = {
     "alert": "告警",
     "auth": "认证",
     "settings": "配置",
+    "deploy_app": "应用",
+    "deploy_env": "环境",
+    "deploy_record": "发布记录",
 }

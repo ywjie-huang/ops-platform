@@ -23,6 +23,11 @@ _DEFAULTS: dict[str, str] = {
     "llm.base_url": "",
     "llm.api_key": "",
     "llm.model": "",
+    "llm.temperature": "0.7",
+    "llm.max_tokens": "4096",
+    "llm.top_p": "1.0",
+    "llm.system_prompt": "",
+    "llm.profiles": "[]",
 }
 
 
@@ -52,12 +57,32 @@ def get_alertmanager_url(db: Session) -> str:
 
 
 def get_llm_config(db: Session) -> dict[str, str]:
-    """读取 LLM 配置，返回 {base_url, api_key, model}。"""
+    """读取 LLM 配置，返回 {base_url, api_key, model, temperature, max_tokens, top_p, system_prompt}。"""
     return {
         "base_url": get_config(db, "llm.base_url"),
         "api_key": get_config(db, "llm.api_key"),
         "model": get_config(db, "llm.model"),
+        "temperature": get_config(db, "llm.temperature"),
+        "max_tokens": get_config(db, "llm.max_tokens"),
+        "top_p": get_config(db, "llm.top_p"),
+        "system_prompt": get_config(db, "llm.system_prompt"),
     }
+
+
+def get_llm_profiles(db: Session) -> list[dict[str, str]]:
+    """读取 LLM 配置列表。"""
+    import json
+    raw = get_config(db, "llm.profiles")
+    try:
+        return json.loads(raw) if raw else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def set_llm_profiles(db: Session, profiles: list[dict[str, str]]) -> None:
+    """写入 LLM 配置列表。"""
+    import json
+    set_config(db, "llm.profiles", json.dumps(profiles, ensure_ascii=False), "LLM 模型配置列表")
 
 
 def set_config(db: Session, key: str, value: str, description: str = "") -> SystemConfig:

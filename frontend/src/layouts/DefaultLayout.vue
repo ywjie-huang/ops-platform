@@ -20,7 +20,7 @@ const appStore = useAppStore()
 <style lang="scss" scoped>
 .app-wrapper {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg-color);
 }
 .main-container {
@@ -29,7 +29,9 @@ const appStore = useAppStore()
   flex-direction: column;
   min-width: 0;
   margin-left: var(--sidebar-width);
-  transition: margin-left 0.3s;
+  height: 100vh;
+  overflow: hidden;
+  transition: margin-left 0.12s ease-out;
 }
 .sidebar-collapsed .main-container {
   margin-left: var(--sidebar-collapsed-width);

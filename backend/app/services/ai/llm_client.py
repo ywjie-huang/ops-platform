@@ -13,10 +13,21 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """调用 OpenAI 兼容 API 的异步客户端。"""
 
-    def __init__(self, base_url: str, api_key: str, model: str):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        top_p: float = 1.0,
+    ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
 
     async def chat_stream(
         self,
@@ -35,6 +46,9 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "stream": True,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
         }
         if tools:
             payload["tools"] = tools
