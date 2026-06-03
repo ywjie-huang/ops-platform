@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <div class="page-header">
+  <div class="host-list">
+    <header class="page-header">
       <h2 class="page-title">主机监控</h2>
       <div class="header-actions">
         <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 60s 自动刷新数据'" placement="bottom">
@@ -10,29 +10,29 @@
           </el-button>
         </el-tooltip>
       </div>
+    </header>
+
+    <!-- 概览统计 pills -->
+    <div class="stat-pills" role="group" aria-label="主机统计概览">
+      <div class="stat-pill">
+        <span class="pill-value">{{ items.length }}</span>
+        <span class="pill-label">主机总数</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-value pill-success">{{ onlineCount }}</span>
+        <span class="pill-label">在线</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-value pill-muted">{{ offlineCount }}</span>
+        <span class="pill-label">离线</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-value pill-danger">{{ dangerCount }}</span>
+        <span class="pill-label">高负载</span>
+      </div>
     </div>
 
-    <!-- 概览统计 -->
-    <div class="stat-bar">
-      <div class="stat-item">
-        <div class="stat-value">{{ items.length }}</div>
-        <div class="stat-label">主机总数</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value text-success">{{ onlineCount }}</div>
-        <div class="stat-label">在线</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value text-muted">{{ offlineCount }}</div>
-        <div class="stat-label">离线</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value text-danger">{{ dangerCount }}</div>
-        <div class="stat-label">高负载</div>
-      </div>
-    </div>
-
-    <!-- 搜索与筛选 -->
+    <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
         v-model="keyword"
@@ -44,6 +44,7 @@
       <el-select v-model="statusFilter" placeholder="状态" clearable style="width: 120px">
         <el-option label="在线" value="online" />
         <el-option label="离线" value="offline" />
+        <el-option label="高负载" value="danger" />
       </el-select>
       <el-select v-model="sortBy" placeholder="排序" style="width: 140px">
         <el-option label="按 CPU 降序" value="cpu_desc" />
@@ -51,135 +52,134 @@
         <el-option label="按磁盘降序" value="disk_desc" />
         <el-option label="按主机名" value="name" />
       </el-select>
-      <div class="filter-spacer" />
-      <el-radio-group v-model="viewMode" size="small">
-        <el-radio-button value="card">
-          <el-icon><Grid /></el-icon>
-        </el-radio-button>
-        <el-radio-button value="table">
-          <el-icon><List /></el-icon>
-        </el-radio-button>
-      </el-radio-group>
     </div>
 
-    <!-- 卡片视图 -->
-    <div v-if="viewMode === 'card'" v-loading="loading" class="host-grid">
-      <div
-        v-for="row in paginatedItems"
-        :key="row.id"
-        class="host-card"
-        @click="$router.push(`/monitoring/hosts/${row.id}`)"
+    <!-- 表格 -->
+    <div class="data-card">
+      <el-table
+        :data="paginatedItems"
+        stripe
+        v-loading="loading"
+        row-class-name="host-row"
+        @row-click="goDetail"
       >
-        <div class="host-card-header">
-          <div class="host-info">
-            <span :class="['status-dot', row.prometheus_ok ? 'dot-green' : 'dot-grey']" />
-            <div>
-              <div class="host-name">{{ row.name }}</div>
-              <div class="host-ip">{{ row.ip_address }}</div>
-            </div>
-          </div>
-          <div class="host-actions" @click.stop>
-            <el-button size="small" text type="primary" @click="$router.push(`/monitoring/hosts/${row.id}`)">详情</el-button>
-          </div>
-        </div>
+        <el-table-column type="selection" width="40" />
 
-        <div class="host-metrics">
-          <div class="metric-ring">
-            <el-progress type="circle" :percentage="row.cpu || 0" :color="metricColor(row.cpu)" :width="64" :stroke-width="6" />
-            <span class="metric-label">CPU</span>
-          </div>
-          <div class="metric-ring">
-            <el-progress type="circle" :percentage="row.memory || 0" :color="metricColor(row.memory)" :width="64" :stroke-width="6" />
-            <span class="metric-label">内存</span>
-          </div>
-          <div class="metric-ring">
-            <el-progress type="circle" :percentage="row.disk || 0" :color="metricColor(row.disk)" :width="64" :stroke-width="6" />
-            <span class="metric-label">磁盘</span>
-          </div>
-        </div>
-
-        <div class="host-footer">
-          <span class="footer-item">
-            <el-icon><Upload /></el-icon> {{ row.network_in ?? '-' }} Mbps
-          </span>
-          <span class="footer-item">
-            <el-icon><Download /></el-icon> {{ row.network_out ?? '-' }} Mbps
-          </span>
-          <span class="footer-item">负载 {{ row.load ?? '-' }}</span>
-        </div>
-      </div>
-
-      <div v-if="!loading && filteredItems.length === 0" class="empty-state">
-        <el-empty description="没有匹配的主机" />
-      </div>
-    </div>
-
-    <!-- 表格视图 -->
-    <div v-else class="data-card">
-      <el-table :data="paginatedItems" stripe v-loading="loading">
-        <el-table-column label="主机" width="200">
+        <el-table-column label="主机" min-width="200" sortable>
           <template #default="{row}">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span :class="['status-dot', row.prometheus_ok ? 'dot-green' : 'dot-grey']" />
-              <div>
-                <strong>{{ row.name }}</strong>
-                <br><span style="color:var(--text-muted);font-size:12px">{{ row.ip_address }}</span>
+            <div class="host-cell">
+              <span :class="['status-dot', statusDotClass(row)]" />
+              <div class="host-cell-text">
+                <span class="host-cell-name">{{ row.name }}</span>
+                <span class="host-cell-ip">{{ row.ip_address }}</span>
               </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="CPU" min-width="140">
+
+        <el-table-column label="状态" width="80" sortable>
           <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <el-progress v-else :percentage="row.cpu" :color="metricColor(row.cpu)" :stroke-width="10" />
+            <span :class="['status-tag', statusTagClass(row)]">{{ statusText(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="内存" min-width="140">
+
+        <el-table-column label="CPU" min-width="140" sortable prop="cpu">
           <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <el-progress v-else :percentage="row.memory" :color="metricColor(row.memory)" :stroke-width="10" />
+            <template v-if="row.prometheus_ok">
+              <div class="metric-cell">
+                <div class="metric-bar-track">
+                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.cpu / 100})`, background: metricColor(row.cpu) }" />
+                </div>
+                <span class="metric-value">{{ row.cpu }}%</span>
+              </div>
+            </template>
+            <span v-else class="no-data">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="磁盘" min-width="140">
+
+        <el-table-column label="内存" min-width="140" sortable prop="memory">
           <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <el-progress v-else :percentage="row.disk" :color="metricColor(row.disk)" :stroke-width="10" />
+            <template v-if="row.prometheus_ok">
+              <div class="metric-cell">
+                <div class="metric-bar-track">
+                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.memory / 100})`, background: metricColor(row.memory) }" />
+                </div>
+                <span class="metric-value">{{ row.memory }}%</span>
+              </div>
+            </template>
+            <span v-else class="no-data">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="入站" width="90">
+
+        <el-table-column label="磁盘" min-width="140" sortable prop="disk">
           <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <span v-else>{{ row.network_in }} Mbps</span>
+            <template v-if="row.prometheus_ok">
+              <div class="metric-cell">
+                <div class="metric-bar-track">
+                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.disk / 100})`, background: metricColor(row.disk) }" />
+                </div>
+                <span class="metric-value">{{ row.disk }}%</span>
+              </div>
+            </template>
+            <span v-else class="no-data">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="出站" width="90">
+
+        <el-table-column label="入站" width="90" sortable prop="network_in">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <span v-else>{{ row.network_out }} Mbps</span>
+            <span v-else class="network-value">{{ row.network_in }} <small>Mbps</small></span>
           </template>
         </el-table-column>
-        <el-table-column label="负载" width="70">
+
+        <el-table-column label="出站" width="90" sortable prop="network_out">
+          <template #default="{row}">
+            <span v-if="!row.prometheus_ok" class="no-data">-</span>
+            <span v-else class="network-value">{{ row.network_out }} <small>Mbps</small></span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="负载" width="70" sortable prop="load">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else>{{ row.load }}</span>
           </template>
         </el-table-column>
+
         <el-table-column prop="owner" label="负责人" width="80" />
-        <el-table-column label="操作" width="70" fixed="right">
+
+        <el-table-column label="操作" width="80" fixed="right">
           <template #default="{row}">
-            <el-button size="small" text type="primary" @click="$router.push(`/monitoring/hosts/${row.id}`)">详情</el-button>
+            <div class="row-actions">
+              <el-button size="small" text type="primary" @click.stop="goDetail(row)">详情</el-button>
+              <el-button
+                size="small"
+                text
+                type="primary"
+                @click.stop="$router.push(`/monitoring/hosts/${row.id}/ssh`)"
+              >SSH</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 空状态 -->
+      <div v-if="!loading && filteredItems.length === 0" class="empty-state">
+        <el-empty :description="emptyDescription">
+          <el-button v-if="keyword || statusFilter" type="primary" @click="clearFilters">清除筛选</el-button>
+        </el-empty>
+      </div>
     </div>
 
+    <!-- 分页 -->
     <div v-if="filteredItems.length > 0" class="pagination-wrap">
+      <span class="pagination-total">共 {{ filteredItems.length }} 台</span>
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[20, 50, 100]"
         :total="filteredItems.length"
-        layout="total, sizes, prev, pager, next"
+        layout="sizes, prev, pager, next"
         @current-change="currentPage = $event"
         @size-change="(s: number) => { pageSize = s; currentPage = 1 }"
       />
@@ -189,24 +189,25 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
+import { useRouter } from 'vue-router'
 import { getHosts } from '@/api/monitoring'
-import { Refresh, Grid, List, Upload, Download, Search } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 
+const router = useRouter()
 const loading = ref(false)
 const items = ref<any[]>([])
 const autoRefresh = ref(false)
 const keyword = ref('')
 const statusFilter = ref('')
 const sortBy = ref('cpu_desc')
-const viewMode = ref<'card' | 'table'>('card')
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(20)
 
 const onlineCount = computed(() => items.value.filter(r => r.prometheus_ok).length)
 const offlineCount = computed(() => items.value.filter(r => !r.prometheus_ok).length)
-const dangerCount = computed(() => items.value.filter(r => (r.cpu > 90 || r.memory > 90 || r.disk > 90)).length)
+const dangerCount = computed(() => items.value.filter(r => r.prometheus_ok && (r.cpu > 90 || r.memory > 90 || r.disk > 90)).length)
 
 const filteredItems = computed(() => {
   let result = [...items.value]
@@ -222,6 +223,8 @@ const filteredItems = computed(() => {
     result = result.filter(r => r.prometheus_ok)
   } else if (statusFilter.value === 'offline') {
     result = result.filter(r => !r.prometheus_ok)
+  } else if (statusFilter.value === 'danger') {
+    result = result.filter(r => r.prometheus_ok && (r.cpu > 90 || r.memory > 90 || r.disk > 90))
   }
 
   const sorters: Record<string, (a: any, b: any) => number> = {
@@ -240,9 +243,43 @@ const paginatedItems = computed(() => {
   return filteredItems.value.slice(start, start + pageSize.value)
 })
 
+const emptyDescription = computed(() => {
+  if (keyword.value || statusFilter.value) return '没有匹配的主机'
+  return '暂无主机数据'
+})
+
 watch([keyword, statusFilter, sortBy], () => { currentPage.value = 1 })
 
-const metricColor = (v: number) => v > 90 ? '#ef4444' : v > 70 ? '#f59e0b' : '#22c55e'
+function metricColor(v: number) {
+  return v > 90 ? 'var(--danger-color)' : v > 70 ? 'var(--warning-color)' : 'var(--success-color)'
+}
+
+function statusDotClass(row: any) {
+  if (!row.prometheus_ok) return 'dot-grey'
+  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return 'dot-red'
+  return 'dot-green'
+}
+
+function statusTagClass(row: any) {
+  if (!row.prometheus_ok) return 'tag-offline'
+  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return 'tag-danger'
+  return 'tag-online'
+}
+
+function statusText(row: any) {
+  if (!row.prometheus_ok) return '离线'
+  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return '告警'
+  return '在线'
+}
+
+function goDetail(row: any) {
+  router.push(`/monitoring/hosts/${row.id}`)
+}
+
+function clearFilters() {
+  keyword.value = ''
+  statusFilter.value = ''
+}
 
 async function fetchData() {
   loading.value = true
@@ -281,176 +318,255 @@ onDeactivated(stopAutoRefresh)
 </script>
 
 <style scoped>
+.host-list {
+  min-height: 100%;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-/* 概览统计栏 */
-.stat-bar {
+/* ── Stat Pills ── */
+.stat-pills {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
-.stat-item {
-  flex: 1;
+.stat-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   background: var(--surface-color);
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 16px 20px;
-  text-align: center;
+  border-radius: 6px;
+  padding: 8px 14px;
 }
 
-.stat-value {
-  font-size: 28px;
+.pill-value {
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
 }
 
-.stat-value.text-success { color: var(--success-color); }
-.stat-value.text-muted { color: var(--text-muted); }
-.stat-value.text-danger { color: var(--danger-color); }
+.pill-success { color: var(--success-color); }
+.pill-muted { color: var(--text-muted); }
+.pill-danger { color: var(--danger-color); }
 
-.stat-label {
-  font-size: 13px;
+.pill-label {
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 6px;
 }
 
-/* 筛选栏 */
-.filter-spacer { flex: 1; }
-
-/* 卡片网格 */
-.host-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-  min-height: 200px;
-}
-
-.host-card {
+/* ── Filter Bar ── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
   background: var(--surface-color);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px 20px;
-  cursor: pointer;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
-.host-card:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+/* ── Data Card ── */
+.data-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
 }
 
-.host-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.host-info {
+/* ── Host Cell ── */
+.host-cell {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.host-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.host-ip {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.host-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.host-card:hover .host-actions {
-  opacity: 1;
-}
-
-/* 指标环形图 */
-.host-metrics {
-  display: flex;
-  justify-content: space-around;
-  padding: 8px 0 12px;
-}
-
-.metric-ring {
+.host-cell-text {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
 }
 
-.metric-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
+.host-cell-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
 }
 
-/* 底部网络信息 */
-.host-footer {
-  display: flex;
-  justify-content: space-between;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+.host-cell-ip {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
 }
 
-.footer-item {
-  font-size: 12px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* 状态指示灯 */
+/* ── Status Dot ── */
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
+
 .dot-green {
-  background: #22c55e;
+  background: var(--success-color);
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 }
-.dot-grey { background: #94a3b8; }
 
+.dot-grey {
+  background: var(--text-muted);
+}
+
+.dot-red {
+  background: var(--danger-color);
+  box-shadow: 0 0 6px rgba(229, 72, 77, 0.4);
+}
+
+/* ── Status Tag ── */
+.status-tag {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.tag-online {
+  color: #16a34a;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.tag-offline {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.tag-danger {
+  color: #dc2626;
+  background: rgba(229, 72, 77, 0.1);
+}
+
+/* ── Metric Cell ── */
+.metric-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-bar-track {
+  width: 48px;
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  transform-origin: left;
+  transition: transform 0.3s ease-out;
+}
+
+.metric-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Network Value ── */
+.network-value {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.network-value small {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── Row Actions ── */
+.row-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.host-row:hover .row-actions {
+  opacity: 1;
+}
+
+/* ── No Data ── */
 .no-data {
   color: var(--text-muted);
   font-size: 13px;
 }
 
+/* ── Empty State ── */
 .empty-state {
-  grid-column: 1 / -1;
   padding: 60px 0;
+  text-align: center;
 }
 
+/* ── Pagination ── */
 .pagination-wrap {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
 }
 
-/* 响应式 */
+.pagination-total {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Keyboard Focus ── */
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .metric-bar-fill {
+    transition: none;
+  }
+  .row-actions {
+    transition: none;
+  }
+}
+
+/* ── Responsive ── */
 @media (max-width: 768px) {
-  .stat-bar { flex-wrap: wrap; }
-  .stat-item { min-width: calc(50% - 8px); }
-  .host-grid { grid-template-columns: 1fr; }
-  .host-actions { opacity: 1; }
+  .stat-pills {
+    flex-wrap: wrap;
+  }
+  .stat-pill {
+    min-width: calc(50% - 4px);
+  }
+  .row-actions {
+    opacity: 1;
+  }
 }
 </style>
