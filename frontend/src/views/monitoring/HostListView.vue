@@ -69,9 +69,10 @@
         stripe
         v-loading="loading"
         row-class-name="host-row"
+        show-overflow-tooltip
         @row-click="goDetail"
       >
-        <el-table-column label="主机" min-width="200" sortable>
+        <el-table-column label="主机" min-width="180" sortable>
           <template #default="{row}">
             <div class="host-cell">
               <span :class="['status-dot', getHostStatus(row).dotClass]" />
@@ -83,13 +84,13 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="80" sortable>
+        <el-table-column label="状态" min-width="80" sortable align="center">
           <template #default="{row}">
             <span :class="['status-tag', getHostStatus(row).tagClass]">{{ getHostStatus(row).text }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="CPU" min-width="140" sortable prop="cpu">
+        <el-table-column label="CPU" min-width="130" sortable prop="cpu">
           <template #default="{row}">
             <template v-if="row.prometheus_ok">
               <div class="metric-cell">
@@ -103,7 +104,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="内存" min-width="140" sortable prop="memory">
+        <el-table-column label="内存" min-width="130" sortable prop="memory">
           <template #default="{row}">
             <template v-if="row.prometheus_ok">
               <div class="metric-cell">
@@ -117,7 +118,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="磁盘" min-width="140" sortable prop="disk" class-name="hide-tablet">
+        <el-table-column label="磁盘" min-width="130" sortable prop="disk" class-name="hide-tablet">
           <template #default="{row}">
             <template v-if="row.prometheus_ok">
               <div class="metric-cell">
@@ -131,30 +132,30 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="入站" width="90" sortable prop="network_in" class-name="hide-tablet">
+        <el-table-column label="入站" min-width="90" sortable prop="network_in" class-name="hide-tablet">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else class="network-value">{{ row.network_in }} <small>Mbps</small></span>
           </template>
         </el-table-column>
 
-        <el-table-column label="出站" width="90" sortable prop="network_out" class-name="hide-desktop">
+        <el-table-column label="出站" min-width="90" sortable prop="network_out" class-name="hide-desktop">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else class="network-value">{{ row.network_out }} <small>Mbps</small></span>
           </template>
         </el-table-column>
 
-        <el-table-column label="负载" width="70" sortable prop="load" class-name="hide-desktop">
+        <el-table-column label="负载" min-width="80" sortable prop="load" class-name="hide-desktop">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else>{{ row.load }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="owner" label="负责人" width="80" class-name="hide-desktop" />
+        <el-table-column prop="owner" label="负责人" min-width="80" class-name="hide-desktop" />
 
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column label="操作" min-width="90" fixed="right" align="center">
           <template #default="{row}">
             <div class="row-actions">
               <el-button size="small" text type="primary" @click.stop="goDetail(row)">详情</el-button>
