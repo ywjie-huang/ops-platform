@@ -130,8 +130,20 @@ docker run -d -p 9001:9001 \
 ### 7. 主机监控（Prometheus）
 
 - 对接 **Prometheus + node_exporter**，实时采集主机指标
-- 主机列表展示：CPU、内存、磁盘、网络、负载（颜色阈值：🟢→🟡→🔴）
-- 单机详情：圆形进度条 + 磁盘读写、TCP 连接、进程数、运行时间等
+- **主机列表**（Datadog 风格数据密集表格）：
+  - 表格为唯一视图，废弃卡片模式，信息密度高
+  - 统计 pills（主机总数 / 在线 / 离线 / 高负载）一行紧凑展示
+  - 行内嵌 48×6px 指标条（CPU / 内存 / 磁盘），颜色随阈值变化（绿→黄→红）
+  - 语义色状态：在线（绿）/ 离线（灰）/ 告警（红），状态点 + 文字双重标识
+  - 搜索 + 状态筛选（在线/离线/高负载）+ 排序（CPU/内存/磁盘/名称）
+  - 整行可点击跳转详情，悬停显示详情/SSH 操作按钮
+  - 自动刷新（60s 可控）+ 最后刷新时间显示
+  - 窄屏响应式：1100px 隐藏次要列，768px 隐藏更多列
+- **主机详情**（圆形仪表盘 + 面板网格）：
+  - 4 个圆形仪表盘（CPU / 内存 / 磁盘 / 负载）
+  - 5 个详情面板（系统信息 / CPU / 内存 / 磁盘 / 网络）
+  - 骨架屏加载 + 错误状态 + 重试按钮
+  - Element Plus SVG 图标，无 emoji
 - Prometheus 连接状态指示
 - 批量并发查询，一次 HTTP 请求获取所有主机数据
 
@@ -302,8 +314,10 @@ docker run -d -p 9001:9001 \
 - 响应式：1100px / 860px / 600px 三档断点
 - **图标按需加载**：只打包实际使用的 Element Plus 图标（26 个 vs 300+），减小打包体积
 - **设计 token 体系**：CSS 自定义属性（`--primary-color`、`--success-color`、`--warning-color`、`--danger-color`、`--bg-color`、`--surface-color`、`--border-color`、`--text-primary/secondary/muted`），全部页面统一使用，不使用 Element Plus `--el-color-*` token
-- **可访问性**：WCAG 2.1 AA 基线，交互元素含 `tabindex`/`role`/`aria-*`，键盘焦点指示器，表格横向溢出用 `.table-wrapper` 包裹
+- **可访问性**：WCAG 2.1 AA 基线，交互元素含 `tabindex`/`role`/`aria-*`，键盘焦点指示器（`:focus-visible`），`prefers-reduced-motion` 支持
+- **无障碍标签**：所有 `el-descriptions` 和 `el-progress` 组件添加 `aria-label`
 - **质量审计**：使用 `/impeccable audit` 进行技术质量检查（A11y/Performance/Theming/Responsive/Anti-Patterns），`/impeccable critique` 进行 UX 设计评审
+- **设计优化工具**：使用 `/impeccable layout`、`/impeccable polish`、`/impeccable clarify`、`/impeccable quieter`、`/impeccable harden` 等命令进行逐步优化
 
 ---
 

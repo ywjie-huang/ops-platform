@@ -98,10 +98,10 @@ Conventional commits (Chinese/English mix): `feat(scope):`, `fix(scope):`, `refa
 - **Accessibility**: WCAG 2.1 AA baseline. All interactive elements need `tabindex`, `role`, `aria-*` attributes. Use `focus-visible` for keyboard focus indicators. Add `@media (prefers-reduced-motion: reduce)` for animations.
 - **Responsive**: Use `@media (max-width: 768px)` for mobile. Tables should be wrapped in `.table-wrapper { overflow-x: auto }`. Use CSS Grid for 2D layouts, Flexbox for 1D.
 - **Icons**: Use inline SVG icons (consistent stroke-width, viewBox="0 0 24 24"). Avoid emoji as icons.
-- **Colors**: Always use project design tokens, not Element Plus `--el-color-*` tokens.
+- **Colors**: Always use project design tokens, not Element Plus `--el-color-*` tokens. Use `color-mix()` for transparent variants instead of hardcoded rgba.
 - **No inline styles**: Extract all inline `style=""` to scoped CSS classes.
-- **Animations**: Use `ease-out` curves, 150-250ms duration. Avoid `max-height` transitions; use `grid-template-rows: 0fr/1fr` instead.
-- **impeccable plugin**: Use `/impeccable audit <file>` for technical quality checks, `/impeccable critique <file>` for UX review. After fixing issues, re-run audit to verify score improvement. See `.claude/plugins/marketplaces/impeccable/` for reference docs.
+- **Animations**: Use `ease-out` curves, 150-250ms duration. Avoid `max-height` transitions; use `grid-template-rows: 0fr/1fr` instead. Use `transform` instead of animating layout properties (`width`, `height`, `padding`).
+- **impeccable plugin**: Use `/impeccable audit <file>` for technical quality checks, `/impeccable critique <file>` for UX review. After fixing issues, re-run audit to verify score improvement. Use `/impeccable shape <file>` for design planning before major changes. See `.claude/plugins/marketplaces/impeccable/` for reference docs.
 - **Docker Agent container operations**: Agent exposes `POST /containers/{id}/start|stop|restart|delete`. Backend proxies via `POST /api/v1/containers/docker/hosts/{host_id}/containers/{container_id}/{action}`. Frontend calls these from the container list action column.
 - **Alert rules host association**: `GET /api/v1/alertmanager/rules/hosts` returns a mapping of rule names to affected hosts. Backend executes each rule's PromQL against Prometheus, extracts `instance` labels, and matches to assets table. Results cached for 30 seconds.
 
