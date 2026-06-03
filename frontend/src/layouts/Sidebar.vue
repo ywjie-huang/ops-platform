@@ -57,16 +57,16 @@ import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
 import {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
-  DataAnalysis, DataLine, Document, Finished, Fold, Expand,
-  Key, Monitor, Notebook, Odometer, PieChart, Platform,
-  Promotion, Setting, Tools, User, Warning,
+  DataAnalysis, DataLine, Document, Files, Finished, Fold, Expand,
+  Grid, Key, Monitor, Notebook, Odometer, PieChart, Platform,
+  Promotion, Setting, Tools, Upload, User, Warning,
 } from '@element-plus/icons-vue'
 
 const iconMap: Record<string, Component> = {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
-  DataAnalysis, DataLine, Document, Finished, Key, Monitor,
-  Notebook, Odometer, PieChart, Platform, Promotion, Setting,
-  Tools, User, Warning,
+  DataAnalysis, DataLine, Document, Files, Finished, Grid, Key,
+  Monitor, Notebook, Odometer, PieChart, Platform, Promotion,
+  Setting, Tools, Upload, User, Warning,
 }
 
 function resolveIcon(name?: string): Component | undefined {
