@@ -1,5 +1,20 @@
 import request from './request'
 
+export interface HostListItem {
+  id: number
+  name: string
+  ip_address: string
+  owner: string
+  status: string
+  cpu: number
+  memory: number
+  disk: number
+  network_in: number
+  network_out: number
+  load: number
+  prometheus_ok: boolean
+}
+
 export interface HostDetail {
   id: number
   hostname: string

@@ -3,6 +3,7 @@
     <header class="page-header">
       <h2 class="page-title">主机监控</h2>
       <div class="header-actions">
+        <span v-if="lastRefreshTime" class="last-refresh">上次刷新: {{ lastRefreshTime }}</span>
         <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 60s 自动刷新数据'" placement="bottom">
           <el-button :type="autoRefresh ? 'primary' : 'default'" @click="toggleAutoRefresh">
             <el-icon><Refresh /></el-icon>
@@ -32,6 +33,13 @@
       </div>
     </div>
 
+    <!-- 错误状态 -->
+    <div v-if="loadError" class="error-state">
+      <el-icon :size="40" class="error-icon"><WarningFilled /></el-icon>
+      <p class="error-text">{{ loadError }}</p>
+      <el-button type="primary" @click="fetchData">重新加载</el-button>
+    </div>
+
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
@@ -39,14 +47,14 @@
         placeholder="搜索主机名或 IP"
         clearable
         :prefix-icon="Search"
-        style="width: 240px"
+        class="filter-search"
       />
-      <el-select v-model="statusFilter" placeholder="状态" clearable style="width: 120px">
+      <el-select v-model="statusFilter" placeholder="状态" clearable class="filter-status">
         <el-option label="在线" value="online" />
         <el-option label="离线" value="offline" />
         <el-option label="高负载" value="danger" />
       </el-select>
-      <el-select v-model="sortBy" placeholder="排序" style="width: 140px">
+      <el-select v-model="sortBy" placeholder="排序" class="filter-sort">
         <el-option label="按 CPU 降序" value="cpu_desc" />
         <el-option label="按内存降序" value="mem_desc" />
         <el-option label="按磁盘降序" value="disk_desc" />
@@ -63,12 +71,10 @@
         row-class-name="host-row"
         @row-click="goDetail"
       >
-        <el-table-column type="selection" width="40" />
-
         <el-table-column label="主机" min-width="200" sortable>
           <template #default="{row}">
             <div class="host-cell">
-              <span :class="['status-dot', statusDotClass(row)]" />
+              <span :class="['status-dot', getHostStatus(row).dotClass]" />
               <div class="host-cell-text">
                 <span class="host-cell-name">{{ row.name }}</span>
                 <span class="host-cell-ip">{{ row.ip_address }}</span>
@@ -79,7 +85,7 @@
 
         <el-table-column label="状态" width="80" sortable>
           <template #default="{row}">
-            <span :class="['status-tag', statusTagClass(row)]">{{ statusText(row) }}</span>
+            <span :class="['status-tag', getHostStatus(row).tagClass]">{{ getHostStatus(row).text }}</span>
           </template>
         </el-table-column>
 
@@ -111,7 +117,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="磁盘" min-width="140" sortable prop="disk">
+        <el-table-column label="磁盘" min-width="140" sortable prop="disk" class-name="hide-tablet">
           <template #default="{row}">
             <template v-if="row.prometheus_ok">
               <div class="metric-cell">
@@ -125,28 +131,28 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="入站" width="90" sortable prop="network_in">
+        <el-table-column label="入站" width="90" sortable prop="network_in" class-name="hide-tablet">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else class="network-value">{{ row.network_in }} <small>Mbps</small></span>
           </template>
         </el-table-column>
 
-        <el-table-column label="出站" width="90" sortable prop="network_out">
+        <el-table-column label="出站" width="90" sortable prop="network_out" class-name="hide-desktop">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else class="network-value">{{ row.network_out }} <small>Mbps</small></span>
           </template>
         </el-table-column>
 
-        <el-table-column label="负载" width="70" sortable prop="load">
+        <el-table-column label="负载" width="70" sortable prop="load" class-name="hide-desktop">
           <template #default="{row}">
             <span v-if="!row.prometheus_ok" class="no-data">-</span>
             <span v-else>{{ row.load }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="owner" label="负责人" width="80" />
+        <el-table-column prop="owner" label="负责人" width="80" class-name="hide-desktop" />
 
         <el-table-column label="操作" width="80" fixed="right">
           <template #default="{row}">
@@ -164,7 +170,7 @@
       </el-table>
 
       <!-- 空状态 -->
-      <div v-if="!loading && filteredItems.length === 0" class="empty-state">
+      <div v-if="!loading && !loadError && filteredItems.length === 0" class="empty-state">
         <el-empty :description="emptyDescription">
           <el-button v-if="keyword || statusFilter" type="primary" @click="clearFilters">清除筛选</el-button>
         </el-empty>
@@ -190,13 +196,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
-import { getHosts } from '@/api/monitoring'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { getHosts, type HostListItem } from '@/api/monitoring'
+import { Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
-const items = ref<any[]>([])
+const loadError = ref('')
+const items = ref<HostListItem[]>([])
 const autoRefresh = ref(false)
+const lastRefreshTime = ref('')
 const keyword = ref('')
 const statusFilter = ref('')
 const sortBy = ref('cpu_desc')
@@ -207,7 +215,17 @@ const pageSize = ref(20)
 
 const onlineCount = computed(() => items.value.filter(r => r.prometheus_ok).length)
 const offlineCount = computed(() => items.value.filter(r => !r.prometheus_ok).length)
-const dangerCount = computed(() => items.value.filter(r => r.prometheus_ok && (r.cpu > 90 || r.memory > 90 || r.disk > 90)).length)
+const dangerCount = computed(() => items.value.filter(r => isHostDanger(r)).length)
+
+function isHostDanger(row: HostListItem) {
+  return row.prometheus_ok && (row.cpu > 90 || row.memory > 90 || row.disk > 90)
+}
+
+function getHostStatus(row: HostListItem) {
+  if (!row.prometheus_ok) return { key: 'offline', text: '离线', dotClass: 'dot-grey', tagClass: 'tag-offline' }
+  if (isHostDanger(row)) return { key: 'danger', text: '告警', dotClass: 'dot-red', tagClass: 'tag-danger' }
+  return { key: 'online', text: '在线', dotClass: 'dot-green', tagClass: 'tag-online' }
+}
 
 const filteredItems = computed(() => {
   let result = [...items.value]
@@ -220,14 +238,14 @@ const filteredItems = computed(() => {
   }
 
   if (statusFilter.value === 'online') {
-    result = result.filter(r => r.prometheus_ok)
+    result = result.filter(r => r.prometheus_ok && !isHostDanger(r))
   } else if (statusFilter.value === 'offline') {
     result = result.filter(r => !r.prometheus_ok)
   } else if (statusFilter.value === 'danger') {
-    result = result.filter(r => r.prometheus_ok && (r.cpu > 90 || r.memory > 90 || r.disk > 90))
+    result = result.filter(r => isHostDanger(r))
   }
 
-  const sorters: Record<string, (a: any, b: any) => number> = {
+  const sorters: Record<string, (a: HostListItem, b: HostListItem) => number> = {
     cpu_desc: (a, b) => (b.cpu || 0) - (a.cpu || 0),
     mem_desc: (a, b) => (b.memory || 0) - (a.memory || 0),
     disk_desc: (a, b) => (b.disk || 0) - (a.disk || 0),
@@ -254,25 +272,7 @@ function metricColor(v: number) {
   return v > 90 ? 'var(--danger-color)' : v > 70 ? 'var(--warning-color)' : 'var(--success-color)'
 }
 
-function statusDotClass(row: any) {
-  if (!row.prometheus_ok) return 'dot-grey'
-  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return 'dot-red'
-  return 'dot-green'
-}
-
-function statusTagClass(row: any) {
-  if (!row.prometheus_ok) return 'tag-offline'
-  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return 'tag-danger'
-  return 'tag-online'
-}
-
-function statusText(row: any) {
-  if (!row.prometheus_ok) return '离线'
-  if (row.cpu > 90 || row.memory > 90 || row.disk > 90) return '告警'
-  return '在线'
-}
-
-function goDetail(row: any) {
+function goDetail(row: HostListItem) {
   router.push(`/monitoring/hosts/${row.id}`)
 }
 
@@ -281,11 +281,19 @@ function clearFilters() {
   statusFilter.value = ''
 }
 
+function formatTime(date: Date) {
+  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+}
+
 async function fetchData() {
   loading.value = true
+  loadError.value = ''
   try {
     const res: any = await getHosts()
     items.value = res.data
+    lastRefreshTime.value = formatTime(new Date())
+  } catch (e: any) {
+    loadError.value = e?.message || '加载主机列表失败，请检查网络或稍后重试'
   } finally {
     loading.value = false
   }
@@ -331,8 +339,13 @@ onDeactivated(stopAutoRefresh)
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+}
+
+.last-refresh {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* ── Stat Pills ── */
@@ -368,6 +381,32 @@ onDeactivated(stopAutoRefresh)
   color: var(--text-secondary);
 }
 
+/* ── Error State ── */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+}
+
+.error-icon {
+  color: var(--danger-color);
+  margin-bottom: 12px;
+}
+
+.error-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  max-width: 400px;
+}
+
 /* ── Filter Bar ── */
 .filter-bar {
   display: flex;
@@ -380,6 +419,10 @@ onDeactivated(stopAutoRefresh)
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
+
+.filter-search { width: 240px; }
+.filter-status { width: 120px; }
+.filter-sort { width: 140px; }
 
 /* ── Data Card ── */
 .data-card {
@@ -424,7 +467,7 @@ onDeactivated(stopAutoRefresh)
 
 .dot-green {
   background: var(--success-color);
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--success-color) 40%, transparent);
 }
 
 .dot-grey {
@@ -433,7 +476,7 @@ onDeactivated(stopAutoRefresh)
 
 .dot-red {
   background: var(--danger-color);
-  box-shadow: 0 0 6px rgba(229, 72, 77, 0.4);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--danger-color) 40%, transparent);
 }
 
 /* ── Status Tag ── */
@@ -445,18 +488,18 @@ onDeactivated(stopAutoRefresh)
 }
 
 .tag-online {
-  color: #16a34a;
-  background: rgba(34, 197, 94, 0.1);
+  color: color-mix(in srgb, var(--success-color) 80%, black);
+  background: color-mix(in srgb, var(--success-color) 10%, transparent);
 }
 
 .tag-offline {
   color: var(--text-muted);
-  background: rgba(148, 163, 184, 0.1);
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
 }
 
 .tag-danger {
-  color: #dc2626;
-  background: rgba(229, 72, 77, 0.1);
+  color: color-mix(in srgb, var(--danger-color) 80%, black);
+  background: color-mix(in srgb, var(--danger-color) 10%, transparent);
 }
 
 /* ── Metric Cell ── */
@@ -558,6 +601,12 @@ onDeactivated(stopAutoRefresh)
 }
 
 /* ── Responsive ── */
+@media (max-width: 1100px) {
+  :deep(.hide-tablet) {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .stat-pills {
     flex-wrap: wrap;
@@ -565,8 +614,14 @@ onDeactivated(stopAutoRefresh)
   .stat-pill {
     min-width: calc(50% - 4px);
   }
+  .filter-search { width: 100%; }
+  .filter-status { width: 100%; }
+  .filter-sort { width: 100%; }
   .row-actions {
     opacity: 1;
+  }
+  :deep(.hide-desktop) {
+    display: none;
   }
 }
 </style>
