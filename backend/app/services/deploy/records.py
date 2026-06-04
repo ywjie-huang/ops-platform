@@ -203,6 +203,7 @@ def execute_ssh_deployment_background(
     """后台执行 SSH 部署，独立 DB session。"""
     from app.db.database import SessionLocal
 
+    logger.info("SSH 部署后台任务开始: record_id=%s, file=%s", record_id, file_name)
     db = SessionLocal()
     try:
         record = db.get(DeployRecord, record_id)
@@ -217,6 +218,7 @@ def execute_ssh_deployment_background(
                 record.finished_at = datetime.now(CHINA_TZ)
                 record.logs = (record.logs or "") + f"\n[错误] {result.get('error', '未知错误')}"
             db.commit()
+            logger.info("SSH 部署后台任务完成: record_id=%s, status=%s", record_id, record.status)
         except Exception as e:
             logger.exception("SSH 部署后台任务异常: record_id=%s", record_id)
             record.status = "failed"

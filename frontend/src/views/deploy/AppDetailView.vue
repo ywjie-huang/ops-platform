@@ -284,9 +284,12 @@ async function handleDeploy() {
   if (deploying.value) return
   if (!deployForm.environment_id) { ElMessage.warning('请选择环境'); return }
 
+  // 判断 SSH 部署：优先用 app.deploy_method，不依赖 envConfigs 是否加载完成
+  const isSSH = app.value.deploy_method === 'ssh' || !!uploadFile.value
+
   deploying.value = true
   try {
-    if (isSSHDeploy.value) {
+    if (isSSH) {
       // SSH 部署：上传文件，后台执行
       if (!uploadFile.value) { ElMessage.warning('请上传部署文件'); return }
       const formData = new FormData()

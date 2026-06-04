@@ -462,20 +462,21 @@ async def upload_and_deploy(
         raise HTTPException(status_code=400, detail="文件大小不能超过 500MB")
 
     from app.models.deploy import DeployRecord
+    now = datetime.now(CHINA_TZ)
     record = DeployRecord(
         application_id=application_id,
         environment_id=environment_id,
         deploy_method="ssh",
         version=version or file.filename or "",
-        status="pending",
+        status="deploying",
         trigger_type="manual",
         creator_id=current_user.id,
+        started_at=now,
     )
     db.add(record)
     db.flush()
     record_id = record.id
 
-    # SSH 部署跳过审批流程（手动上传文件，无需审批）
     write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署", ip_address=get_client_ip(request))
     db.commit()
 
