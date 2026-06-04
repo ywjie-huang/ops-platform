@@ -59,14 +59,14 @@ import {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
   DataAnalysis, DataLine, Document, Files, Finished, Folder, Fold, Expand,
   Grid, Key, List, Monitor, Notebook, Odometer, PieChart, Platform,
-  Plus, Promotion, Setting, Tools, Upload, User, Warning,
+  Plus, Promotion, Setting, Stamp, Tools, Upload, User, Warning,
 } from '@element-plus/icons-vue'
 
 const iconMap: Record<string, Component> = {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
   DataAnalysis, DataLine, Document, Files, Finished, Folder, Grid, Key,
   List, Monitor, Notebook, Odometer, PieChart, Platform, Plus, Promotion,
-  Setting, Tools, Upload, User, Warning,
+  Setting, Stamp, Tools, Upload, User, Warning,
 }
 
 function resolveIcon(name?: string): Component | undefined {

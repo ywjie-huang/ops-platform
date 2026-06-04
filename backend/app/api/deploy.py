@@ -35,6 +35,13 @@ from app.services.deploy.records import (
     request_cancel,
     update_status,
 )
+from app.services.deploy.approvals import (
+    approve,
+    create_approval,
+    get_approval,
+    list_approvals,
+    reject,
+)
 
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
 
@@ -458,6 +465,15 @@ def api_execute_deploy(
         deploy_config=config_snapshot,
     )
     write_log(db, user=current_user, action="deploy", target_type="deploy_record", target_id=record.id, target_name=f"{app.name}:{body.env_id}", ip_address=get_client_ip(request))
+
+    # 检查是否需要审批
+    env = app_env.environment
+    if env and env.approval_required:
+        approval = create_approval(db, record_id=record.id)
+        append_log(db, record, f"该环境需要审批，已创建审批记录 #{approval.id}，等待审批")
+        db.commit()
+        return {"code": 0, "msg": "已提交审批，等待审批通过后自动执行", "data": _record_dict(record), "approval_id": approval.id}
+
     db.commit()
 
     # 异步线程执行部署
@@ -559,3 +575,90 @@ def api_record_log_sse(
             time.sleep(1)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ──────────────────────── 审批 ────────────────────────
+
+
+def _approval_dict(a) -> dict:
+    rec = a.record
+    return {
+        "id": a.id,
+        "record_id": a.record_id,
+        "status": a.status,
+        "approver_id": a.approver_id,
+        "approver_name": a.approver.username if a.approver else None,
+        "comment": a.comment,
+        "created_at": a.created_at.isoformat(),
+        "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+        # 关联信息
+        "app_id": rec.app_id if rec else None,
+        "app_name": rec.application.name if rec and rec.application else None,
+        "env_id": rec.env_id if rec else None,
+        "env_name": rec.environment.name if rec and rec.environment else None,
+        "version": rec.version if rec else None,
+        "trigger_user_name": rec.trigger_user.username if rec and rec.trigger_user else None,
+        "trigger_type": rec.trigger_type if rec else None,
+    }
+
+
+@router.get("/approvals")
+def api_list_approvals(
+    status: str = "pending",
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    items = list_approvals(db, status=status)
+    return {"code": 0, "data": [_approval_dict(a) for a in items]}
+
+
+@router.post("/approvals/{approval_id}/approve")
+def api_approve(
+    approval_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.approve")),
+):
+    a = get_approval(db, approval_id)
+    if a is None:
+        raise HTTPException(status_code=404, detail="审批记录不存在")
+    if a.status != "pending":
+        raise HTTPException(status_code=400, detail="该审批已处理")
+
+    approve(db, a, approver_id=current_user.id, comment="")
+
+    # 审批通过 → 触发部署
+    record = a.record
+    if record and record.status in ("pending", "cancelled"):
+        from app.services.deploy.records import update_status, append_log
+        update_status(db, record, "pending")
+        append_log(db, record, f"审批通过 (审批人: {current_user.username})，开始部署…")
+        db.commit()
+        thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
+        thread.start()
+
+    write_log(db, user=current_user, action="approve", target_type="deploy_approval", target_id=a.id, target_name=f"#{a.id}", ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "审批通过，部署已触发"}
+
+
+@router.post("/approvals/{approval_id}/reject")
+def api_reject(
+    approval_id: int,
+    request: Request,
+    body: dict | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.approve")),
+):
+    a = get_approval(db, approval_id)
+    if a is None:
+        raise HTTPException(status_code=404, detail="审批记录不存在")
+    if a.status != "pending":
+        raise HTTPException(status_code=400, detail="该审批已处理")
+
+    comment = (body or {}).get("comment", "")
+    reject(db, a, approver_id=current_user.id, comment=comment)
+
+    write_log(db, user=current_user, action="reject", target_type="deploy_approval", target_id=a.id, target_name=f"#{a.id}", ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "已拒绝"}

@@ -68,3 +68,16 @@ export function getDeployRecords(params?: {
 export function getDeployRecord(id: number) {
   return request.get(`/deploy/records/${id}`)
 }
+
+// ── 审批 ──
+export function getDeployApprovals(params?: { status?: string }) {
+  return request.get('/deploy/approvals', { params })
+}
+
+export function approveDeploy(approvalId: number) {
+  return request.post(`/deploy/approvals/${approvalId}/approve`)
+}
+
+export function rejectDeploy(approvalId: number, comment?: string) {
+  return request.post(`/deploy/approvals/${approvalId}/reject`, { comment })
+}

@@ -197,6 +197,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '部署详情', hidden: true, permission: 'deploy.view', parentTitle: '部署记录', activeMenu: '/deploy/records' },
       },
       {
+        path: 'approvals',
+        name: 'DeployApprovals',
+        component: () => import('@/views/deploy/ApprovalView.vue'),
+        meta: { title: '部署审批', icon: 'Stamp', permission: 'deploy.approve' },
+      },
+      {
         path: 'upload',
         name: 'DeployUpload',
         component: () => import('@/views/deploy/UploadView.vue'),
