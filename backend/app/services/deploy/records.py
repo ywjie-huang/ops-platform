@@ -195,6 +195,33 @@ def execute_ssh_deployment(
     return result
 
 
+def execute_ssh_deployment_background(
+    record_id: int,
+    file_content: bytes,
+    file_name: str,
+) -> None:
+    """后台执行 SSH 部署，独立 DB session。"""
+    from app.db.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        record = db.get(DeployRecord, record_id)
+        if not record:
+            logger.error("SSH 部署后台任务：记录 %s 不存在", record_id)
+            return
+        try:
+            execute_ssh_deployment(db, record, file_content, file_name)
+            db.commit()
+        except Exception as e:
+            logger.exception("SSH 部署后台任务异常: record_id=%s", record_id)
+            record.status = "failed"
+            record.finished_at = datetime.now(CHINA_TZ)
+            record.logs = (record.logs or "") + f"\n[系统错误] {e}"
+            db.commit()
+    finally:
+        db.close()
+
+
 # ─── Jenkins 状态轮询 ───────────────────────────────────────
 
 

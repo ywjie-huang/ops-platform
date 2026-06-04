@@ -162,11 +162,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onActivated } from 'vue'
+import { ref, reactive, computed, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDeployApp, getAppEnvConfigs, saveAppEnvConfig, deleteAppEnvConfig, getDeployRecords, createDeployment, retryDeployment, rollbackDeployment, getDeployEnvs, uploadAndDeploy } from '@/api/deploy'
+import { getDeployApp, getAppEnvConfigs, saveAppEnvConfig, deleteAppEnvConfig, getDeployRecords, getDeployRecord, createDeployment, retryDeployment, rollbackDeployment, getDeployEnvs, uploadAndDeploy } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
@@ -177,6 +177,7 @@ const envConfigs = ref<any[]>([])
 const records = ref<any[]>([])
 const allEnvs = ref<any[]>([])
 const assets = ref<any[]>([])
+let deployPollTimer: ReturnType<typeof setInterval> | null = null
 
 const envDialogVisible = ref(false)
 const editingEnvId = ref<number | null>(null)
@@ -277,15 +278,25 @@ async function handleDeploy() {
   deploying.value = true
   try {
     if (isSSHDeploy.value) {
-      // SSH 部署：上传文件
+      // SSH 部署：上传文件，后台执行
       if (!uploadFile.value) { ElMessage.warning('请上传部署文件'); return }
       const formData = new FormData()
       formData.append('application_id', String(Number(route.params.id)))
       formData.append('environment_id', String(deployForm.environment_id))
       formData.append('version', deployForm.version)
       formData.append('file', uploadFile.value)
-      await uploadAndDeploy(formData)
-      ElMessage.success('部署完成')
+      const res: any = await uploadAndDeploy(formData)
+      const recordId = res?.data?.record_id
+      deployDialogVisible.value = false
+      uploadFile.value = null
+      deploying.value = false
+      fetchData()
+
+      if (recordId) {
+        ElNotification({ title: '部署已启动', message: '文件上传完成，正在服务器上执行部署…', type: 'info', duration: 3000 })
+        startDeployPolling(recordId)
+      }
+      return
     } else {
       await createDeployment({ application_id: Number(route.params.id), environment_id: deployForm.environment_id, version: deployForm.version })
       ElMessage.success('发布已触发')
@@ -294,6 +305,34 @@ async function handleDeploy() {
     fetchData()
   } finally { deploying.value = false }
 }
+
+function startDeployPolling(recordId: number) {
+  stopDeployPolling()
+  deployPollTimer = setInterval(async () => {
+    try {
+      const res: any = await getDeployRecord(recordId)
+      const r = res?.data
+      if (!r) return
+      if (r.status === 'success') {
+        stopDeployPolling()
+        ElNotification({ title: '部署成功', message: `版本 ${r.version || '-'} 部署完成，耗时 ${r.duration_seconds ?? '-'}s`, type: 'success', duration: 5000 })
+        fetchData()
+      } else if (r.status === 'failed') {
+        stopDeployPolling()
+        ElNotification({ title: '部署失败', message: r.logs?.split('\n').pop() || '请查看部署日志了解详情', type: 'error', duration: 8000 })
+        fetchData()
+      }
+    } catch {
+      // 网络异常时不停止轮询，下次重试
+    }
+  }, 3000)
+}
+
+function stopDeployPolling() {
+  if (deployPollTimer) { clearInterval(deployPollTimer); deployPollTimer = null }
+}
+
+onDeactivated(stopDeployPolling)
 
 // keep-alive 下 onMounted 只触发一次，用 onActivated 每次进入都刷新
 onActivated(fetchData)

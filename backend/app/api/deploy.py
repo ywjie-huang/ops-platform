@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -461,6 +461,7 @@ def create_deployment(
 @router.post("/records/upload")
 async def upload_and_deploy(
     request: Request,
+    background_tasks: BackgroundTasks,
     application_id: int = Form(...),
     environment_id: int = Form(...),
     version: str = Form(""),
@@ -468,7 +469,7 @@ async def upload_and_deploy(
     current_user: User = Depends(api_permission_required("deploy.execute")),
     db: Session = Depends(get_db),
 ):
-    """SSH 部署：上传文件到服务器并执行部署脚本。"""
+    """SSH 部署：上传文件到服务器并执行部署脚本（后台执行，立即返回）。"""
     app = app_service.get_app(db, application_id)
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
@@ -492,23 +493,25 @@ async def upload_and_deploy(
     )
     db.add(record)
     db.flush()
+    record_id = record.id
 
     # 检查是否需要审批
     from app.models.deploy import DeployEnvironment
     env = db.get(DeployEnvironment, environment_id)
     if env and env.approval_required:
+        write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署（待审批）", ip_address=get_client_ip(request))
         db.commit()
         return {"code": 0, "msg": "已提交，等待审批", "data": _record_dict(record)}
 
-    # 执行 SSH 部署
-    result = record_service.execute_ssh_deployment(db, record, file_content, file.filename or "upload")
-    if not result["ok"]:
-        db.commit()
-        raise HTTPException(status_code=400, detail=result.get("error", "部署失败"))
-
-    write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record.id, target_name=f"{app.name} SSH 部署", ip_address=get_client_ip(request))
+    write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署", ip_address=get_client_ip(request))
     db.commit()
-    return {"code": 0, "msg": "部署完成", "data": _record_dict(record)}
+
+    # 后台执行 SSH 部署
+    background_tasks.add_task(
+        record_service.execute_ssh_deployment_background,
+        record_id, file_content, file.filename or "upload",
+    )
+    return {"code": 0, "msg": "部署已启动", "data": {"record_id": record_id}}
 
 
 @router.post("/records/{record_id}/retry")
