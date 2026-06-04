@@ -173,9 +173,12 @@ def execute_deploy(record_id: int) -> None:
             elif strategy == "docker":
                 from app.services.deploy.strategies.docker_strategy import execute_docker_deploy
                 execute_docker_deploy(db, record, app, app_env)
+            elif strategy == "k8s":
+                from app.services.deploy.strategies.k8s_strategy import execute_k8s_deploy
+                execute_k8s_deploy(db, record, app, app_env)
             else:
                 update_status(db, record, "failed")
-                set_error(db, record, f"暂不支持 {strategy} 策略（后续 Step 实现）")
+                set_error(db, record, f"暂不支持 {strategy} 策略")
 
         except Exception as e:
             update_status(db, record, "failed")
