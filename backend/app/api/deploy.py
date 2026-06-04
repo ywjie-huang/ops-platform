@@ -69,6 +69,9 @@ class AppEnvConfig(BaseModel):
     k8s_cluster_id: int | None = None
     k8s_namespace: str = "default"
     k8s_deployment_name: str = ""
+    ssh_asset_id: int | None = None
+    ssh_deploy_path: str = ""
+    ssh_deploy_script: str = ""
 
 
 class DeployCreate(BaseModel):
@@ -295,7 +298,7 @@ def save_app_env(
     app = app_service.get_app(db, app_id)
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
-    ae = app_service.save_app_env(db, application_id=app_id, environment_id=body.environment_id, jenkins_job_name=body.jenkins_job_name, jenkins_params_json=body.jenkins_params_json, docker_image=body.docker_image, docker_host_id=body.docker_host_id, k8s_cluster_id=body.k8s_cluster_id, k8s_namespace=body.k8s_namespace, k8s_deployment_name=body.k8s_deployment_name)
+    ae = app_service.save_app_env(db, application_id=app_id, environment_id=body.environment_id, jenkins_job_name=body.jenkins_job_name, jenkins_params_json=body.jenkins_params_json, docker_image=body.docker_image, docker_host_id=body.docker_host_id, k8s_cluster_id=body.k8s_cluster_id, k8s_namespace=body.k8s_namespace, k8s_deployment_name=body.k8s_deployment_name, ssh_asset_id=body.ssh_asset_id, ssh_deploy_path=body.ssh_deploy_path, ssh_deploy_script=body.ssh_deploy_script)
     write_log(db, user=current_user, action="update", target_type="deploy_app", target_id=app.id, target_name=app.name, detail=f"更新环境配置 env_id={body.environment_id}", ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "保存成功", "data": _app_env_dict(ae)}

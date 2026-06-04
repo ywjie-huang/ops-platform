@@ -119,6 +119,9 @@ def save_app_env(
     k8s_cluster_id: int | None = None,
     k8s_namespace: str = "default",
     k8s_deployment_name: str = "",
+    ssh_asset_id: int | None = None,
+    ssh_deploy_path: str = "",
+    ssh_deploy_script: str = "",
 ) -> DeployAppEnv:
     """创建或更新应用-环境配置。"""
     existing = get_app_env_by_pair(db, application_id, environment_id)
@@ -130,6 +133,9 @@ def save_app_env(
         existing.k8s_cluster_id = k8s_cluster_id
         existing.k8s_namespace = k8s_namespace
         existing.k8s_deployment_name = k8s_deployment_name
+        existing.ssh_asset_id = ssh_asset_id
+        existing.ssh_deploy_path = ssh_deploy_path
+        existing.ssh_deploy_script = ssh_deploy_script
         db.flush()
         return existing
 
@@ -143,6 +149,9 @@ def save_app_env(
         k8s_cluster_id=k8s_cluster_id,
         k8s_namespace=k8s_namespace,
         k8s_deployment_name=k8s_deployment_name,
+        ssh_asset_id=ssh_asset_id,
+        ssh_deploy_path=ssh_deploy_path,
+        ssh_deploy_script=ssh_deploy_script,
     )
     db.add(app_env)
     db.flush()
