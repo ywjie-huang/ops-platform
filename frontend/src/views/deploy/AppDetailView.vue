@@ -201,9 +201,11 @@ const uploadFile = ref<File | null>(null)
 const deploying = ref(false)
 
 const isSSHDeploy = computed(() => {
+  // 应用本身配置为 SSH 部署方式时直接返回 true，不依赖 envConfigs 是否加载完成
+  if (app.value.deploy_method === 'ssh') return true
   if (!deployForm.environment_id) return false
   const cfg = envConfigs.value.find(c => c.environment_id === deployForm.environment_id)
-  return app.value.deploy_method === 'ssh' || (cfg && cfg.ssh_asset_id)
+  return !!(cfg && cfg.ssh_asset_id)
 })
 
 const statusType = (s: string) => ({ success: 'success', failed: 'danger', building: 'warning', deploying: 'warning', pending: 'info', approved: 'primary', rejected: 'danger', rolled_back: 'info' }[s] || 'info') as any

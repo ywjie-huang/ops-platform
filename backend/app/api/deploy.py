@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip, get_current_api_user
@@ -427,6 +428,18 @@ def create_deployment(
     app = app_service.get_app(db, body.application_id)
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
+
+    # SSH 部署必须走文件上传接口，不创建记录
+    from app.models.deploy import DeployAppEnv
+    app_env = db.scalar(
+        select(DeployAppEnv).where(
+            DeployAppEnv.application_id == body.application_id,
+            DeployAppEnv.environment_id == body.environment_id,
+        )
+    )
+    if app.deploy_method == "ssh" or (app_env and app_env.ssh_asset_id):
+        raise HTTPException(status_code=400, detail="SSH 部署请使用文件上传接口")
+
     from app.models.deploy import DeployRecord
     record = DeployRecord(
         application_id=body.application_id,
