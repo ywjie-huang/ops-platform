@@ -155,44 +155,6 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/deploy',
-    component: Layout,
-    redirect: '/deploy/status',
-    meta: { title: '应用发布', icon: 'Upload' },
-    children: [
-      {
-        path: 'status',
-        name: 'DeployStatus',
-        component: () => import('@/views/deploy/StatusView.vue'),
-        meta: { title: '发布看板', icon: 'Grid', permission: 'deploy.view' },
-      },
-      {
-        path: 'apps',
-        name: 'DeployAppList',
-        component: () => import('@/views/deploy/AppListView.vue'),
-        meta: { title: '应用管理', icon: 'Files', permission: 'deploy.view' },
-      },
-      {
-        path: 'apps/:id',
-        name: 'DeployAppDetail',
-        component: () => import('@/views/deploy/AppDetailView.vue'),
-        meta: { title: '应用详情', hidden: true, permission: 'deploy.view', parentTitle: '应用管理', activeMenu: '/deploy/apps' },
-      },
-      {
-        path: 'records',
-        name: 'DeployRecordList',
-        component: () => import('@/views/deploy/DeployListView.vue'),
-        meta: { title: '发布记录', icon: 'Document', permission: 'deploy.view' },
-      },
-      {
-        path: 'records/:id',
-        name: 'DeployRecordDetail',
-        component: () => import('@/views/deploy/DeployDetailView.vue'),
-        meta: { title: '发布详情', hidden: true, permission: 'deploy.view', parentTitle: '发布记录', activeMenu: '/deploy/records' },
-      },
-    ],
-  },
-  {
     path: '/users',
     component: Layout,
     redirect: '/users/list',

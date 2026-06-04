@@ -189,40 +189,12 @@ def _ensure_docker_columns() -> None:
         conn.close()
 
 
-def _ensure_deploy_ssh_columns() -> None:
-    """为 deploy_app_envs 表补充 SSH 部署字段（兼容旧库）。"""
-    try:
-        conn = pymysql.connect(
-            host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
-        )
-        with conn.cursor() as cur:
-            cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
-            if cur.fetchone() is None:
-                conn.commit()
-                return  # 表还不存在，create_all 会按新模型创建
-            for col, col_def in [
-                ('ssh_asset_id', "INT NULL DEFAULT NULL"),
-                ('ssh_deploy_path', "VARCHAR(512) NOT NULL DEFAULT ''"),
-                ('ssh_deploy_script', "TEXT NULL"),
-            ]:
-                cur.execute(f"SHOW COLUMNS FROM deploy_app_envs LIKE '{col}'")
-                if cur.fetchone() is None:
-                    cur.execute(f"ALTER TABLE deploy_app_envs ADD COLUMN {col} {col_def}")
-                    print(f'[init_db] Added {col} column to deploy_app_envs')
-            conn.commit()
-    except Exception as e:
-        print(f'[init_db] _ensure_deploy_ssh_columns error: {e}')
-    finally:
-        conn.close()
-
-
 def init_db() -> None:
     _ensure_database()
     Base.metadata.create_all(bind=engine)
     _ensure_asset_ssh_columns()
     _ensure_container_token_column()
     _ensure_docker_columns()
-    _ensure_deploy_ssh_columns()
 
     with Session(engine) as db:
         _seed_permissions(db)
@@ -231,7 +203,6 @@ def init_db() -> None:
         _seed_assets(db)
         _seed_tickets(db)
         _seed_alerts(db)
-        _seed_deploy_environments(db)
         from app.services.roles import sync_default_roles
 
         sync_default_roles(db)
@@ -321,12 +292,6 @@ def _seed_permissions(db: Session) -> None:
         ("查看巡检", "patrol.view", "patrol", "查看巡检报告"),
         ("执行巡检", "patrol.execute", "patrol", "手动触发巡检"),
         ("删除巡检报告", "patrol.delete", "patrol", "删除巡检报告"),
-        ("查看应用发布", "deploy.view", "deploy", "查看应用列表和发布记录"),
-        ("创建应用", "deploy.create", "deploy", "注册新应用和创建环境"),
-        ("编辑应用", "deploy.update", "deploy", "编辑应用配置和环境配置"),
-        ("执行发布", "deploy.execute", "deploy", "触发发布、重试、回滚"),
-        ("审批发布", "deploy.approve", "deploy", "审批或驳回发布请求"),
-        ("删除应用", "deploy.delete", "deploy", "删除应用和环境"),
     ]
 
     for name, code, module, description in permission_specs:
@@ -462,19 +427,3 @@ def _seed_alerts(db: Session) -> None:
         ]
     )
 
-
-def _seed_deploy_environments(db: Session) -> None:
-    """初始化默认部署环境。"""
-    from app.models.deploy import DeployEnvironment
-
-    existing = db.scalar(select(DeployEnvironment).limit(1))
-    if existing:
-        return
-
-    db.add_all(
-        [
-            DeployEnvironment(name="dev", display_name="开发环境", sort_order=1),
-            DeployEnvironment(name="staging", display_name="测试环境", sort_order=2),
-            DeployEnvironment(name="prod", display_name="生产环境", sort_order=3),
-        ]
-    )
