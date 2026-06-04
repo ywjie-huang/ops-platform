@@ -35,6 +35,13 @@ from app.services.deploy.records import (
     request_cancel,
     update_status,
 )
+from app.services.deploy.configs import (
+    create_config,
+    delete_config,
+    get_config,
+    list_configs,
+    update_config,
+)
 from app.services.deploy.approvals import (
     approve,
     create_approval,
@@ -662,3 +669,115 @@ def api_reject(
     write_log(db, user=current_user, action="reject", target_type="deploy_approval", target_id=a.id, target_name=f"#{a.id}", ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "已拒绝"}
+
+
+# ──────────────────────── 配置管理 ────────────────────────
+
+
+def _config_dict(c) -> dict:
+    return {
+        "id": c.id,
+        "app_id": c.app_id,
+        "env_id": c.env_id,
+        "env_name": c.environment.name if c.environment else None,
+        "key": c.key,
+        "value": "******" if c.is_encrypted else c.value,
+        "is_encrypted": c.is_encrypted,
+        "description": c.description,
+        "created_at": c.created_at.isoformat(),
+        "updated_at": c.updated_at.isoformat(),
+    }
+
+
+class ConfigCreate(BaseModel):
+    env_id: int | None = None
+    key: str
+    value: str = ""
+    is_encrypted: bool = False
+    description: str = ""
+
+
+class ConfigUpdate(BaseModel):
+    env_id: int | None = None
+    key: str
+    value: str = ""
+    is_encrypted: bool = False
+    description: str = ""
+
+
+@router.get("/apps/{app_id}/configs")
+def api_list_configs(
+    app_id: int,
+    env_id: int | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    items = list_configs(db, app_id=app_id, env_id=env_id)
+    return {"code": 0, "data": [_config_dict(c) for c in items]}
+
+
+@router.post("/apps/{app_id}/configs")
+def api_create_config(
+    app_id: int,
+    body: ConfigCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.config")),
+):
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    cfg = create_config(
+        db,
+        app_id=app_id,
+        env_id=body.env_id,
+        key=body.key.strip(),
+        value=body.value,
+        is_encrypted=body.is_encrypted,
+        description=body.description.strip(),
+    )
+    write_log(db, user=current_user, action="create", target_type="deploy_config", target_id=cfg.id, target_name=f"{app.name}:{cfg.key}", ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "创建成功", "data": _config_dict(cfg)}
+
+
+@router.put("/configs/{config_id}")
+def api_update_config(
+    config_id: int,
+    body: ConfigUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.config")),
+):
+    cfg = get_config(db, config_id)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="配置项不存在")
+    update_config(
+        db, cfg,
+        key=body.key.strip(),
+        value=body.value,
+        is_encrypted=body.is_encrypted,
+        description=body.description.strip(),
+    )
+    write_log(db, user=current_user, action="update", target_type="deploy_config", target_id=cfg.id, target_name=cfg.key, ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "更新成功", "data": _config_dict(cfg)}
+
+
+@router.delete("/configs/{config_id}")
+def api_delete_config(
+    config_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.config")),
+):
+    cfg = get_config(db, config_id)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail="配置项不存在")
+    write_log(db, user=current_user, action="delete", target_type="deploy_config", target_id=cfg.id, target_name=cfg.key, ip_address=get_client_ip(request))
+    delete_config(db, cfg)
+    db.commit()
+    return {"code": 0, "msg": "删除成功"}

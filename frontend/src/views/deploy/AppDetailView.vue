@@ -116,10 +116,40 @@
         </div>
       </el-tab-pane>
 
-      <!-- Tab 4: 配置管理（占位） -->
+      <!-- Tab 4: 配置管理 -->
       <el-tab-pane label="配置管理" name="configs">
         <div class="data-card">
-          <el-empty description="配置管理功能开发中（Step 10）" />
+          <div style="display: flex; justify-content: space-between; margin-bottom: 16px">
+            <span />
+            <el-button type="primary" size="small" @click="openConfigDialog()">+ 新增配置</el-button>
+          </div>
+          <el-table :data="configs" stripe v-loading="configsLoading">
+            <el-table-column prop="key" label="Key" min-width="160">
+              <template #default="{ row }"><code class="config-key">{{ row.key }}</code></template>
+            </el-table-column>
+            <el-table-column prop="value" label="Value" min-width="200">
+              <template #default="{ row }">
+                <span v-if="row.is_encrypted" class="config-encrypted">******</span>
+                <span v-else class="config-value">{{ row.value || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="env_name" label="环境" width="100">
+              <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.env_name || '全局' }}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="is_encrypted" label="加密" width="70">
+              <template #default="{ row }"><el-icon v-if="row.is_encrypted" style="color: var(--warning-color)"><Warning /></el-icon></template>
+            </el-table-column>
+            <el-table-column prop="description" label="说明" min-width="140" />
+            <el-table-column label="操作" width="140">
+              <template #default="{ row }">
+                <el-button size="small" text type="primary" @click="openConfigDialog(row)">编辑</el-button>
+                <el-popconfirm title="确认删除此配置项？" @confirm="handleDeleteConfig(row.id)">
+                  <template #reference><el-button size="small" text type="danger">删除</el-button></template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!configsLoading && configs.length === 0" description="暂无配置项" />
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -217,6 +247,34 @@
         <el-button type="primary" @click="handleDeploy" :loading="deploying">确认部署</el-button>
       </template>
     </el-dialog>
+
+    <!-- 配置新增/编辑弹窗 -->
+    <el-dialog v-model="configDialogVisible" :title="editingConfigId ? '编辑配置' : '新增配置'" width="520px">
+      <el-form :model="configForm" label-width="80px">
+        <el-form-item label="Key">
+          <el-input v-model="configForm.key" placeholder="DATABASE_URL" :disabled="!!editingConfigId" />
+        </el-form-item>
+        <el-form-item label="Value">
+          <el-input v-model="configForm.value" :type="configForm.is_encrypted ? 'password' : 'text'" :placeholder="configForm.is_encrypted ? '敏感值将加密存储' : '配置值'" />
+        </el-form-item>
+        <el-form-item label="环境">
+          <el-select v-model="configForm.env_id" placeholder="全局（所有环境）" clearable style="width: 100%">
+            <el-option v-for="e in envList" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="加密">
+          <el-switch v-model="configForm.is_encrypted" />
+          <span class="config-hint">加密字段存储后不回显明文</span>
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="configForm.description" placeholder="配置项说明" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="configDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveConfig" :loading="configSaving">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -225,7 +283,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
-import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords } from '@/api/deploy'
+import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -284,6 +342,74 @@ async function fetchRecords() {
   } finally {
     recordsLoading.value = false
   }
+}
+
+// ── 配置管理 ──
+const configsLoading = ref(false)
+const configs = ref<any[]>([])
+const envList = ref<any[]>([])
+const configDialogVisible = ref(false)
+const editingConfigId = ref<number | null>(null)
+const configSaving = ref(false)
+const configForm = reactive({
+  key: '',
+  value: '',
+  env_id: null as number | null,
+  is_encrypted: false,
+  description: '',
+})
+
+async function fetchConfigs() {
+  configsLoading.value = true
+  try {
+    const res: any = await getAppConfigs(appId.value)
+    configs.value = res.data
+  } finally {
+    configsLoading.value = false
+  }
+}
+
+async function fetchEnvList() {
+  const res: any = await getDeployEnvs().catch(() => ({ data: [] }))
+  envList.value = res.data || []
+}
+
+function openConfigDialog(row?: any) {
+  editingConfigId.value = row?.id || null
+  Object.assign(configForm, row ? {
+    key: row.key,
+    value: row.is_encrypted ? '' : row.value,
+    env_id: row.env_id,
+    is_encrypted: row.is_encrypted,
+    description: row.description,
+  } : { key: '', value: '', env_id: null, is_encrypted: false, description: '' })
+  configDialogVisible.value = true
+}
+
+async function handleSaveConfig() {
+  if (!configForm.key.trim()) {
+    ElMessage.warning('请输入 Key')
+    return
+  }
+  configSaving.value = true
+  try {
+    if (editingConfigId.value) {
+      await updateAppConfig(editingConfigId.value, { ...configForm })
+    } else {
+      await createAppConfig(appId.value, { ...configForm })
+    }
+    ElMessage.success('保存成功')
+    configDialogVisible.value = false
+    fetchConfigs()
+  } finally {
+    configSaving.value = false
+  }
+}
+
+async function handleDeleteConfig(id: number) {
+  await deleteAppConfig(id)
+  ElMessage.success('已删除')
+  fetchConfigs()
 }
 
 // ── 环境配置弹窗 ──
@@ -401,6 +527,8 @@ onMounted(() => {
   fetchEnvs()
   fetchDropdowns()
   fetchRecords()
+  fetchConfigs()
+  fetchEnvList()
 })
 
 watch(() => route.params.id, (newId) => {
@@ -505,5 +633,32 @@ watch(() => route.params.id, (newId) => {
 
 :deep(.clickable-row) {
   cursor: pointer;
+}
+
+.config-key {
+  background: var(--bg-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--primary-color);
+}
+
+.config-value {
+  font-size: 13px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.config-encrypted {
+  font-size: 13px;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+}
+
+.config-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>

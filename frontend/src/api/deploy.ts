@@ -81,3 +81,20 @@ export function approveDeploy(approvalId: number) {
 export function rejectDeploy(approvalId: number, comment?: string) {
   return request.post(`/deploy/approvals/${approvalId}/reject`, { comment })
 }
+
+// ── 配置管理 ──
+export function getAppConfigs(appId: number, envId?: number) {
+  return request.get(`/deploy/apps/${appId}/configs`, { params: envId ? { env_id: envId } : {} })
+}
+
+export function createAppConfig(appId: number, data: any) {
+  return request.post(`/deploy/apps/${appId}/configs`, data)
+}
+
+export function updateAppConfig(configId: number, data: any) {
+  return request.put(`/deploy/configs/${configId}`, data)
+}
+
+export function deleteAppConfig(configId: number) {
+  return request.delete(`/deploy/configs/${configId}`)
+}
