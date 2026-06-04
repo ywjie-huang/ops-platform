@@ -210,7 +210,12 @@ def execute_ssh_deployment_background(
             logger.error("SSH 部署后台任务：记录 %s 不存在", record_id)
             return
         try:
-            execute_ssh_deployment(db, record, file_content, file_name)
+            result = execute_ssh_deployment(db, record, file_content, file_name)
+            # execute_ssh_deployment 返回错误时，确保记录状态被更新
+            if not result.get("ok"):
+                record.status = "failed"
+                record.finished_at = datetime.now(CHINA_TZ)
+                record.logs = (record.logs or "") + f"\n[错误] {result.get('error', '未知错误')}"
             db.commit()
         except Exception as e:
             logger.exception("SSH 部署后台任务异常: record_id=%s", record_id)
