@@ -32,6 +32,7 @@ export function sftpUpload(assetId: number, dirPath: string, file: File, keyId?:
   if (keyId) form.append('key_id', String(keyId))
   return request.post(`/ssh/${assetId}/sftp/upload`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000, // 10 分钟，大文件上传需要更长时间
   })
 }
 
