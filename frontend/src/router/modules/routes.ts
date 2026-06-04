@@ -155,6 +155,20 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/deploy',
+    component: Layout,
+    redirect: '/deploy/upload',
+    meta: { title: '应用发布', icon: 'Upload' },
+    children: [
+      {
+        path: 'upload',
+        name: 'DeployUpload',
+        component: () => import('@/views/deploy/UploadView.vue'),
+        meta: { title: '文件上传', icon: 'Upload' },
+      },
+    ],
+  },
+  {
     path: '/users',
     component: Layout,
     redirect: '/users/list',
