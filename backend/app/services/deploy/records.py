@@ -170,6 +170,9 @@ def execute_deploy(record_id: int) -> None:
             if strategy == "ssh":
                 from app.services.deploy.strategies.ssh_strategy import execute_ssh_deploy
                 execute_ssh_deploy(db, record, app, app_env)
+            elif strategy == "docker":
+                from app.services.deploy.strategies.docker_strategy import execute_docker_deploy
+                execute_docker_deploy(db, record, app, app_env)
             else:
                 update_status(db, record, "failed")
                 set_error(db, record, f"暂不支持 {strategy} 策略（后续 Step 实现）")

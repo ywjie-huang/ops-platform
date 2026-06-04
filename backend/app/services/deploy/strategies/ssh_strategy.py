@@ -17,7 +17,7 @@ from app.services.deploy.records import (
     set_error,
     update_status,
 )
-from app.services.deploy.strategies.base import poll_health
+from app.services.deploy.strategies.base import poll_health, ssh_exec
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def execute_ssh_deploy(
             return
 
         append_log(db, record, f"创建部署目录 {deploy_path}")
-        _ssh_exec(ssh, f"mkdir -p {deploy_path}")
+        ssh_exec(ssh, f"mkdir -p {deploy_path}")
 
         # ── 3. 上传产物（如果本地有构建产物） ──
         if is_cancelled(record.id):
@@ -98,7 +98,7 @@ def execute_ssh_deploy(
         if deploy_script:
             append_log(db, record, "执行部署脚本…")
             full_script = f"cd {deploy_path} && {deploy_script}"
-            exit_code, stdout, stderr = _ssh_exec(ssh, full_script, timeout=300)
+            exit_code, stdout, stderr = ssh_exec(ssh, full_script, timeout=300)
 
             if stdout:
                 for line in stdout.strip().split("\n")[-20:]:  # 最多保留最后 20 行
@@ -154,19 +154,6 @@ def execute_ssh_deploy(
                 ssh.close()
             except Exception:
                 pass
-
-
-def _ssh_exec(
-    ssh: paramiko.SSHClient,
-    command: str,
-    timeout: int = 60,
-) -> tuple[int, str, str]:
-    """执行 SSH 命令，返回 (exit_code, stdout, stderr)。"""
-    stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
-    out = stdout.read().decode("utf-8", errors="replace")
-    err = stderr.read().decode("utf-8", errors="replace")
-    exit_code = stdout.channel.recv_exit_status()
-    return exit_code, out, err
 
 
 def _progress_cb(db: Session, record: DeployRecord, sent: int, total: int) -> None:

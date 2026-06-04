@@ -5,10 +5,25 @@ import logging
 import urllib.request
 from datetime import datetime
 
+import paramiko
+
 from app.core.config import CHINA_TZ
 from app.models.deploy import DeployRecord
 
 logger = logging.getLogger(__name__)
+
+
+def ssh_exec(
+    ssh: paramiko.SSHClient,
+    command: str,
+    timeout: int = 60,
+) -> tuple[int, str, str]:
+    """执行 SSH 命令，返回 (exit_code, stdout, stderr)。"""
+    stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
+    out = stdout.read().decode("utf-8", errors="replace")
+    err = stderr.read().decode("utf-8", errors="replace")
+    exit_code = stdout.channel.recv_exit_status()
+    return exit_code, out, err
 
 
 def check_health(url: str, timeout: int = 30) -> bool:
