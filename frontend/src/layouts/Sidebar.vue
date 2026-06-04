@@ -58,14 +58,14 @@ import { useAuthStore } from '@/stores/modules/auth'
 import {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
   DataAnalysis, DataLine, Document, Files, Finished, Folder, Fold, Expand,
-  Grid, Key, Monitor, Notebook, Odometer, PieChart, Platform,
+  Grid, Key, List, Monitor, Notebook, Odometer, PieChart, Platform,
   Plus, Promotion, Setting, Tools, Upload, User, Warning,
 } from '@element-plus/icons-vue'
 
 const iconMap: Record<string, Component> = {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
   DataAnalysis, DataLine, Document, Files, Finished, Folder, Grid, Key,
-  Monitor, Notebook, Odometer, PieChart, Platform, Plus, Promotion,
+  List, Monitor, Notebook, Odometer, PieChart, Platform, Plus, Promotion,
   Setting, Tools, Upload, User, Warning,
 }
 
