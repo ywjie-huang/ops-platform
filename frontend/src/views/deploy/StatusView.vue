@@ -15,9 +15,8 @@
     <!-- 概览卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6"><div class="stat-card"><div class="stat-value">{{ overview.total_apps || 0 }}</div><div class="stat-label">应用总数</div></div></el-col>
-      <el-col :span="6"><div class="stat-card"><div class="stat-value">{{ overview.building_count || 0 }}</div><div class="stat-label">构建中</div></div></el-col>
-      <el-col :span="6"><div class="stat-card"><div class="stat-value">{{ overview.success_rate || 0 }}%</div><div class="stat-label">成功率</div></div></el-col>
-      <el-col :span="6"><div class="stat-card"><div class="stat-value">{{ overview.pending_count || 0 }}</div><div class="stat-label">待审批</div></div></el-col>
+      <el-col :span="8"><div class="stat-card"><div class="stat-value">{{ overview.building_count || 0 }}</div><div class="stat-label">构建中</div></div></el-col>
+      <el-col :span="8"><div class="stat-card"><div class="stat-value">{{ overview.success_rate || 0 }}%</div><div class="stat-label">成功率</div></div></el-col>
     </el-row>
 
     <!-- 空状态引导 -->
@@ -128,8 +127,8 @@ const availableEnvs = computed(() => envs.value)
 
 const appTypeType = (t: string) => ({ backend: '', frontend: 'success', service: 'warning', other: 'info' }[t] || '') as any
 const appTypeLabel = (t: string) => ({ backend: '后端', frontend: '前端', service: '服务', other: '其他' }[t] || t)
-const statusType = (s: string) => ({ success: 'success', failed: 'danger', building: 'warning', deploying: 'warning', pending: 'info', approved: 'primary', rejected: 'danger', rolled_back: 'info', none: 'info' }[s] || 'info') as any
-const statusLabel = (s: string) => ({ success: '成功', failed: '失败', building: '构建中', deploying: '部署中', pending: '待审批', approved: '已通过', rejected: '已驳回', rolled_back: '已回滚', none: '未部署' }[s] || s)
+const statusType = (s: string) => ({ success: 'success', failed: 'danger', building: 'warning', deploying: 'warning', pending: 'info', rejected: 'danger', rolled_back: 'info', none: 'info' }[s] || 'info') as any
+const statusLabel = (s: string) => ({ success: '成功', failed: '失败', building: '构建中', deploying: '部署中', pending: '待执行', rejected: '已驳回', rolled_back: '已回滚', none: '未部署' }[s] || s)
 
 function handleRowClick(row: any) {
   router.push(`/deploy/apps/${row.app_id}`)

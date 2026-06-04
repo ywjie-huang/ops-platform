@@ -18,8 +18,6 @@ from app.services.audit import write_log
 from app.services.deploy import apps as app_service
 from app.services.deploy import envs as env_service
 from app.services.deploy import records as record_service
-from app.services.deploy import approvals as approval_service
-
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
 
 
@@ -52,7 +50,6 @@ class AppUpdate(BaseModel):
 class EnvCreate(BaseModel):
     name: str
     display_name: str = ""
-    approval_required: bool = False
     description: str = ""
     sort_order: int = 0
 
@@ -60,7 +57,6 @@ class EnvCreate(BaseModel):
 class EnvUpdate(BaseModel):
     name: str = ""
     display_name: str = ""
-    approval_required: bool | None = None
     description: str = ""
     sort_order: int | None = None
 
@@ -84,11 +80,6 @@ class DeployCreate(BaseModel):
     environment_id: int
     version: str = ""
     image: str = ""
-
-
-class ApprovalAction(BaseModel):
-    action: str  # approved / rejected
-    comment: str = ""
 
 
 # ─── 序列化 ──────────────────────────────────────────────────
@@ -118,7 +109,6 @@ def _env_dict(env) -> dict:
         "id": env.id,
         "name": env.name,
         "display_name": env.display_name,
-        "approval_required": env.approval_required,
         "description": env.description,
         "sort_order": env.sort_order,
         "created_at": env.created_at.isoformat() if env.created_at else None,
@@ -174,30 +164,7 @@ def _record_dict(r) -> dict:
 def _record_detail_dict(r) -> dict:
     d = _record_dict(r)
     d["logs"] = r.logs or ""
-    d["approvals"] = [
-        {
-            "id": a.id,
-            "action": a.action,
-            "comment": a.comment,
-            "approver_id": a.approver_id,
-            "approver_name": a.approver.username if a.approver else "",
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a in (r.approvals or [])
-    ]
     return d
-
-
-def _approval_dict(a) -> dict:
-    return {
-        "id": a.id,
-        "deployment_id": a.deployment_id,
-        "action": a.action,
-        "comment": a.comment,
-        "approver_id": a.approver_id,
-        "approver_name": a.approver.username if a.approver else "",
-        "created_at": a.created_at.isoformat() if a.created_at else None,
-    }
 
 
 # ─── 应用 CRUD ───────────────────────────────────────────────
@@ -348,7 +315,7 @@ def create_env(
     current_user: User = Depends(api_permission_required("deploy.create")),
     db: Session = Depends(get_db),
 ):
-    env = env_service.create_env(db, name=body.name, display_name=body.display_name, approval_required=body.approval_required, description=body.description, sort_order=body.sort_order)
+    env = env_service.create_env(db, name=body.name, display_name=body.display_name, description=body.description, sort_order=body.sort_order)
     write_log(db, user=current_user, action="create", target_type="deploy_env", target_id=env.id, target_name=env.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _env_dict(env)}
@@ -458,13 +425,6 @@ def create_deployment(
     db.add(record)
     db.flush()
 
-    # 检查是否需要审批
-    from app.models.deploy import DeployEnvironment
-    env = db.get(DeployEnvironment, body.environment_id)
-    if env and env.approval_required:
-        db.commit()
-        return {"code": 0, "msg": "已提交，等待审批", "data": _record_dict(record)}
-
     # 直接执行
     result = record_service.execute_deployment(db, record)
     if not result["ok"]:
@@ -538,10 +498,10 @@ def retry_deployment(
     if not record:
         raise HTTPException(status_code=404, detail="发布记录不存在")
 
-    # SSH 部署待审批/待执行的记录无法重试（文件内容已丢失），标记为失败
+    # SSH 部署 pending 记录无法重试（文件内容已丢失），标记为失败
     if record.status == "pending" and record.deploy_method == "ssh":
         record.status = "failed"
-        record.logs = "SSH 部署因审批流程阻塞未能执行，请重新上传文件部署"
+        record.logs = "SSH 部署未能执行（文件内容已丢失），请重新上传文件部署"
         record.finished_at = datetime.now(CHINA_TZ)
         db.commit()
         return {"code": 0, "msg": "该记录已标记为失败，请重新上传文件部署"}
@@ -620,54 +580,6 @@ def get_deploy_logs(
                     return {"code": 0, "data": {"text": result["text"], "offset": result["offset"], "more": result["more"], "building": True}}
 
     return {"code": 0, "data": {"text": record.logs or "", "offset": 0, "more": False, "building": record.status == "building"}}
-
-
-# ─── 审批 ────────────────────────────────────────────────────
-
-
-@router.get("/pending")
-def list_pending(
-    _current_user: User = Depends(api_permission_required("deploy.approve")),
-    db: Session = Depends(get_db),
-):
-    items = approval_service.get_pending_deployments(db)
-    return {"code": 0, "data": [_record_dict(r) for r in items]}
-
-
-@router.post("/records/{record_id}/approve")
-def approve_deployment(
-    record_id: int,
-    body: ApprovalAction,
-    request: Request,
-    current_user: User = Depends(api_permission_required("deploy.approve")),
-    db: Session = Depends(get_db),
-):
-    record = record_service.get_record(db, record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="发布记录不存在")
-    if record.status != "pending":
-        raise HTTPException(status_code=400, detail="该记录不在待审批状态")
-
-    if body.action not in ("approved", "rejected"):
-        raise HTTPException(status_code=400, detail="action 必须为 approved 或 rejected")
-
-    approval_service.create_approval(db, deployment_id=record_id, action=body.action, comment=body.comment, approver_id=current_user.id)
-
-    if body.action == "approved":
-        record.status = "approved"
-        db.flush()
-        # 审批通过后自动执行
-        result = record_service.execute_deployment(db, record)
-        if not result["ok"]:
-            record.status = "failed"
-            record.logs = result.get("error", "")
-    else:
-        record.status = "rejected"
-        record.finished_at = __import__("datetime").datetime.now(CHINA_TZ)
-
-    write_log(db, user=current_user, action="update", target_type="deploy_record", target_id=record.id, target_name=f"审批: {body.action}", ip_address=get_client_ip(request))
-    db.commit()
-    return {"code": 0, "msg": "审批完成", "data": _record_dict(record)}
 
 
 # ─── 看板与统计 ──────────────────────────────────────────────

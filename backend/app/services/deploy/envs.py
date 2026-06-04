@@ -18,11 +18,10 @@ def get_env(db: Session, env_id: int) -> DeployEnvironment | None:
     return db.get(DeployEnvironment, env_id)
 
 
-def create_env(db: Session, *, name: str, display_name: str = "", approval_required: bool = False, description: str = "", sort_order: int = 0) -> DeployEnvironment:
+def create_env(db: Session, *, name: str, display_name: str = "", description: str = "", sort_order: int = 0) -> DeployEnvironment:
     env = DeployEnvironment(
         name=name,
         display_name=display_name,
-        approval_required=approval_required,
         description=description,
         sort_order=sort_order,
     )

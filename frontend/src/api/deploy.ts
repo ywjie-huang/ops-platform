@@ -21,7 +21,7 @@ export function deleteAppEnvConfig(appId: number, envId: number) { return reques
 // ─── 环境管理 ────────────────────────────────────────────────
 
 export function getDeployEnvs() { return request.get('/deploy/envs') }
-export function createDeployEnv(data: { name: string; display_name?: string; approval_required?: boolean; description?: string; sort_order?: number }) {
+export function createDeployEnv(data: { name: string; display_name?: string; description?: string; sort_order?: number }) {
   return request.post('/deploy/envs', data)
 }
 export function updateDeployEnv(id: number, data: any) { return request.put(`/deploy/envs/${id}`, data) }
@@ -42,13 +42,6 @@ export function uploadAndDeploy(data: FormData) {
 export function retryDeployment(id: number) { return request.post(`/deploy/records/${id}/retry`) }
 export function rollbackDeployment(id: number) { return request.post(`/deploy/records/${id}/rollback`) }
 export function getDeployLogs(id: number, params?: { start?: number }) { return request.get(`/deploy/records/${id}/logs`, { params }) }
-
-// ─── 审批 ────────────────────────────────────────────────────
-
-export function getPendingApprovals() { return request.get('/deploy/pending') }
-export function approveDeployment(id: number, data: { action: string; comment?: string }) {
-  return request.post(`/deploy/records/${id}/approve`, data)
-}
 
 // ─── 看板与统计 ──────────────────────────────────────────────
 

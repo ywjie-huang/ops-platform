@@ -208,8 +208,8 @@ const isSSHDeploy = computed(() => {
   return !!(cfg && cfg.ssh_asset_id)
 })
 
-const statusType = (s: string) => ({ success: 'success', failed: 'danger', building: 'warning', deploying: 'warning', pending: 'info', approved: 'primary', rejected: 'danger', rolled_back: 'info' }[s] || 'info') as any
-const statusLabel = (s: string) => ({ success: '成功', failed: '失败', building: '构建中', deploying: '部署中', pending: '待审批', approved: '已通过', rejected: '已驳回', rolled_back: '已回滚' }[s] || s)
+const statusType = (s: string) => ({ success: 'success', failed: 'danger', building: 'warning', deploying: 'warning', pending: 'info', rejected: 'danger', rolled_back: 'info' }[s] || 'info') as any
+const statusLabel = (s: string) => ({ success: '成功', failed: '失败', building: '构建中', deploying: '部署中', pending: '待执行', rejected: '已驳回', rolled_back: '已回滚' }[s] || s)
 const formatTime = (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '-'
 
 async function fetchData() {

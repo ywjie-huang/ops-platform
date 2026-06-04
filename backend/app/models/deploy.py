@@ -43,7 +43,6 @@ class DeployEnvironment(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # dev / staging / prod
     display_name: Mapped[str] = mapped_column(String(128), default="")  # 开发环境 / 测试环境 / 生产环境
-    approval_required: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否需要审批
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
@@ -109,20 +108,3 @@ class DeployRecord(Base):
     application: Mapped["DeployApplication"] = relationship(back_populates="deployments", lazy="joined")
     environment: Mapped["DeployEnvironment"] = relationship("DeployEnvironment", lazy="joined")
     creator: Mapped["User"] = relationship("User", lazy="joined")
-    approvals: Mapped[list["DeployApproval"]] = relationship(back_populates="deployment", cascade="all, delete-orphan")
-
-
-class DeployApproval(Base):
-    """审批记录表。"""
-
-    __tablename__ = "deploy_approvals"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    deployment_id: Mapped[int] = mapped_column(Integer, ForeignKey("deploy_records.id", ondelete="CASCADE"), nullable=False)
-    action: Mapped[str] = mapped_column(String(32), default="")  # approved / rejected
-    comment: Mapped[str] = mapped_column(Text, default="")
-    approver_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
-
-    deployment: Mapped["DeployRecord"] = relationship(back_populates="approvals", lazy="joined")
-    approver: Mapped["User"] = relationship("User", lazy="joined")

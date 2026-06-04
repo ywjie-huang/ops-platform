@@ -473,8 +473,8 @@ def _seed_deploy_environments(db: Session) -> None:
 
     db.add_all(
         [
-            DeployEnvironment(name="dev", display_name="开发环境", approval_required=False, sort_order=1),
-            DeployEnvironment(name="staging", display_name="测试环境", approval_required=False, sort_order=2),
-            DeployEnvironment(name="prod", display_name="生产环境", approval_required=True, sort_order=3),
+            DeployEnvironment(name="dev", display_name="开发环境", sort_order=1),
+            DeployEnvironment(name="staging", display_name="测试环境", sort_order=2),
+            DeployEnvironment(name="prod", display_name="生产环境", sort_order=3),
         ]
     )
