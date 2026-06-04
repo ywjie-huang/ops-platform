@@ -90,10 +90,29 @@
         </div>
       </el-tab-pane>
 
-      <!-- Tab 3: 部署历史（占位） -->
+      <!-- Tab 3: 部署历史 -->
       <el-tab-pane label="部署历史" name="history">
         <div class="data-card">
-          <el-empty description="部署历史功能开发中（Step 6）" />
+          <el-table :data="records" stripe v-loading="recordsLoading" @row-click="(row: any) => $router.push(`/deploy/records/${row.id}`)" row-class-name="clickable-row">
+            <el-table-column prop="id" label="ID" width="70" />
+            <el-table-column prop="env_name" label="环境" width="100">
+              <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.env_name || '—' }}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="version" label="版本" width="130">
+              <template #default="{ row }"><code class="version-text">{{ row.version || '—' }}</code></template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="100">
+              <template #default="{ row }"><el-tag :type="statusTypeMap[row.status]" size="small">{{ statusLabelMap[row.status] || row.status }}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="trigger_user_name" label="触发人" width="90" />
+            <el-table-column prop="duration" label="耗时" width="90">
+              <template #default="{ row }">{{ row.duration != null ? formatDuration(row.duration) : '—' }}</template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="时间" min-width="170">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!recordsLoading && records.length === 0" description="暂无部署记录" />
         </div>
       </el-tab-pane>
 
@@ -206,7 +225,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
-import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy } from '@/api/deploy'
+import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -249,6 +268,22 @@ async function fetchDropdowns() {
   assets.value = (a as any).data?.items || []
   dockerHosts.value = (d as any).data || []
   k8sClusters.value = (k as any).data || []
+}
+
+// ── 部署历史 ──
+const recordsLoading = ref(false)
+const records = ref<any[]>([])
+const statusLabelMap: Record<string, string> = { pending: '待执行', building: '构建中', deploying: '部署中', success: '成功', failed: '失败', cancelled: '已取消' }
+const statusTypeMap: Record<string, string> = { pending: 'info', building: 'warning', deploying: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }
+
+async function fetchRecords() {
+  recordsLoading.value = true
+  try {
+    const res: any = await getDeployRecords({ app_id: appId.value, page_size: 50 })
+    records.value = res.data.items
+  } finally {
+    recordsLoading.value = false
+  }
 }
 
 // ── 环境配置弹窗 ──
@@ -335,8 +370,8 @@ async function handleDeploy() {
     })
     ElMessage.success('部署已触发')
     deployDialogVisible.value = false
-    // 跳转到部署详情页（Step 6 实现后改为跳转详情）
-    router.push('/deploy/apps')
+    // 跳转到部署详情页
+    router.push(`/deploy/records/${res.data.id}`)
   } finally {
     deploying.value = false
   }
@@ -352,12 +387,20 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString('zh-CN')
 }
 
+function formatDuration(sec: number) {
+  if (sec < 60) return `${Math.round(sec)}s`
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return `${m}m ${s}s`
+}
+
 // ── 初始化 ──
 onMounted(() => {
   appId.value = Number(route.params.id)
   fetchApp()
   fetchEnvs()
   fetchDropdowns()
+  fetchRecords()
 })
 
 watch(() => route.params.id, (newId) => {
@@ -365,6 +408,7 @@ watch(() => route.params.id, (newId) => {
     appId.value = Number(newId)
     fetchApp()
     fetchEnvs()
+    fetchRecords()
   }
 })
 </script>
@@ -449,5 +493,17 @@ watch(() => route.params.id, (newId) => {
   gap: 6px;
   color: var(--warning-color);
   font-size: 13px;
+}
+
+.version-text {
+  background: var(--bg-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+:deep(.clickable-row) {
+  cursor: pointer;
 }
 </style>

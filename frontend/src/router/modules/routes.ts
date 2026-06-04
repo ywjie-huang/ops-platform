@@ -185,6 +185,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '编辑应用', hidden: true, permission: 'deploy.update', parentTitle: '应用管理', activeMenu: '/deploy/apps' },
       },
       {
+        path: 'records',
+        name: 'DeployRecordList',
+        component: () => import('@/views/deploy/DeployRecordView.vue'),
+        meta: { title: '部署记录', icon: 'List', permission: 'deploy.view' },
+      },
+      {
+        path: 'records/:id',
+        name: 'DeployRecordDetail',
+        component: () => import('@/views/deploy/DeployDetailView.vue'),
+        meta: { title: '部署详情', hidden: true, permission: 'deploy.view', parentTitle: '部署记录', activeMenu: '/deploy/records' },
+      },
+      {
         path: 'upload',
         name: 'DeployUpload',
         component: () => import('@/views/deploy/UploadView.vue'),
