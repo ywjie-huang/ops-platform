@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import auth, users, roles, dashboard, containers, monitoring, reports, audit, password, assets, alerts, tickets, ssh_terminal, sftp, alertmanager, settings, batch_exec, batch_presets, patrol, ai, docker_mgmt, ssh_keys, scheduler
+from app.api import auth, users, roles, dashboard, containers, monitoring, reports, audit, password, assets, alerts, tickets, ssh_terminal, sftp, alertmanager, settings, batch_exec, batch_presets, patrol, ai, docker_mgmt, ssh_keys, scheduler, deploy
 
 router = APIRouter(prefix="/api/v1")
 
@@ -36,3 +36,6 @@ router.include_router(scheduler.router)
 
 # SSH 密钥管理
 router.include_router(ssh_keys.router)
+
+# 应用发布
+router.include_router(deploy.router)
