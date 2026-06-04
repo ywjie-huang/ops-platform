@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { getDeployRecords, retryDeployment, rollbackDeployment } from '@/api/deploy'
 import { usePagination } from '@/hooks/usePagination'
 import { ElMessage } from 'element-plus'
@@ -85,7 +85,8 @@ async function handleRollback(id: number) {
   fetchData()
 }
 
-onMounted(fetchData)
+// keep-alive 下用 onActivated 每次进入都刷新
+onActivated(fetchData)
 </script>
 
 <style scoped>

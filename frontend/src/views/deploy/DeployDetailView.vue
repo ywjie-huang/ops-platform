@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDeployRecord, getDeployLogs, retryDeployment, rollbackDeployment, approveDeployment } from '@/api/deploy'
 import { ElMessage } from 'element-plus'
@@ -131,7 +131,8 @@ async function handleApprove(action: string) {
   fetchData()
 }
 
-onMounted(fetchData)
+// keep-alive 下 onMounted 只触发一次，用 onActivated 每次进入都刷新
+onActivated(fetchData)
 </script>
 
 <style scoped>
