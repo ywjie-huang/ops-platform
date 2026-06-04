@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.config import CHINA_TZ
 
 from app.api.deps import api_permission_required, get_client_ip, get_current_api_user
 from app.db.database import get_db
@@ -533,6 +537,15 @@ def retry_deployment(
     record = record_service.get_record(db, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="发布记录不存在")
+
+    # SSH 部署待审批/待执行的记录无法重试（文件内容已丢失），标记为失败
+    if record.status == "pending" and record.deploy_method == "ssh":
+        record.status = "failed"
+        record.logs = "SSH 部署因审批流程阻塞未能执行，请重新上传文件部署"
+        record.finished_at = datetime.now(CHINA_TZ)
+        db.commit()
+        return {"code": 0, "msg": "该记录已标记为失败，请重新上传文件部署"}
+
     if record.status not in ("failed", "rejected"):
         raise HTTPException(status_code=400, detail="只能重试失败或被驳回的发布")
 
