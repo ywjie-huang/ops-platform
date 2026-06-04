@@ -36,7 +36,7 @@
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{row}">
             <el-button size="small" text type="primary" @click="$router.push(`/deploy/records/${row.id}`)">详情</el-button>
-            <el-button v-if="row.status === 'failed' || row.status === 'rejected'" size="small" text type="warning" @click="handleRetry(row.id)">重试</el-button>
+            <el-button v-if="['failed', 'rejected', 'pending'].includes(row.status)" size="small" text type="warning" @click="handleRetry(row.id)">重试</el-button>
             <el-button v-if="row.status === 'success' || row.status === 'failed'" size="small" text type="warning" @click="handleRollback(row.id)">回滚</el-button>
           </template>
         </el-table-column>

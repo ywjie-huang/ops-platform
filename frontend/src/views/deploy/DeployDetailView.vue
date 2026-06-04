@@ -8,7 +8,7 @@
         <el-tag :type="statusType(record.status)" size="small">{{ statusLabel(record.status) }}</el-tag>
       </div>
       <div style="display: flex; gap: 8px;">
-        <el-button v-if="record.status === 'failed' || record.status === 'rejected'" type="warning" size="small" @click="handleRetry">重试</el-button>
+        <el-button v-if="['failed', 'rejected', 'pending'].includes(record.status)" type="warning" size="small" @click="handleRetry">重试</el-button>
         <el-button v-if="record.status === 'success' || record.status === 'failed'" type="warning" size="small" @click="handleRollback">回滚</el-button>
       </div>
     </div>
