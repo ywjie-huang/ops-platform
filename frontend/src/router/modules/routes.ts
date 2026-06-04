@@ -157,9 +157,27 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/deploy',
     component: Layout,
-    redirect: '/deploy/upload',
-    meta: { title: '应用发布', icon: 'Upload' },
+    redirect: '/deploy/apps',
+    meta: { title: '应用发布', icon: 'Folder' },
     children: [
+      {
+        path: 'apps',
+        name: 'DeployAppList',
+        component: () => import('@/views/deploy/AppListView.vue'),
+        meta: { title: '应用管理', icon: 'Folder', permission: 'deploy.view' },
+      },
+      {
+        path: 'apps/create',
+        name: 'DeployAppCreate',
+        component: () => import('@/views/deploy/AppCreateView.vue'),
+        meta: { title: '创建应用', hidden: true, permission: 'deploy.create', parentTitle: '应用管理', activeMenu: '/deploy/apps' },
+      },
+      {
+        path: 'apps/:id',
+        name: 'DeployAppDetail',
+        component: () => import('@/views/deploy/AppDetailView.vue'),
+        meta: { title: '应用详情', hidden: true, permission: 'deploy.view', parentTitle: '应用管理', activeMenu: '/deploy/apps' },
+      },
       {
         path: 'upload',
         name: 'DeployUpload',
