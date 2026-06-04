@@ -32,3 +32,16 @@ export function deleteDeployApp(id: number) {
 export function getDeployEnvs() {
   return request.get('/deploy/envs')
 }
+
+// ── 应用环境配置 ──
+export function getAppEnvs(appId: number) {
+  return request.get(`/deploy/apps/${appId}/envs`)
+}
+
+export function updateAppEnv(appId: number, envId: number, data: any) {
+  return request.put(`/deploy/apps/${appId}/envs/${envId}`, data)
+}
+
+export function deleteAppEnv(appId: number, envId: number) {
+  return request.delete(`/deploy/apps/${appId}/envs/${envId}`)
+}

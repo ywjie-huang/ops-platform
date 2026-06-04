@@ -15,6 +15,13 @@ from app.services.deploy.applications import (
     list_environments,
     update_application,
 )
+from app.services.deploy.app_envs import (
+    delete_app_env,
+    get_app_env,
+    get_app_env_by_pair,
+    list_app_envs,
+    upsert_app_env,
+)
 
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
 
@@ -55,6 +62,27 @@ class AppUpdate(BaseModel):
     health_check_timeout: int = 30
 
 
+class AppEnvUpdate(BaseModel):
+    enabled: bool = True
+    # SSH
+    ssh_asset_id: int | None = None
+    deploy_path: str = ""
+    deploy_script: str = ""
+    # Docker
+    docker_host_id: int | None = None
+    docker_image: str = ""
+    docker_container_name: str = ""
+    docker_ports: str = ""
+    docker_env_vars: str = ""
+    docker_network: str = ""
+    docker_extra_args: str = ""
+    # K8s
+    k8s_cluster_id: int | None = None
+    k8s_namespace: str = "default"
+    k8s_deployment: str = ""
+    k8s_container_name: str = ""
+
+
 # ──────────────────────── 序列化辅助 ────────────────────────
 
 
@@ -89,6 +117,41 @@ def _env_dict(env) -> dict:
         "description": env.description,
         "approval_required": env.approval_required,
         "sort_order": env.sort_order,
+    }
+
+
+def _app_env_dict(ae) -> dict:
+    return {
+        "id": ae.id,
+        "app_id": ae.app_id,
+        "env_id": ae.env_id,
+        "env_name": ae.environment.name if ae.environment else None,
+        "env_description": ae.environment.description if ae.environment else None,
+        "approval_required": ae.environment.approval_required if ae.environment else False,
+        "enabled": ae.enabled,
+        # SSH
+        "ssh_asset_id": ae.ssh_asset_id,
+        "ssh_asset_name": ae.ssh_asset.name if ae.ssh_asset else None,
+        "ssh_asset_ip": ae.ssh_asset.ip_address if ae.ssh_asset else None,
+        "deploy_path": ae.deploy_path,
+        "deploy_script": ae.deploy_script,
+        # Docker
+        "docker_host_id": ae.docker_host_id,
+        "docker_host_name": ae.docker_host.name if ae.docker_host else None,
+        "docker_image": ae.docker_image,
+        "docker_container_name": ae.docker_container_name,
+        "docker_ports": ae.docker_ports,
+        "docker_env_vars": ae.docker_env_vars,
+        "docker_network": ae.docker_network,
+        "docker_extra_args": ae.docker_extra_args,
+        # K8s
+        "k8s_cluster_id": ae.k8s_cluster_id,
+        "k8s_cluster_name": ae.k8s_cluster.name if ae.k8s_cluster else None,
+        "k8s_namespace": ae.k8s_namespace,
+        "k8s_deployment": ae.k8s_deployment,
+        "k8s_container_name": ae.k8s_container_name,
+        "created_at": ae.created_at.isoformat(),
+        "updated_at": ae.updated_at.isoformat(),
     }
 
 
@@ -239,3 +302,76 @@ def api_list_envs(
 ):
     envs = list_environments(db)
     return {"code": 0, "data": [_env_dict(e) for e in envs]}
+
+
+# ──────────────────────── 应用环境配置 ────────────────────────
+
+
+@router.get("/apps/{app_id}/envs")
+def api_list_app_envs(
+    app_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    envs = list_app_envs(db, app_id)
+    return {"code": 0, "data": [_app_env_dict(e) for e in envs]}
+
+
+@router.put("/apps/{app_id}/envs/{env_id}")
+def api_update_app_env(
+    app_id: int,
+    env_id: int,
+    body: AppEnvUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    app_env = upsert_app_env(
+        db,
+        app_id=app_id,
+        env_id=env_id,
+        enabled=body.enabled,
+        ssh_asset_id=body.ssh_asset_id,
+        deploy_path=body.deploy_path,
+        deploy_script=body.deploy_script,
+        docker_host_id=body.docker_host_id,
+        docker_image=body.docker_image,
+        docker_container_name=body.docker_container_name,
+        docker_ports=body.docker_ports,
+        docker_env_vars=body.docker_env_vars,
+        docker_network=body.docker_network,
+        docker_extra_args=body.docker_extra_args,
+        k8s_cluster_id=body.k8s_cluster_id,
+        k8s_namespace=body.k8s_namespace,
+        k8s_deployment=body.k8s_deployment,
+        k8s_container_name=body.k8s_container_name,
+    )
+    write_log(db, user=current_user, action="update", target_type="deploy_app_env", target_id=app_env.id, target_name=f"{app.name}:{env_id}", ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "保存成功", "data": _app_env_dict(app_env)}
+
+
+@router.delete("/apps/{app_id}/envs/{env_id}")
+def api_delete_app_env(
+    app_id: int,
+    env_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    app_env = get_app_env_by_pair(db, app_id, env_id)
+    if app_env is None:
+        raise HTTPException(status_code=404, detail="环境配置不存在")
+    write_log(db, user=current_user, action="delete", target_type="deploy_app_env", target_id=app_env.id, target_name=f"{app.name}:{env_id}", ip_address=get_client_ip(request))
+    delete_app_env(db, app_env)
+    db.commit()
+    return {"code": 0, "msg": "已移除"}
