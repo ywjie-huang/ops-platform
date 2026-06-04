@@ -134,6 +134,9 @@ def _app_env_dict(ae) -> dict:
         "k8s_cluster_id": ae.k8s_cluster_id,
         "k8s_namespace": ae.k8s_namespace,
         "k8s_deployment_name": ae.k8s_deployment_name,
+        "ssh_asset_id": ae.ssh_asset_id,
+        "ssh_deploy_path": ae.ssh_deploy_path,
+        "ssh_deploy_script": ae.ssh_deploy_script,
         "created_at": ae.created_at.isoformat() if ae.created_at else None,
     }
 

@@ -54,6 +54,12 @@
             <el-table-column prop="docker_image" label="Docker 镜像" min-width="200" show-overflow-tooltip />
             <el-table-column prop="k8s_namespace" label="K8s 命名空间" width="120" />
             <el-table-column prop="k8s_deployment_name" label="K8s Deployment" min-width="150" />
+            <el-table-column label="SSH 主机" min-width="160" show-overflow-tooltip>
+              <template #default="{row}">{{ row.ssh_asset_id ? (assets.find(a => a.id === row.ssh_asset_id)?.name || `ID:${row.ssh_asset_id}`) : '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="ssh_deploy_path" label="SSH 部署路径" min-width="180" show-overflow-tooltip>
+              <template #default="{row}">{{ row.ssh_deploy_path || '-' }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="140" fixed="right">
               <template #default="{row}">
                 <el-button size="small" text type="primary" @click="showEnvDialog(row)">编辑</el-button>
@@ -273,6 +279,7 @@ async function handleRollback(recordId: number) {
 }
 
 async function handleDeploy() {
+  if (deploying.value) return
   if (!deployForm.environment_id) { ElMessage.warning('请选择环境'); return }
 
   deploying.value = true
