@@ -165,7 +165,28 @@ def execute_deploy(record_id: int) -> None:
                 set_error(db, record, "未找到环境配置，请先配置部署目标")
                 return
 
-            # 根据策略分发
+            # ── 构建阶段 ──
+            build_mode = app.build_mode or "local"
+            has_build = (build_mode == "jenkins" and app.jenkins_job_name) or (build_mode == "local" and app.build_command)
+            if has_build:
+                update_status(db, record, "building")
+                append_log(db, record, "开始构建…")
+                from app.services.deploy.builder import execute_build
+                artifact = execute_build(db, record, app, app_env)
+                if is_cancelled(record.id):
+                    update_status(db, record, "cancelled")
+                    return
+                if artifact is None and build_mode == "jenkins":
+                    # Jenkins 构建失败则中止
+                    if record.status != "failed":
+                        update_status(db, record, "failed")
+                        set_error(db, record, "构建失败")
+                    return
+                # 将构建产物路径临时写入 app（不持久化）
+                if artifact:
+                    app.artifact_path = artifact
+
+            # ── 部署阶段 ──
             strategy = app.deploy_strategy
             if strategy == "ssh":
                 from app.services.deploy.strategies.ssh_strategy import execute_ssh_deploy
