@@ -162,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDeployApp, getAppEnvConfigs, saveAppEnvConfig, deleteAppEnvConfig, getDeployRecords, createDeployment, retryDeployment, rollbackDeployment, getDeployEnvs, uploadAndDeploy } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
@@ -295,7 +295,8 @@ async function handleDeploy() {
   } finally { deploying.value = false }
 }
 
-onMounted(fetchData)
+// keep-alive 下 onMounted 只触发一次，用 onActivated 每次进入都刷新
+onActivated(fetchData)
 </script>
 
 <style scoped>
