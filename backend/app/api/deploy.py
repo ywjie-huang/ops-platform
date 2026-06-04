@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -480,11 +480,14 @@ async def upload_and_deploy(
     write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署", ip_address=get_client_ip(request))
     db.commit()
 
-    # 后台执行 SSH 部署
-    background_tasks.add_task(
-        record_service.execute_ssh_deployment_background,
-        record_id, file_content, file.filename or "upload",
+    # 后台执行 SSH 部署（用线程确保可靠执行）
+    import threading
+    thread = threading.Thread(
+        target=record_service.execute_ssh_deployment_background,
+        args=(record_id, file_content, file.filename or "upload"),
+        daemon=True,
     )
+    thread.start()
     return {"code": 0, "msg": "部署已启动", "data": {"record_id": record_id}}
 
 
