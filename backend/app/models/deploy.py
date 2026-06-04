@@ -33,7 +33,7 @@ class DeployApplication(Base):
     jenkins_token: Mapped[str] = mapped_column(String(200), default="")
 
     # 健康检查
-    health_check_url: Mapped[str] = mapped_column(String(500, collation="utf8mb4_unicode_ci"), default="")
+    health_check_url: Mapped[str] = mapped_column(String(500), default="")
     health_check_timeout: Mapped[int] = mapped_column(Integer, default=30)    # 秒
 
     creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -76,18 +76,18 @@ class DeployAppEnv(Base):
 
     # Docker 策略配置
     docker_host_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("container_clusters.id", ondelete="SET NULL"), nullable=True)
-    docker_image: Mapped[str] = mapped_column(String(500, collation="utf8mb4_unicode_ci"), default="")
+    docker_image: Mapped[str] = mapped_column(String(500), default="")
     docker_container_name: Mapped[str] = mapped_column(String(200), default="")
     docker_ports: Mapped[str] = mapped_column(String(500), default="")        # "8080:80,443:443"
     docker_env_vars: Mapped[str] = mapped_column(Text, default="")            # JSON: {"KEY":"value"}
-    docker_network: Mapped[str] = mapped_column(String(100, collation="utf8mb4_unicode_ci"), default="")
+    docker_network: Mapped[str] = mapped_column(String(100), default="")
     docker_extra_args: Mapped[str] = mapped_column(Text, default="")           # 额外 docker run 参数
 
     # K8s 策略配置
     k8s_cluster_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("container_clusters.id", ondelete="SET NULL"), nullable=True)
     k8s_namespace: Mapped[str] = mapped_column(String(100), default="default")
     k8s_deployment: Mapped[str] = mapped_column(String(200), default="")
-    k8s_container_name: Mapped[str] = mapped_column(String(200, collation="utf8mb4_unicode_ci"), default="")
+    k8s_container_name: Mapped[str] = mapped_column(String(200), default="")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ), onupdate=lambda: datetime.now(CHINA_TZ))

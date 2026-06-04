@@ -57,15 +57,15 @@ import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
 import {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
-  DataAnalysis, DataLine, Document, Files, Finished, Fold, Expand,
+  DataAnalysis, DataLine, Document, Files, Finished, Folder, Fold, Expand,
   Grid, Key, Monitor, Notebook, Odometer, PieChart, Platform,
-  Promotion, Setting, Tools, Upload, User, Warning,
+  Plus, Promotion, Setting, Tools, Upload, User, Warning,
 } from '@element-plus/icons-vue'
 
 const iconMap: Record<string, Component> = {
   Bell, BellFilled, Box, ChatDotRound, Connection, Cpu,
-  DataAnalysis, DataLine, Document, Files, Finished, Grid, Key,
-  Monitor, Notebook, Odometer, PieChart, Platform, Promotion,
+  DataAnalysis, DataLine, Document, Files, Finished, Folder, Grid, Key,
+  Monitor, Notebook, Odometer, PieChart, Platform, Plus, Promotion,
   Setting, Tools, Upload, User, Warning,
 }
 
