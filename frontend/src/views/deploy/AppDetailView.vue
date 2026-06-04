@@ -279,7 +279,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning } from '@element-plus/icons-vue'
@@ -520,8 +520,8 @@ function formatDuration(sec: number) {
   return `${m}m ${s}s`
 }
 
-// ── 初始化 ──
-onMounted(() => {
+// ── 初始化（keep-alive: onActivated 每次进入都刷新） ──
+onActivated(() => {
   appId.value = Number(route.params.id)
   fetchApp()
   fetchEnvs()
@@ -529,15 +529,6 @@ onMounted(() => {
   fetchRecords()
   fetchConfigs()
   fetchEnvList()
-})
-
-watch(() => route.params.id, (newId) => {
-  if (newId) {
-    appId.value = Number(newId)
-    fetchApp()
-    fetchEnvs()
-    fetchRecords()
-  }
 })
 </script>
 

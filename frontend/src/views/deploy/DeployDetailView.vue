@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
@@ -192,7 +192,7 @@ async function handleRollback() {
   }
 }
 
-onMounted(() => {
+onActivated(() => {
   fetchRecord().then(() => {
     // 如果还在执行中，启动 SSE
     if (['pending', 'building', 'deploying'].includes(record.value.status)) {
@@ -201,7 +201,7 @@ onMounted(() => {
   })
 })
 
-onBeforeUnmount(() => {
+onDeactivated(() => {
   eventSource?.close()
 })
 </script>

@@ -182,7 +182,7 @@ def _poll_rollout(
     namespace: str,
     deployment_name: str,
     record: DeployRecord,
-    db,
+    db: Session,
     timeout: int = 180,
     interval: int = 5,
 ) -> bool:

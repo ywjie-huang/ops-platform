@@ -4,8 +4,11 @@ from __future__ import annotations
 import json
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.ssh_common import _build_ssh_client
+from app.models.asset import Asset
 from app.models.deploy import DeployAppEnv, DeployApplication, DeployRecord
 from app.services.deploy.records import (
     append_log,
@@ -53,15 +56,12 @@ def execute_docker_deploy(
         return
 
     # 查找对应的资产以获取 SSH 凭据
-    from app.models.asset import Asset
-    from sqlalchemy import select
     asset = db.scalar(select(Asset).where(Asset.ip_address == host_ip))
     if asset is None:
         update_status(db, record, "failed")
         set_error(db, record, f"未找到 IP 为 {host_ip} 的资产，请先添加主机")
         return
 
-    from app.api.ssh_common import _build_ssh_client
     ssh = None
 
     try:

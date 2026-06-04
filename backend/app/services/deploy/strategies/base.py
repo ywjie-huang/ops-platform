@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import urllib.request
 from datetime import datetime
 
@@ -43,6 +44,5 @@ def poll_health(url: str, timeout: int = 30, interval: int = 3) -> bool:
     while datetime.now(CHINA_TZ).timestamp() < deadline:
         if check_health(url):
             return True
-        import time
         time.sleep(interval)
     return False
