@@ -1,5 +1,9 @@
 """应用发布 API。"""
+import json
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -21,6 +25,15 @@ from app.services.deploy.app_envs import (
     get_app_env_by_pair,
     list_app_envs,
     upsert_app_env,
+)
+from app.services.deploy.records import (
+    append_log,
+    create_record,
+    execute_deploy,
+    get_record,
+    list_records,
+    request_cancel,
+    update_status,
 )
 
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
@@ -375,3 +388,174 @@ def api_delete_app_env(
     delete_app_env(db, app_env)
     db.commit()
     return {"code": 0, "msg": "已移除"}
+
+
+# ──────────────────────── 部署执行 + 记录 ────────────────────────
+
+
+def _record_dict(r) -> dict:
+    return {
+        "id": r.id,
+        "app_id": r.app_id,
+        "app_name": r.application.name if r.application else None,
+        "env_id": r.env_id,
+        "env_name": r.environment.name if r.environment else None,
+        "version": r.version,
+        "status": r.status,
+        "trigger_type": r.trigger_type,
+        "trigger_user_id": r.trigger_user_id,
+        "trigger_user_name": r.trigger_user.username if r.trigger_user else None,
+        "error_message": r.error_message,
+        "duration": r.duration,
+        "rollback_from": r.rollback_from,
+        "started_at": r.started_at.isoformat() if r.started_at else None,
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "created_at": r.created_at.isoformat(),
+    }
+
+
+class DeployExecute(BaseModel):
+    app_id: int
+    env_id: int
+    version: str = ""
+
+
+@router.post("/execute")
+def api_execute_deploy(
+    body: DeployExecute,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.execute")),
+):
+    app = get_application(db, body.app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    # 查找 app_env
+    app_env = get_app_env_by_pair(db, body.app_id, body.env_id)
+    if app_env is None:
+        raise HTTPException(status_code=400, detail="该应用未配置此环境，请先配置部署目标")
+    if not app_env.enabled:
+        raise HTTPException(status_code=400, detail="该环境已禁用")
+
+    # 构建配置快照
+    config_snapshot = json.dumps({
+        "app_id": app.id,
+        "app_name": app.name,
+        "deploy_strategy": app.deploy_strategy,
+        "env_id": body.env_id,
+        "app_env_id": app_env.id,
+    }, ensure_ascii=False)
+
+    record = create_record(
+        db,
+        app_id=body.app_id,
+        env_id=body.env_id,
+        app_env_id=app_env.id,
+        version=body.version,
+        trigger_type="manual",
+        trigger_user_id=current_user.id,
+        deploy_config=config_snapshot,
+    )
+    write_log(db, user=current_user, action="deploy", target_type="deploy_record", target_id=record.id, target_name=f"{app.name}:{body.env_id}", ip_address=get_client_ip(request))
+    db.commit()
+
+    # 异步线程执行部署
+    thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
+    thread.start()
+
+    return {"code": 0, "msg": "部署已触发", "data": _record_dict(record)}
+
+
+@router.post("/records/{record_id}/cancel")
+def api_cancel_deploy(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.execute")),
+):
+    record = get_record(db, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    if record.status not in ("pending", "building", "deploying"):
+        raise HTTPException(status_code=400, detail="当前状态无法取消")
+
+    request_cancel(record_id)
+    update_status(db, record, "cancelled")
+    append_log(db, record, "用户取消部署")
+    return {"code": 0, "msg": "已取消"}
+
+
+@router.get("/records")
+def api_list_records(
+    app_id: int | None = None,
+    env_id: int | None = None,
+    status: str = "",
+    page: int = 1,
+    page_size: int = 10,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    items = list_records(db, app_id=app_id, env_id=env_id, status=status)
+    total = len(items)
+    start = (max(page, 1) - 1) * page_size
+    return {
+        "code": 0,
+        "data": {
+            "items": [_record_dict(r) for r in items[start:start + page_size]],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        },
+    }
+
+
+@router.get("/records/{record_id}")
+def api_get_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    record = get_record(db, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    data = _record_dict(record)
+    data["log"] = record.log or ""
+    return {"code": 0, "data": data}
+
+
+@router.get("/records/{record_id}/log")
+def api_record_log_sse(
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """SSE 日志流 — 前端轮询获取最新日志。"""
+    record = get_record(db, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    def event_stream():
+        last_len = 0
+        while True:
+            # 重新查询记录（获取最新日志）
+            from app.db.database import SessionLocal
+            sse_db = SessionLocal()
+            try:
+                r = sse_db.get(DeployRecord, record_id)
+                if r is None:
+                    break
+                log_text = r.log or ""
+                if len(log_text) > last_len:
+                    new_content = log_text[last_len:]
+                    last_len = len(log_text)
+                    yield f"data: {json.dumps({'log': new_content, 'status': r.status}, ensure_ascii=False)}\n\n"
+                if r.status in ("success", "failed", "cancelled"):
+                    yield f"data: {json.dumps({'log': '', 'status': r.status, 'done': True}, ensure_ascii=False)}\n\n"
+                    break
+            finally:
+                sse_db.close()
+
+            import time
+            time.sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

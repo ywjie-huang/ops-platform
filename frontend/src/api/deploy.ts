@@ -45,3 +45,26 @@ export function updateAppEnv(appId: number, envId: number, data: any) {
 export function deleteAppEnv(appId: number, envId: number) {
   return request.delete(`/deploy/apps/${appId}/envs/${envId}`)
 }
+
+// ── 部署执行 ──
+export function executeDeploy(data: { app_id: number; env_id: number; version?: string }) {
+  return request.post('/deploy/execute', data)
+}
+
+export function cancelDeploy(recordId: number) {
+  return request.post(`/deploy/records/${recordId}/cancel`)
+}
+
+export function getDeployRecords(params?: {
+  app_id?: number
+  env_id?: number
+  status?: string
+  page?: number
+  page_size?: number
+}) {
+  return request.get('/deploy/records', { params })
+}
+
+export function getDeployRecord(id: number) {
+  return request.get(`/deploy/records/${id}`)
+}

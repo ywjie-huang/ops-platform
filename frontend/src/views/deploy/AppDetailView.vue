@@ -51,6 +51,9 @@
                 </el-tag>
               </div>
               <div class="env-card-actions">
+                <el-button size="small" type="primary" @click="openDeployDialog(ae)" :disabled="!ae.enabled">
+                  <el-icon><Promotion /></el-icon>部署
+                </el-button>
                 <el-button size="small" text type="primary" @click="openEnvDialog(ae)">配置</el-button>
                 <el-popconfirm title="确认移除此环境配置？" @confirm="handleRemoveEnv(ae.env_id)">
                   <template #reference><el-button size="small" text type="danger">移除</el-button></template>
@@ -175,18 +178,40 @@
         <el-button type="primary" @click="handleSaveEnv" :loading="envSaving">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 部署确认弹窗 -->
+    <el-dialog v-model="deployDialogVisible" title="确认部署" width="460px">
+      <div v-if="deployingEnv" class="deploy-confirm">
+        <p>应用：<strong>{{ app.name }}</strong></p>
+        <p>环境：<strong>{{ deployingEnv.env_name }}</strong></p>
+        <p v-if="deployingEnv.approval_required" class="deploy-warn">
+          <el-icon><Warning /></el-icon>该环境需要审批，部署将进入待审批状态
+        </p>
+        <el-form label-width="80px" style="margin-top: 16px">
+          <el-form-item label="版本号">
+            <el-input v-model="deployVersion" placeholder="可选：commit hash / tag / 版本号" />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="deployDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleDeploy" :loading="deploying">确认部署</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv } from '@/api/deploy'
+import { Warning } from '@element-plus/icons-vue'
+import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
 const route = useRoute()
+const router = useRouter()
 const appId = ref(Number(route.params.id))
 const activeTab = ref('overview')
 
@@ -288,6 +313,35 @@ async function handleRemoveEnv(envId: number) {
   fetchEnvs()
 }
 
+// ── 部署弹窗 ──
+const deployDialogVisible = ref(false)
+const deployingEnv = ref<any>(null)
+const deployVersion = ref('')
+const deploying = ref(false)
+
+function openDeployDialog(ae: any) {
+  deployingEnv.value = ae
+  deployVersion.value = ''
+  deployDialogVisible.value = true
+}
+
+async function handleDeploy() {
+  deploying.value = true
+  try {
+    const res: any = await executeDeploy({
+      app_id: appId.value,
+      env_id: deployingEnv.value.env_id,
+      version: deployVersion.value,
+    })
+    ElMessage.success('部署已触发')
+    deployDialogVisible.value = false
+    // 跳转到部署详情页（Step 6 实现后改为跳转详情）
+    router.push('/deploy/apps')
+  } finally {
+    deploying.value = false
+  }
+}
+
 // ── 辅助 ──
 const typeLabel = (v: string) => ({ web: 'Web 应用', api: 'API 服务', worker: '后台任务', frontend: '前端项目', other: '其他' }[v] || v)
 const strategyLabel = (v: string) => ({ ssh: 'SSH', docker: 'Docker', k8s: 'Kubernetes' }[v] || v)
@@ -381,5 +435,19 @@ watch(() => route.params.id, (newId) => {
   font-size: 12px;
   color: var(--text-primary);
   word-break: break-all;
+}
+
+.deploy-confirm p {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.deploy-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning-color);
+  font-size: 13px;
 }
 </style>
