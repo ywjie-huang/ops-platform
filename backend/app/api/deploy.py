@@ -511,14 +511,7 @@ async def upload_and_deploy(
     db.flush()
     record_id = record.id
 
-    # 检查是否需要审批
-    from app.models.deploy import DeployEnvironment
-    env = db.get(DeployEnvironment, environment_id)
-    if env and env.approval_required:
-        write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署（待审批）", ip_address=get_client_ip(request))
-        db.commit()
-        return {"code": 0, "msg": "已提交，等待审批", "data": _record_dict(record)}
-
+    # SSH 部署跳过审批流程（手动上传文件，无需审批）
     write_log(db, user=current_user, action="create", target_type="deploy_record", target_id=record_id, target_name=f"{app.name} SSH 部署", ip_address=get_client_ip(request))
     db.commit()
 
