@@ -69,6 +69,10 @@ export function getDeployRecord(id: number) {
   return request.get(`/deploy/records/${id}`)
 }
 
+export function rollbackDeploy(recordId: number) {
+  return request.post(`/deploy/records/${recordId}/rollback`)
+}
+
 // ── 审批 ──
 export function getDeployApprovals(params?: { status?: string }) {
   return request.get('/deploy/approvals', { params })

@@ -508,6 +508,45 @@ def api_cancel_deploy(
     return {"code": 0, "msg": "已取消"}
 
 
+@router.post("/records/{record_id}/rollback")
+def api_rollback(
+    record_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.rollback")),
+):
+    """回滚：基于历史记录的配置快照重新执行部署。"""
+    original = get_record(db, record_id)
+    if original is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    if original.status not in ("success", "failed", "cancelled"):
+        raise HTTPException(status_code=400, detail="只能回滚已完成的部署记录")
+
+    # 创建新记录，关联原记录
+    new_record = create_record(
+        db,
+        app_id=original.app_id,
+        env_id=original.env_id,
+        app_env_id=original.app_env_id,
+        version=original.version,
+        trigger_type="rollback",
+        trigger_user_id=current_user.id,
+        deploy_config=original.deploy_config,
+    )
+    new_record.rollback_from = original.id
+    db.commit()
+
+    append_log(db, new_record, f"从部署 #{original.id} 回滚")
+    write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{original.id} → #{new_record.id}", ip_address=get_client_ip(request))
+    db.commit()
+
+    # 异步线程执行部署
+    thread = threading.Thread(target=execute_deploy, args=(new_record.id,), daemon=True)
+    thread.start()
+
+    return {"code": 0, "msg": "回滚已触发", "data": _record_dict(new_record)}
+
+
 @router.get("/records")
 def api_list_records(
     app_id: int | None = None,

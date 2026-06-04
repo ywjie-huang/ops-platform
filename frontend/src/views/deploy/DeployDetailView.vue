@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2 class="page-title">部署详情 #{{ record.id || '—' }}</h2>
       <div class="header-actions">
+        <el-button v-if="canRollback" type="warning" @click="handleRollback" :loading="rollingback">
+          <el-icon><Refresh /></el-icon>回滚
+        </el-button>
         <el-button v-if="canCancel" type="danger" @click="handleCancel" :loading="cancelling">取消部署</el-button>
         <el-button @click="$router.back()">返回</el-button>
       </div>
@@ -58,14 +61,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getDeployRecord, cancelDeploy } from '@/api/deploy'
+import { Refresh } from '@element-plus/icons-vue'
+import { getDeployRecord, cancelDeploy, rollbackDeploy } from '@/api/deploy'
 
 const route = useRoute()
+const router = useRouter()
 const recordId = ref(Number(route.params.id))
 const loading = ref(true)
 const cancelling = ref(false)
+const rollingback = ref(false)
 const record = ref<any>({})
 const logContainer = ref<HTMLElement | null>(null)
 let eventSource: EventSource | null = null
@@ -92,6 +98,7 @@ function stepClass(stepKey: string, idx: number) {
 }
 
 const canCancel = computed(() => ['pending', 'building', 'deploying'].includes(record.value.status))
+const canRollback = computed(() => ['success', 'failed', 'cancelled'].includes(record.value.status))
 
 const statusLabel = (v: string) => ({ pending: '待执行', building: '构建中', deploying: '部署中', success: '成功', failed: '失败', cancelled: '已取消' }[v] || v)
 const statusType = (v: string) => ({ pending: 'info', building: 'warning', deploying: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }[v] || '') as any
@@ -171,6 +178,17 @@ async function handleCancel() {
     fetchRecord()
   } finally {
     cancelling.value = false
+  }
+}
+
+async function handleRollback() {
+  rollingback.value = true
+  try {
+    const res: any = await rollbackDeploy(recordId.value)
+    ElMessage.success('回滚已触发')
+    router.push(`/deploy/records/${res.data.id}`)
+  } finally {
+    rollingback.value = false
   }
 }
 
