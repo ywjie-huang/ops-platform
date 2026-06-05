@@ -77,6 +77,11 @@
             </el-table-column>
             <el-table-column prop="deployments" label="Deployments" width="140" align="center" />
             <el-table-column prop="services" label="Services" width="120" align="center" />
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="{row}">
+                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 详情`" @click="openNamespaceDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
           </el-table>
           <div class="pagination-wrap">
             <el-pagination
@@ -109,6 +114,11 @@
             <el-table-column prop="kubelet_version" label="kubelet" width="140" />
             <el-table-column prop="os_image" label="系统" min-width="200" show-overflow-tooltip />
             <el-table-column prop="container_runtime" label="容器运行时" width="200" show-overflow-tooltip />
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="{row}">
+                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 详情`" @click="openNodeDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
           </el-table>
           <div class="pagination-wrap">
             <el-pagination
@@ -327,6 +337,35 @@
         <el-descriptions-item label="创建时间">{{ formatTime(selectedService.created_at) }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+
+    <!-- 节点详情 Dialog -->
+    <el-dialog v-model="nodeDetailVisible" :title="nodeDialogTitle" width="600px">
+      <el-descriptions :column="1" border v-if="selectedNode">
+        <el-descriptions-item label="节点名称">{{ selectedNode.name }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="selectedNode.status === 'Ready' ? 'success' : 'danger'" size="small">{{ selectedNode.status }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="IP">{{ selectedNode.ip || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="CPU">{{ selectedNode.cpu ? selectedNode.cpu + ' 核' : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="内存">{{ formatMemory(selectedNode.memory) }}</el-descriptions-item>
+        <el-descriptions-item label="kubelet">{{ selectedNode.kubelet_version || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="系统">{{ selectedNode.os_image || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="容器运行时">{{ selectedNode.container_runtime || '-' }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
+
+    <!-- 命名空间详情 Dialog -->
+    <el-dialog v-model="nsDetailVisible" :title="nsDialogTitle" width="500px">
+      <el-descriptions :column="1" border v-if="selectedNamespace">
+        <el-descriptions-item label="命名空间">{{ selectedNamespace.name }}</el-descriptions-item>
+        <el-descriptions-item label="Pods">{{ selectedNamespace.pods }}</el-descriptions-item>
+        <el-descriptions-item label="异常 Pods">
+          <el-tag :type="selectedNamespace.abnormal_pods > 0 ? 'warning' : 'success'" size="small">{{ selectedNamespace.abnormal_pods }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="Deployments">{{ selectedNamespace.deployments }}</el-descriptions-item>
+        <el-descriptions-item label="Services">{{ selectedNamespace.services }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
   </main>
 </template>
 
@@ -430,11 +469,39 @@ const initialLoading = ref(true)
 const clusterError = ref('')
 const resourcesError = ref('')
 
-// ── URL 同步 activeTab ──
+// ── URL 同步 activeTab + 分页状态 ──
 const activeTab = ref(route.query.tab as string || 'namespaces')
-watch(activeTab, (val) => {
-  router.replace({ query: { ...route.query, tab: val } })
-})
+const nsPage = ref(Number(route.query.nsp) || 1)
+const nsPageSize = ref(Number(route.query.nss) || 20)
+const nodePage = ref(Number(route.query.ndp) || 1)
+const nodePageSize = ref(Number(route.query.nds) || 20)
+const podPage = ref(Number(route.query.pp) || 1)
+const podPageSize = ref(Number(route.query.ps) || 20)
+const depPage = ref(Number(route.query.dp) || 1)
+const depPageSize = ref(Number(route.query.ds) || 20)
+const svcPage = ref(Number(route.query.sp) || 1)
+const svcPageSize = ref(Number(route.query.ss) || 20)
+
+function syncUrl() {
+  router.replace({
+    query: {
+      ...route.query,
+      tab: activeTab.value,
+      nsp: String(nsPage.value), nss: String(nsPageSize.value),
+      ndp: String(nodePage.value), nds: String(nodePageSize.value),
+      pp: String(podPage.value), ps: String(podPageSize.value),
+      dp: String(depPage.value), ds: String(depPageSize.value),
+      sp: String(svcPage.value), ss: String(svcPageSize.value),
+    },
+  })
+}
+
+watch(activeTab, syncUrl)
+watch([nsPage, nsPageSize], syncUrl)
+watch([nodePage, nodePageSize], syncUrl)
+watch([podPage, podPageSize], syncUrl)
+watch([depPage, depPageSize], syncUrl)
+watch([svcPage, svcPageSize], syncUrl)
 watch(() => route.query.tab, (val) => {
   if (val && typeof val === 'string') activeTab.value = val
 })
@@ -454,6 +521,16 @@ const svcDetailVisible = ref(false)
 const selectedService = ref<K8sService | null>(null)
 const svcDialogTitle = computed(() => selectedService.value ? `Service: ${selectedService.value.name}` : 'Service 详情')
 
+// 节点详情
+const nodeDetailVisible = ref(false)
+const selectedNode = ref<K8sNode | null>(null)
+const nodeDialogTitle = computed(() => selectedNode.value ? `节点: ${selectedNode.value.name}` : '节点详情')
+
+// 命名空间详情
+const nsDetailVisible = ref(false)
+const selectedNamespace = ref<K8sNamespace | null>(null)
+const nsDialogTitle = computed(() => selectedNamespace.value ? `命名空间: ${selectedNamespace.value.name}` : '命名空间详情')
+
 // 搜索和筛选
 const podNamespace = ref('')
 const podSearch = ref('')
@@ -461,18 +538,6 @@ const depNamespace = ref('')
 const depSearch = ref('')
 const svcNamespace = ref('')
 const svcSearch = ref('')
-
-// 分页
-const nsPage = ref(1)
-const nsPageSize = ref(20)
-const nodePage = ref(1)
-const nodePageSize = ref(20)
-const podPage = ref(1)
-const podPageSize = ref(20)
-const depPage = ref(1)
-const depPageSize = ref(20)
-const svcPage = ref(1)
-const svcPageSize = ref(20)
 
 // 事件分页数据
 const pagedPodEvents = computed(() => {
@@ -558,6 +623,9 @@ watch(depNamespace, () => { depPage.value = 1 })
 watch(svcSearch, () => { svcPage.value = 1 })
 watch(svcNamespace, () => { svcPage.value = 1 })
 
+// 事件 dialog 关闭时重置分页
+watch(eventsDialogVisible, (val) => { if (!val) eventPage.value = 1 })
+
 // 统计卡片（可点击跳转对应 Tab）
 const statCards = computed(() => {
   const r = resources.value
@@ -630,6 +698,18 @@ function downloadLogs() {
 function openServiceDetail(row: K8sService) {
   selectedService.value = row
   svcDetailVisible.value = true
+}
+
+// 节点详情
+function openNodeDetail(row: K8sNode) {
+  selectedNode.value = row
+  nodeDetailVisible.value = true
+}
+
+// 命名空间详情
+function openNamespaceDetail(row: K8sNamespace) {
+  selectedNamespace.value = row
+  nsDetailVisible.value = true
 }
 
 async function openPodLogs(row: K8sPod) {
@@ -885,17 +965,15 @@ onDeactivated(() => {
   gap: 8px;
 }
 
-/* ── 日志终端 ── */
+/* ── 日志终端（色值可通过全局 --log-bg / --log-fg 覆盖） ── */
 .log-box {
-  --log-bg: #111827;
-  --log-fg: #d1d5db;
   min-height: 320px;
   max-height: 560px;
   margin: 0;
   padding: 14px;
   overflow: auto;
-  color: var(--log-fg);
-  background: var(--log-bg);
+  color: var(--log-fg, #d1d5db);
+  background: var(--log-bg, #111827);
   border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
