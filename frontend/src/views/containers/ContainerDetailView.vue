@@ -816,9 +816,12 @@ async function fetchServices() {
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
-// ── clusterId 变化时自动加载（修复 onActivated 时 route.params 尚未就绪的 NaN 问题） ──
+// ── clusterId 变化时自动加载 ──
+// 必须检查路由路径：deactivated 组件的 watcher 仍会响应 route.params 变化，
+// 导航到 /monitoring/hosts/9 时会误触发，用错误的 id 请求 containers API。
 watch(clusterId, (id) => {
   if (!id || isNaN(id)) return
+  if (!route.path.startsWith('/assets/containers/')) return
   initialLoading.value = true
   fetchCluster()
   fetchResources()
