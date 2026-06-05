@@ -816,13 +816,18 @@ async function fetchServices() {
   } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
 }
 
-// ── Repair: keep-alive 兼容 — onActivated 每次进入都刷新 ──
-let timer: ReturnType<typeof setInterval> | null = null
-
-onActivated(() => {
+// ── clusterId 变化时自动加载（修复 onActivated 时 route.params 尚未就绪的 NaN 问题） ──
+watch(clusterId, (id) => {
+  if (!id || isNaN(id)) return
   initialLoading.value = true
   fetchCluster()
   fetchResources()
+}, { immediate: true })
+
+// ── keep-alive: 30 秒自动刷新 ──
+let timer: ReturnType<typeof setInterval> | null = null
+
+onActivated(() => {
   timer = setInterval(fetchResources, 30000)
 })
 
