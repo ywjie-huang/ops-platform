@@ -334,6 +334,23 @@ def api_delete_app(
 # ──────────────────────── 构建产物管理 ────────────────────────
 
 
+def _cleanup_old_artifacts(artifact_dir: str, keep: int = 10) -> None:
+    """清理旧产物，保留最近 keep 个文件。"""
+    try:
+        files = sorted(
+            (os.path.join(artifact_dir, f) for f in os.listdir(artifact_dir) if os.path.isfile(os.path.join(artifact_dir, f))),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        for old_file in files[keep:]:
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 @router.post("/apps/{app_id}/artifact")
 def api_upload_artifact(
     app_id: int,
@@ -342,7 +359,9 @@ def api_upload_artifact(
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    """上传构建产物。"""
+    """上传构建产物（保留历史版本，每个应用最多 10 个）。"""
+    import time as _time
+
     app = get_application(db, app_id)
     if app is None:
         raise HTTPException(status_code=404, detail="应用不存在")
@@ -351,29 +370,26 @@ def api_upload_artifact(
     artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app_id))
     os.makedirs(artifact_dir, exist_ok=True)
 
-    # 删除旧文件（如果存在）
-    if app.artifact_path and os.path.isfile(app.artifact_path):
-        try:
-            os.remove(app.artifact_path)
-        except OSError:
-            pass
-
-    # 保存新文件
+    # 保存新文件（时间戳前缀，避免覆盖旧版本）
     filename = file.filename or "artifact"
     safe_filename = filename.replace("/", "_").replace("\\", "_")
-    file_path = os.path.join(artifact_dir, safe_filename)
+    ts = datetime.now(CHINA_TZ).strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join(artifact_dir, f"{ts}_{safe_filename}")
 
     content = file.file.read()
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # 更新应用元数据
+    # 更新应用元数据（指向最新产物）
     app.artifact_path = file_path
     app.artifact_filename = filename
     app.artifact_size = len(content)
     app.artifact_uploaded_at = datetime.now(CHINA_TZ)
     db.commit()
     db.refresh(app)
+
+    # 清理旧产物，保留最近 10 个
+    _cleanup_old_artifacts(artifact_dir, keep=10)
 
     write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app",
               target_id=app.id, target_name=f"{app.name}:{filename}", ip_address=get_client_ip(request))
