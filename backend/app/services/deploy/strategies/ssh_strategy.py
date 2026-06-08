@@ -38,7 +38,7 @@ def execute_ssh_deploy(
     deploy_path = app_env.deploy_path or f"/opt/apps/{app.name}"
     deploy_script = app_env.deploy_script or ""
     health_url = app.health_check_url or ""
-    health_port = app.health_check_port or 0
+    health_port = app_env.health_check_port or 0
     health_timeout = app.health_check_timeout or 30
 
     # 构建 auth dict（使用资产自带的 SSH 凭据）

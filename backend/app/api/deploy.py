@@ -74,7 +74,6 @@ class AppCreate(BaseModel):
     jenkins_job_name: str = ""
     jenkins_token: str = ""
     health_check_url: str = ""
-    health_check_port: int = 0
     health_check_timeout: int = 30
 
 
@@ -93,7 +92,6 @@ class AppUpdate(BaseModel):
     jenkins_job_name: str = ""
     jenkins_token: str = ""
     health_check_url: str = ""
-    health_check_port: int = 0
     health_check_timeout: int = 30
 
 
@@ -103,6 +101,7 @@ class AppEnvUpdate(BaseModel):
     ssh_asset_id: int | None = None
     deploy_path: str = ""
     deploy_script: str = ""
+    health_check_port: int = 0
     # Docker
     docker_host_id: int | None = None
     docker_image: str = ""
@@ -141,7 +140,6 @@ def _app_dict(app) -> dict:
         "jenkins_job_name": app.jenkins_job_name,
         "jenkins_token": app.jenkins_token,
         "health_check_url": app.health_check_url,
-        "health_check_port": app.health_check_port,
         "health_check_timeout": app.health_check_timeout,
         "creator_id": app.creator_id,
         "creator_name": app.creator.username if app.creator else None,
@@ -176,6 +174,7 @@ def _app_env_dict(ae) -> dict:
         "ssh_asset_ip": ae.ssh_asset.ip_address if ae.ssh_asset else None,
         "deploy_path": ae.deploy_path,
         "deploy_script": ae.deploy_script,
+        "health_check_port": ae.health_check_port,
         # Docker
         "docker_host_id": ae.docker_host_id,
         "docker_host_name": ae.docker_host.name if ae.docker_host else None,
@@ -283,7 +282,6 @@ def api_create_app(
         jenkins_job_name=body.jenkins_job_name.strip(),
         jenkins_token=body.jenkins_token.strip(),
         health_check_url=body.health_check_url.strip(),
-        health_check_port=body.health_check_port,
         health_check_timeout=body.health_check_timeout,
         creator_id=current_user.id,
     )
@@ -324,7 +322,6 @@ def api_update_app(
         jenkins_job_name=body.jenkins_job_name.strip(),
         jenkins_token=body.jenkins_token.strip(),
         health_check_url=body.health_check_url.strip(),
-        health_check_port=body.health_check_port,
         health_check_timeout=body.health_check_timeout,
     )
     write_log(db, user=current_user, action="update", target_type="deploy_app", target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
@@ -517,6 +514,7 @@ def api_update_app_env(
         ssh_asset_id=body.ssh_asset_id,
         deploy_path=body.deploy_path,
         deploy_script=body.deploy_script,
+        health_check_port=body.health_check_port,
         docker_host_id=body.docker_host_id,
         docker_image=body.docker_image,
         docker_container_name=body.docker_container_name,

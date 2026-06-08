@@ -63,6 +63,7 @@ def upsert_app_env(
     ssh_asset_id: int | None = None,
     deploy_path: str = "",
     deploy_script: str = "",
+    health_check_port: int = 0,
     docker_host_id: int | None = None,
     docker_image: str = "",
     docker_container_name: str = "",
@@ -85,6 +86,7 @@ def upsert_app_env(
     app_env.ssh_asset_id = ssh_asset_id
     app_env.deploy_path = deploy_path
     app_env.deploy_script = deploy_script
+    app_env.health_check_port = health_check_port
     app_env.docker_host_id = docker_host_id
     app_env.docker_image = docker_image
     app_env.docker_container_name = docker_container_name

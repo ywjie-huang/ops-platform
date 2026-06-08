@@ -58,6 +58,15 @@ export default defineConfig({
         ws: true,
         // WebSocket 也需要透传 IP（通过 headers）
         headers: {},
+        // SSE 流式传输需要禁用代理缓冲
+        configure: (proxy: any) => {
+          proxy.on('proxyRes', (proxyRes: any) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache'
+              proxyRes.headers['x-accel-buffering'] = 'no'
+            }
+          })
+        },
       },
     },
   },

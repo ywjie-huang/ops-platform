@@ -212,15 +212,24 @@ def _ensure_deploy_artifact_columns() -> None:
 
                 cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
 
+                # Migrate health_check_port from app level to env level
                 cur.execute("SHOW COLUMNS FROM deploy_applications LIKE 'health_check_port'")
-                if cur.fetchone() is None:
-                    cur.execute("ALTER TABLE deploy_applications ADD COLUMN health_check_port INT NOT NULL DEFAULT 0")
-                    print('[init_db] Added health_check_port to deploy_applications')
+                if cur.fetchone() is not None:
+                    # Copy existing values to app_envs before dropping
+                    cur.execute(
+                        "UPDATE deploy_app_envs ae "
+                        "JOIN deploy_applications a ON ae.app_id = a.id "
+                        "SET ae.health_check_port = a.health_check_port "
+                        "WHERE a.health_check_port > 0 AND ae.health_check_port = 0"
+                    )
+                    cur.execute("ALTER TABLE deploy_applications DROP COLUMN health_check_port")
+                    print('[init_db] Migrated health_check_port from deploy_applications to deploy_app_envs')
 
-            # deploy_app_envs: 环境级产物字段
+            # deploy_app_envs: 环境级产物字段 + 健康检查端口
             cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
             if cur.fetchone() is not None:
                 for col, col_def in [
+                    ('health_check_port', "INT NOT NULL DEFAULT 0"),
                     ('artifact_path', "VARCHAR(500) NOT NULL DEFAULT ''"),
                     ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
                     ('artifact_size', "INT NOT NULL DEFAULT 0"),

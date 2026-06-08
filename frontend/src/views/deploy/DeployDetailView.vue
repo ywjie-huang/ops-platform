@@ -74,7 +74,6 @@ const cancelling = ref(false)
 const rollingback = ref(false)
 const record = ref<any>({})
 const logContainer = ref<HTMLElement | null>(null)
-let eventSource: EventSource | null = null
 
 const steps = [
   { key: 'pending', label: '待执行' },
@@ -134,39 +133,34 @@ async function fetchRecord() {
   }
 }
 
-function startSSE() {
-  const token = localStorage.getItem('token') || ''
-  const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-  const url = `${base}/deploy/records/${recordId.value}/log`
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let lastLogLen = 0
 
-  eventSource = new EventSource(url)
-  eventSource.onmessage = (event) => {
+function startSSE() {
+  lastLogLen = record.value.log?.length || 0
+
+  pollTimer = setInterval(async () => {
     try {
-      const data = JSON.parse(event.data)
-      if (data.log) {
-        record.value.log = (record.value.log || '') + data.log
+      const res: any = await getDeployRecord(recordId.value)
+      const newLog = res.data.log || ''
+      if (newLog.length > lastLogLen) {
+        record.value.log = newLog
+        lastLogLen = newLog.length
         scrollToBottom()
       }
-      if (data.status) {
-        record.value.status = data.status
+      if (res.data.status) record.value.status = res.data.status
+      if (['success', 'failed', 'cancelled'].includes(res.data.status)) {
+        stopSSE()
+        fetchRecord() // 刷新完整记录（含 duration 等字段）
       }
-      if (data.done) {
-        eventSource?.close()
-        eventSource = null
-        // 最终刷新一次完整记录
-        fetchRecord()
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-  eventSource.onerror = () => {
-    // SSE 连接断开，轮询兜底
-    eventSource?.close()
-    eventSource = null
-    if (['pending', 'building', 'deploying'].includes(record.value.status)) {
-      setTimeout(fetchRecord, 3000)
-    }
+    } catch { /* ignore */ }
+  }, 1000)
+}
+
+function stopSSE() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -193,6 +187,8 @@ async function handleRollback() {
 }
 
 onActivated(() => {
+  stopSSE()
+  recordId.value = Number(route.params.id)
   fetchRecord().then(() => {
     // 如果还在执行中，启动 SSE
     if (['pending', 'building', 'deploying'].includes(record.value.status)) {
@@ -202,7 +198,7 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
-  eventSource?.close()
+  stopSSE()
 })
 </script>
 

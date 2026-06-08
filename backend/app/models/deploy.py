@@ -38,7 +38,6 @@ class DeployApplication(Base):
 
     # 健康检查
     health_check_url: Mapped[str] = mapped_column(String(500), default="")    # HTTP 健康检查 URL（可选）
-    health_check_port: Mapped[int] = mapped_column(Integer, default=0)        # TCP 端口检测（0=不检测）
     health_check_timeout: Mapped[int] = mapped_column(Integer, default=30)    # 秒
 
     creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -79,6 +78,9 @@ class DeployAppEnv(Base):
     ssh_asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
     deploy_path: Mapped[str] = mapped_column(String(500), default="")
     deploy_script: Mapped[str] = mapped_column(Text, default="")              # 部署后执行的脚本
+
+    # 健康检查（每个环境独立）
+    health_check_port: Mapped[int] = mapped_column(Integer, default=0)        # TCP 端口检测（0=不检测）
 
     # 构建产物（每个环境独立）
     artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 产物存储路径（平台本地）

@@ -75,10 +75,6 @@
 
         <!-- 健康检查 -->
         <div class="form-section-title">健康检查</div>
-        <el-form-item label="检测端口">
-          <el-input-number v-model="form.health_check_port" :min="0" :max="65535" placeholder="如：8080" style="width: 200px" />
-          <span class="form-hint">部署后检测目标端口是否可达，0 表示不检测</span>
-        </el-form-item>
         <el-form-item label="超时时间（秒）">
           <el-input-number v-model="form.health_check_timeout" :min="5" :max="300" :step="5" />
         </el-form-item>
@@ -116,7 +112,6 @@ const form = reactive({
   jenkins_job_name: '',
   jenkins_token: '',
   health_check_url: '',
-  health_check_port: 0,
   health_check_timeout: 30,
 })
 

@@ -32,77 +32,6 @@ class ConfigUpdate(BaseModel):
     value: str
 
 
-@router.get("/")
-def api_list_configs(
-    db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("settings.view")),
-):
-    """获取所有可配置项及其当前值。"""
-    rows = db.scalars(select(SystemConfig).where(SystemConfig.key.in_(_CONFIG_SPECS.keys()))).all()
-    row_map = {r.key: r for r in rows}
-
-    items = []
-    for key, desc in _CONFIG_SPECS.items():
-        row = row_map.get(key)
-        items.append({
-            "key": key,
-            "value": row.value if row else "",
-            "description": desc,
-            "updated_at": row.updated_at.isoformat() if row else None,
-        })
-    return {"code": 0, "data": {"items": items}}
-
-
-@router.put("/{key:path}")
-def api_update_config(
-    key: str,
-    body: ConfigUpdate,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(api_permission_required("settings.update")),
-):
-    """更新指定配置项。"""
-    if key not in _CONFIG_SPECS:
-        raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
-
-    set_config(db, key, body.value.strip(), _CONFIG_SPECS[key])
-    write_log(db, user=current_user, action="update", target_type="settings",
-              target_id=0, target_name=key, detail=f"更新为 {body.value.strip()}",
-              ip_address=get_client_ip(request))
-    db.commit()
-    return {"code": 0, "msg": "配置已更新"}
-
-
-@router.get("/{key:path}")
-def api_get_config(
-    key: str,
-    db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("settings.view")),
-):
-    """获取单个配置项。"""
-    if key not in _CONFIG_SPECS:
-        raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
-
-    value = get_config(db, key)
-    return {"code": 0, "data": {"key": key, "value": value, "description": _CONFIG_SPECS[key]}}
-
-
-class LLMTestBody(BaseModel):
-    base_url: str
-    api_key: str
-    model: str
-
-
-@router.get("/llm/profiles")
-def api_get_llm_profiles(
-    db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("settings.view")),
-):
-    """获取 LLM 模型配置列表。"""
-    profiles = get_llm_profiles(db)
-    return {"code": 0, "data": {"items": profiles}}
-
-
 class LLMProfile(BaseModel):
     id: str
     name: str
@@ -120,6 +49,29 @@ class LLMProfile(BaseModel):
 
 class LLMProfilesUpdate(BaseModel):
     profiles: list[LLMProfile]
+
+
+class LLMTestBody(BaseModel):
+    base_url: str
+    api_key: str
+    model: str
+
+
+class TestConnectionBody(BaseModel):
+    url: str
+
+
+# ── 具体路由（必须在通配符路由之前） ──
+
+
+@router.get("/llm/profiles")
+def api_get_llm_profiles(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """获取 LLM 模型配置列表。"""
+    profiles = get_llm_profiles(db)
+    return {"code": 0, "data": {"items": profiles}}
 
 
 @router.put("/llm/profiles")
@@ -193,10 +145,6 @@ def api_test_llm_connection(
         return {"code": 1, "msg": f"LLM 连接失败: {e}", "data": {"ok": False}}
 
 
-class TestConnectionBody(BaseModel):
-    url: str
-
-
 @router.post("/test-connection/{service}")
 def api_test_connection(
     service: str,
@@ -234,3 +182,61 @@ def api_test_connection(
         return {"code": 1, "msg": f"{service} 连接失败: 无法到达目标地址 ({e})", "data": {"url": url, "ok": False}}
     except Exception as e:
         return {"code": 1, "msg": f"{service} 连接失败: {e}", "data": {"url": url, "ok": False}}
+
+
+# ── 通配符路由（放在最后） ──
+
+
+@router.get("/")
+def api_list_configs(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """获取所有可配置项及其当前值。"""
+    rows = db.scalars(select(SystemConfig).where(SystemConfig.key.in_(_CONFIG_SPECS.keys()))).all()
+    row_map = {r.key: r for r in rows}
+
+    items = []
+    for key, desc in _CONFIG_SPECS.items():
+        row = row_map.get(key)
+        items.append({
+            "key": key,
+            "value": row.value if row else "",
+            "description": desc,
+            "updated_at": row.updated_at.isoformat() if row else None,
+        })
+    return {"code": 0, "data": {"items": items}}
+
+
+@router.put("/{key:path}")
+def api_update_config(
+    key: str,
+    body: ConfigUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("settings.update")),
+):
+    """更新指定配置项。"""
+    if key not in _CONFIG_SPECS:
+        raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
+
+    set_config(db, key, body.value.strip(), _CONFIG_SPECS[key])
+    write_log(db, user=current_user, action="update", target_type="settings",
+              target_id=0, target_name=key, detail=f"更新为 {body.value.strip()}",
+              ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "配置已更新"}
+
+
+@router.get("/{key:path}")
+def api_get_config(
+    key: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """获取单个配置项。"""
+    if key not in _CONFIG_SPECS:
+        raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
+
+    value = get_config(db, key)
+    return {"code": 0, "data": {"key": key, "value": value, "description": _CONFIG_SPECS[key]}}

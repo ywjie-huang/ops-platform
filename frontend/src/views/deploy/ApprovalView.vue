@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onActivated } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getDeployApprovals, approveDeploy, rejectDeploy } from '@/api/deploy'
 
@@ -131,7 +131,7 @@ async function handleReject() {
   }
 }
 
-onMounted(fetchData)
+onActivated(fetchData)
 </script>
 
 <style scoped>
