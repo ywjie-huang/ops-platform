@@ -83,7 +83,8 @@ def execute_ssh_deploy(
             sftp = ssh.open_sftp()
             remote_filename = os.path.basename(artifact_path)
             remote_path = f"{deploy_path}/{remote_filename}"
-            sftp.put(artifact_path, remote_path, callback=lambda sent, total: _progress_cb(db, record, sent, total))
+            progress_cb = _make_progress_cb(db, record)
+            sftp.put(artifact_path, remote_path, callback=progress_cb)
             append_log(db, record, f"上传完成: {remote_path}")
         elif artifact_path:
             append_log(db, record, f"产物路径不存在，跳过上传: {artifact_path}")
@@ -156,10 +157,16 @@ def execute_ssh_deploy(
                 pass
 
 
-def _progress_cb(db: Session, record: DeployRecord, sent: int, total: int) -> None:
-    """SFTP 上传进度回调（每 10% 输出一次）。"""
-    if total <= 0:
-        return
-    pct = int(sent * 100 / total)
-    if pct % 10 == 0 and sent > 0:
-        append_log(db, record, f"  上传进度: {pct}%")
+def _make_progress_cb(db: Session, record: DeployRecord):
+    """创建 SFTP 上传进度回调（每 10% 输出一次，去重）。"""
+    last_pct = [-1]
+
+    def cb(sent: int, total: int) -> None:
+        if total <= 0:
+            return
+        pct = int(sent * 100 / total)
+        if pct % 10 == 0 and sent > 0 and pct != last_pct[0]:
+            last_pct[0] = pct
+            append_log(db, record, f"  上传进度: {pct}%")
+
+    return cb
