@@ -167,6 +167,6 @@ def _make_progress_cb(db: Session, record: DeployRecord):
         pct = int(sent * 100 / total)
         if pct % 10 == 0 and sent > 0 and pct != last_pct[0]:
             last_pct[0] = pct
-            append_log(db, record, f"  上传进度: {pct}%")
+            append_log(db, record, f"上传进度: {pct}%")
 
     return cb
