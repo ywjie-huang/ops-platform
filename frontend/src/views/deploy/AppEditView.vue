@@ -72,11 +72,6 @@
           </el-form-item>
         </template>
 
-        <div class="form-section-title">健康检查</div>
-        <el-form-item label="超时时间（秒）">
-          <el-input-number v-model="form.health_check_timeout" :min="5" :max="300" :step="5" />
-        </el-form-item>
-
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">保存</el-button>
           <el-button @click="$router.back()">取消</el-button>
@@ -112,8 +107,6 @@ const form = reactive({
   artifact_path: '',
   jenkins_job_name: '',
   jenkins_token: '',
-  health_check_url: '',
-  health_check_timeout: 30,
 })
 
 const rules: FormRules = {
@@ -143,8 +136,6 @@ async function fetchApp() {
       artifact_path: res.data.artifact_path,
       jenkins_job_name: res.data.jenkins_job_name,
       jenkins_token: res.data.jenkins_token,
-      health_check_url: res.data.health_check_url,
-      health_check_timeout: res.data.health_check_timeout,
     })
   } finally {
     loading.value = false

@@ -77,8 +77,6 @@ def create_application(
     artifact_path: str = "",
     jenkins_job_name: str = "",
     jenkins_token: str = "",
-    health_check_url: str = "",
-    health_check_timeout: int = 30,
     creator_id: int | None = None,
 ) -> DeployApplication:
     """创建新应用。"""
@@ -95,8 +93,6 @@ def create_application(
         artifact_path=artifact_path,
         jenkins_job_name=jenkins_job_name,
         jenkins_token=jenkins_token,
-        health_check_url=health_check_url,
-        health_check_timeout=health_check_timeout,
         creator_id=creator_id,
     )
     db.add(app)
@@ -122,8 +118,6 @@ def update_application(
     artifact_path: str = "",
     jenkins_job_name: str = "",
     jenkins_token: str = "",
-    health_check_url: str = "",
-    health_check_timeout: int = 30,
 ) -> DeployApplication:
     """更新应用信息。"""
     app.name = name
@@ -139,8 +133,6 @@ def update_application(
     app.artifact_path = artifact_path
     app.jenkins_job_name = jenkins_job_name
     app.jenkins_token = jenkins_token
-    app.health_check_url = health_check_url
-    app.health_check_timeout = health_check_timeout
     app.updated_at = datetime.now(CHINA_TZ)
     db.commit()
     db.refresh(app)

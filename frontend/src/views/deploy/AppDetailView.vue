@@ -29,10 +29,7 @@
             <el-descriptions-item label="默认分支">{{ app.git_branch || '—' }}</el-descriptions-item>
             <el-descriptions-item label="构建模式">{{ app.build_mode === 'jenkins' ? 'Jenkins' : '文件上传' }}</el-descriptions-item>
             <el-descriptions-item label="构建命令/Job">{{ app.build_mode === 'jenkins' ? app.jenkins_job_name : (app.build_command || '—') }}</el-descriptions-item>
-            <el-descriptions-item label="健康检查">
-              <template v-if="app.health_check_url">{{ app.health_check_url }}</template>
-              <span v-else>按环境配置</span>
-            </el-descriptions-item>
+            <el-descriptions-item label="健康检查">按环境配置</el-descriptions-item>
             <el-descriptions-item label="创建人">{{ app.creator_name || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(app.created_at) }}</el-descriptions-item>
           </el-descriptions>
@@ -73,7 +70,11 @@
                 <div class="env-field"><span class="env-field-label">目标主机：</span>{{ ae.ssh_asset_name ? `${ae.ssh_asset_name} (${ae.ssh_asset_ip})` : '未配置' }}</div>
                 <div class="env-field"><span class="env-field-label">部署路径：</span>{{ ae.deploy_path || '未配置' }}</div>
                 <div class="env-field"><span class="env-field-label">部署脚本：</span><code>{{ ae.deploy_script || '无' }}</code></div>
-                <div class="env-field"><span class="env-field-label">健康检查端口：</span>{{ ae.health_check_port || '不检测' }}</div>
+                <div class="env-field"><span class="env-field-label">健康检查：</span>
+                  <template v-if="ae.health_check_port">端口 {{ ae.health_check_port }}（{{ ae.health_check_timeout }}s）</template>
+                  <template v-else-if="ae.health_check_url">{{ ae.health_check_url }}</template>
+                  <span v-else>未配置</span>
+                </div>
               </template>
 
               <!-- Docker 策略 -->
@@ -251,6 +252,12 @@
           <el-form-item label="健康检查端口">
             <el-input-number v-model="envForm.health_check_port" :min="0" :max="65535" placeholder="如：8080" style="width: 200px" />
             <span class="form-hint">部署后检测目标端口是否可达，0 表示不检测</span>
+          </el-form-item>
+          <el-form-item label="健康检查 URL">
+            <el-input v-model="envForm.health_check_url" placeholder="http://host:port/health（可选回退）" />
+          </el-form-item>
+          <el-form-item label="超时时间（秒）">
+            <el-input-number v-model="envForm.health_check_timeout" :min="5" :max="300" :step="5" />
           </el-form-item>
         </template>
 
@@ -530,7 +537,9 @@ const envForm = reactive<any>({
   ssh_asset_id: null,
   deploy_path: '',
   deploy_script: '',
+  health_check_url: '',
   health_check_port: 0,
+  health_check_timeout: 30,
   docker_host_id: null,
   docker_image: '',
   docker_container_name: '',
@@ -551,7 +560,9 @@ function openEnvDialog(ae: any) {
     ssh_asset_id: ae.ssh_asset_id,
     deploy_path: ae.deploy_path,
     deploy_script: ae.deploy_script,
+    health_check_url: ae.health_check_url || '',
     health_check_port: ae.health_check_port || 0,
+    health_check_timeout: ae.health_check_timeout || 30,
     docker_host_id: ae.docker_host_id,
     docker_image: ae.docker_image,
     docker_container_name: ae.docker_container_name,

@@ -73,12 +73,6 @@
           </el-form-item>
         </template>
 
-        <!-- 健康检查 -->
-        <div class="form-section-title">健康检查</div>
-        <el-form-item label="超时时间（秒）">
-          <el-input-number v-model="form.health_check_timeout" :min="5" :max="300" :step="5" />
-        </el-form-item>
-
         <!-- 提交 -->
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">创建应用</el-button>
@@ -111,8 +105,6 @@ const form = reactive({
   artifact_path: '',
   jenkins_job_name: '',
   jenkins_token: '',
-  health_check_url: '',
-  health_check_timeout: 30,
 })
 
 const rules: FormRules = {
