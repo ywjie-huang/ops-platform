@@ -388,8 +388,8 @@ def api_upload_artifact(
     db.commit()
     db.refresh(app)
 
-    # 清理旧产物，保留最近 10 个
-    _cleanup_old_artifacts(artifact_dir, keep=10)
+    # 清理旧产物，保留最近 3 个
+    _cleanup_old_artifacts(artifact_dir, keep=3)
 
     write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app",
               target_id=app.id, target_name=f"{app.name}:{filename}", ip_address=get_client_ip(request))

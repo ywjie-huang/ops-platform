@@ -173,10 +173,15 @@ def execute_deploy(record_id: int) -> None:
                 try:
                     snapshot = json.loads(record.deploy_config)
                     snap_artifact = snapshot.get("artifact_path", "")
+                    snap_filename = snapshot.get("artifact_filename", "")
                     if snap_artifact and os.path.isfile(snap_artifact):
                         app.artifact_path = snap_artifact
-                        app.artifact_filename = snapshot.get("artifact_filename", "")
-                        append_log(db, record, f"回滚: 使用原部署产物 {app.artifact_filename or snap_artifact}")
+                        app.artifact_filename = snap_filename
+                        append_log(db, record, f"回滚: 使用原部署产物 {snap_filename or snap_artifact}")
+                    elif snap_artifact:
+                        update_status(db, record, "failed")
+                        set_error(db, record, f"回滚失败: 原部署产物已被清理 ({snap_filename or snap_artifact})，请重新上传后部署")
+                        return
                 except (json.JSONDecodeError, KeyError):
                     pass
 
