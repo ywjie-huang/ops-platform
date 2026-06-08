@@ -605,7 +605,7 @@ def api_execute_deploy(
 
     record = create_record(
         db,
-        app_id=body.app_id,
+        app_id=app.id,
         env_id=body.env_id,
         app_env_id=app_env.id,
         version=body.version,
