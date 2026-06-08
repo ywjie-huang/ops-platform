@@ -191,29 +191,41 @@ def _ensure_docker_columns() -> None:
 
 
 def _ensure_deploy_artifact_columns() -> None:
-    """为 deploy_applications 表补充产物元数据字段，并将旧 local 模式迁移为 upload。"""
+    """为 deploy_applications / deploy_app_envs 表补充产物字段，并将旧 local 模式迁移为 upload。"""
     try:
         conn = pymysql.connect(
             host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
         )
         with conn.cursor() as cur:
+            # deploy_applications: 产物元数据
             cur.execute("SHOW TABLES LIKE 'deploy_applications'")
-            if cur.fetchone() is None:
-                conn.commit()
-                return
+            if cur.fetchone() is not None:
+                for col, col_def in [
+                    ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
+                    ('artifact_size', "INT NOT NULL DEFAULT 0"),
+                    ('artifact_uploaded_at', 'DATETIME NULL'),
+                ]:
+                    cur.execute(f"SHOW COLUMNS FROM deploy_applications LIKE '{col}'")
+                    if cur.fetchone() is None:
+                        cur.execute(f"ALTER TABLE deploy_applications ADD COLUMN {col} {col_def}")
+                        print(f'[init_db] Added {col} to deploy_applications')
 
-            for col, col_def in [
-                ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
-                ('artifact_size', "INT NOT NULL DEFAULT 0"),
-                ('artifact_uploaded_at', 'DATETIME NULL'),
-            ]:
-                cur.execute(f"SHOW COLUMNS FROM deploy_applications LIKE '{col}'")
-                if cur.fetchone() is None:
-                    cur.execute(f"ALTER TABLE deploy_applications ADD COLUMN {col} {col_def}")
-                    print(f'[init_db] Added {col} to deploy_applications')
+                cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
 
-            # 旧 local 模式迁移为 upload
-            cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
+            # deploy_app_envs: 环境级产物字段
+            cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
+            if cur.fetchone() is not None:
+                for col, col_def in [
+                    ('artifact_path', "VARCHAR(500) NOT NULL DEFAULT ''"),
+                    ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
+                    ('artifact_size', "INT NOT NULL DEFAULT 0"),
+                    ('artifact_uploaded_at', 'DATETIME NULL'),
+                ]:
+                    cur.execute(f"SHOW COLUMNS FROM deploy_app_envs LIKE '{col}'")
+                    if cur.fetchone() is None:
+                        cur.execute(f"ALTER TABLE deploy_app_envs ADD COLUMN {col} {col_def}")
+                        print(f'[init_db] Added {col} to deploy_app_envs')
+
             conn.commit()
     except Exception as e:
         print(f'[init_db] _ensure_deploy_artifact_columns error: {e}')

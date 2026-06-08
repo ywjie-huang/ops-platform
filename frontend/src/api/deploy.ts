@@ -28,17 +28,17 @@ export function deleteDeployApp(id: number) {
   return request.delete(`/deploy/apps/${id}`)
 }
 
-// ── 构建产物 ──
-export function uploadArtifact(appId: number, file: File) {
+// ── 构建产物（环境级别） ──
+export function uploadArtifact(appId: number, envId: number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post(`/deploy/apps/${appId}/artifact`, formData, {
+  return request.post(`/deploy/apps/${appId}/envs/${envId}/artifact`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
 
-export function deleteArtifact(appId: number) {
-  return request.delete(`/deploy/apps/${appId}/artifact`)
+export function deleteArtifact(appId: number, envId: number) {
+  return request.delete(`/deploy/apps/${appId}/envs/${envId}/artifact`)
 }
 
 // ── 环境列表 ──

@@ -175,8 +175,8 @@ def execute_deploy(record_id: int) -> None:
                     snap_artifact = snapshot.get("artifact_path", "")
                     snap_filename = snapshot.get("artifact_filename", "")
                     if snap_artifact and os.path.isfile(snap_artifact):
-                        app.artifact_path = snap_artifact
-                        app.artifact_filename = snap_filename
+                        app_env.artifact_path = snap_artifact
+                        app_env.artifact_filename = snap_filename
                         append_log(db, record, f"回滚: 使用原部署产物 {snap_filename or snap_artifact}")
                     elif snap_artifact:
                         update_status(db, record, "failed")
@@ -188,7 +188,7 @@ def execute_deploy(record_id: int) -> None:
             # ── 构建阶段 ──
             build_mode = app.build_mode or "upload"
             has_build = (
-                (build_mode == "upload" and app.artifact_path)
+                (build_mode == "upload" and app_env.artifact_path)
                 or (build_mode == "jenkins" and app.jenkins_job_name)
                 or (build_mode == "local" and app.build_command)
             )

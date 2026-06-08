@@ -79,6 +79,12 @@ class DeployAppEnv(Base):
     deploy_path: Mapped[str] = mapped_column(String(500), default="")
     deploy_script: Mapped[str] = mapped_column(Text, default="")              # 部署后执行的脚本
 
+    # 构建产物（每个环境独立）
+    artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 产物存储路径（平台本地）
+    artifact_filename: Mapped[str] = mapped_column(String(255), default="")   # 原始文件名
+    artifact_size: Mapped[int] = mapped_column(Integer, default=0)            # 文件大小（字节）
+    artifact_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 上传时间
+
     # Docker 策略配置
     docker_host_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("container_clusters.id", ondelete="SET NULL"), nullable=True)
     docker_image: Mapped[str] = mapped_column(String(500), default="")

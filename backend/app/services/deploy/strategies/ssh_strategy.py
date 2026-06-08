@@ -77,7 +77,7 @@ def execute_ssh_deploy(
             update_status(db, record, "cancelled")
             return
 
-        artifact_path = app.artifact_path or ""
+        artifact_path = app_env.artifact_path or ""
         if artifact_path and os.path.isfile(artifact_path):
             append_log(db, record, f"上传产物 {artifact_path} → {deploy_path}/")
             sftp = ssh.open_sftp()

@@ -48,15 +48,15 @@ def execute_build(
     build_mode = app.build_mode or "upload"
 
     if build_mode == "upload":
-        # 文件上传模式：产物已通过 API 上传到平台，直接返回路径
-        artifact = app.artifact_path or ""
+        # 文件上传模式：产物已通过 API 上传到平台，从环境配置读取
+        artifact = app_env.artifact_path or ""
         if artifact and os.path.isfile(artifact):
             append_log(db, record, f"构建模式: 文件上传")
-            append_log(db, record, f"产物: {app.artifact_filename} ({_format_size(app.artifact_size)})")
+            append_log(db, record, f"产物: {app_env.artifact_filename} ({_format_size(app_env.artifact_size)})")
             return artifact
         else:
             append_log(db, record, "构建模式: 文件上传")
-            append_log(db, record, "未找到构建产物，请先在应用详情页上传构建产物")
+            append_log(db, record, "未找到构建产物，请先在环境配置中上传构建产物")
             return None
 
     append_log(db, record, f"构建模式: {build_mode}")

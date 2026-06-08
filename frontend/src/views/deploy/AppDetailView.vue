@@ -29,84 +29,10 @@
             <el-descriptions-item label="默认分支">{{ app.git_branch || '—' }}</el-descriptions-item>
             <el-descriptions-item label="构建模式">{{ app.build_mode === 'jenkins' ? 'Jenkins' : '文件上传' }}</el-descriptions-item>
             <el-descriptions-item label="构建命令/Job">{{ app.build_mode === 'jenkins' ? app.jenkins_job_name : (app.build_command || '—') }}</el-descriptions-item>
-            <el-descriptions-item label="构建产物">
-              <template v-if="app.artifact_filename">
-                {{ app.artifact_filename }}
-                <el-text type="info" size="small" style="margin-left: 8px">({{ formatSize(app.artifact_size) }})</el-text>
-              </template>
-              <span v-else>未上传</span>
-            </el-descriptions-item>
             <el-descriptions-item label="健康检查">{{ app.health_check_url || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建人">{{ app.creator_name || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(app.created_at) }}</el-descriptions-item>
           </el-descriptions>
-
-          <!-- 构建产物管理 -->
-          <div v-if="app.build_mode !== 'jenkins'" class="artifact-section">
-            <div class="artifact-header">
-              <span class="artifact-title">构建产物</span>
-            </div>
-
-            <!-- 已有产物 -->
-            <div v-if="app.artifact_filename" class="artifact-info">
-              <div class="artifact-file">
-                <div class="artifact-file-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                </div>
-                <div class="artifact-file-info">
-                  <div class="artifact-file-name">{{ app.artifact_filename }}</div>
-                  <div class="artifact-file-meta">
-                    {{ formatSize(app.artifact_size) }}
-                    <span v-if="app.artifact_uploaded_at"> · {{ formatTime(app.artifact_uploaded_at) }} 上传</span>
-                  </div>
-                </div>
-                <div class="artifact-file-actions">
-                  <el-button size="small" type="primary" text @click="handleDownloadArtifact">
-                    <el-icon><Download /></el-icon>下载
-                  </el-button>
-                  <el-popconfirm title="确认删除当前构建产物？" @confirm="handleDeleteArtifact">
-                    <template #reference>
-                      <el-button size="small" type="danger" text>删除</el-button>
-                    </template>
-                  </el-popconfirm>
-                </div>
-              </div>
-              <div class="artifact-reupload">
-                <el-upload
-                  :show-file-list="false"
-                  :before-upload="handleUploadArtifact"
-                  accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
-                  :disabled="uploading"
-                >
-                  <el-button size="small" text type="primary" :loading="uploading">重新上传</el-button>
-                </el-upload>
-              </div>
-            </div>
-
-            <!-- 无产物：上传区域 -->
-            <div v-else class="artifact-upload">
-              <el-upload
-                drag
-                :show-file-list="false"
-                :before-upload="handleUploadArtifact"
-                accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
-                :disabled="uploading"
-              >
-                <div v-if="uploading" class="artifact-upload-loading">
-                  <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-                  <div>上传中…</div>
-                </div>
-                <div v-else class="artifact-upload-content">
-                  <el-icon :size="32" class="artifact-upload-icon"><UploadFilled /></el-icon>
-                  <div class="artifact-upload-text">将构建产物拖到此处，或<em>点击上传</em></div>
-                  <div class="artifact-upload-hint">支持 jar / war / zip / tar.gz 等格式</div>
-                </div>
-              </el-upload>
-            </div>
-          </div>
         </div>
       </el-tab-pane>
 
@@ -161,6 +87,53 @@
                 <div class="env-field"><span class="env-field-label">命名空间：</span>{{ ae.k8s_namespace }}</div>
                 <div class="env-field"><span class="env-field-label">Deployment：</span>{{ ae.k8s_deployment || '未配置' }}</div>
                 <div class="env-field"><span class="env-field-label">容器名：</span>{{ ae.k8s_container_name || '—' }}</div>
+              </template>
+
+              <!-- 构建产物（每个环境独立） -->
+              <template v-if="app.build_mode !== 'jenkins'">
+                <div class="env-artifact-divider"></div>
+                <div class="env-artifact">
+                  <div class="env-artifact-title">构建产物</div>
+                  <div v-if="ae.artifact_filename" class="env-artifact-file">
+                    <div class="env-artifact-info">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="env-artifact-icon">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <span class="env-artifact-name">{{ ae.artifact_filename }}</span>
+                      <span class="env-artifact-meta">{{ formatSize(ae.artifact_size) }} · {{ formatTime(ae.artifact_uploaded_at) }}</span>
+                    </div>
+                    <div class="env-artifact-actions">
+                      <el-button size="small" type="primary" text @click="handleDownloadArtifact(ae)">
+                        <el-icon><Download /></el-icon>下载
+                      </el-button>
+                      <el-upload
+                        :show-file-list="false"
+                        :before-upload="(file: File) => handleUploadArtifact(ae.env_id, file)"
+                        accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
+                        :disabled="uploadingEnvId === ae.env_id"
+                      >
+                        <el-button size="small" text type="primary" :loading="uploadingEnvId === ae.env_id">重新上传</el-button>
+                      </el-upload>
+                      <el-popconfirm title="确认删除此环境的构建产物？" @confirm="handleDeleteArtifact(ae.env_id)">
+                        <template #reference><el-button size="small" text type="danger">删除</el-button></template>
+                      </el-popconfirm>
+                    </div>
+                  </div>
+                  <div v-else class="env-artifact-empty">
+                    <el-upload
+                      :show-file-list="false"
+                      :before-upload="(file: File) => handleUploadArtifact(ae.env_id, file)"
+                      accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
+                      :disabled="uploadingEnvId === ae.env_id"
+                    >
+                      <el-button size="small" type="primary" :loading="uploadingEnvId === ae.env_id">
+                        <el-icon><UploadFilled /></el-icon>上传构建产物
+                      </el-button>
+                    </el-upload>
+                    <span class="env-artifact-hint">部署前需先上传此环境的构建产物</span>
+                  </div>
+                </div>
               </template>
             </div>
           </div>
@@ -379,7 +352,7 @@
 import { ref, reactive, computed, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, Download, UploadFilled, Loading } from '@element-plus/icons-vue'
+import { Warning, Download, UploadFilled } from '@element-plus/icons-vue'
 import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
@@ -647,42 +620,39 @@ async function handleDeploy() {
   }
 }
 
-// ── 构建产物 ──
-const uploading = ref(false)
+// ── 构建产物（环境级别） ──
+const uploadingEnvId = ref<number | null>(null)
 
-async function handleUploadArtifact(file: File) {
-  uploading.value = true
+async function handleUploadArtifact(envId: number, file: File) {
+  uploadingEnvId.value = envId
   try {
-    await uploadArtifact(appId.value, file)
+    await uploadArtifact(appId.value, envId, file)
     ElMessage.success('上传成功')
-    fetchApp()
+    fetchEnvs()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '上传失败')
   } finally {
-    uploading.value = false
+    uploadingEnvId.value = null
   }
   return false // 阻止 el-upload 默认上传
 }
 
-async function handleDeleteArtifact() {
-  await deleteArtifact(appId.value)
+async function handleDeleteArtifact(envId: number) {
+  await deleteArtifact(appId.value, envId)
   ElMessage.success('已删除')
-  fetchApp()
+  fetchEnvs()
 }
 
-function handleDownloadArtifact() {
+function handleDownloadArtifact(ae: any) {
   const token = localStorage.getItem('token')
-  const url = `/api/v1/deploy/apps/${appId.value}/artifact/download`
-  // 创建临时 a 标签下载
-  const a = document.createElement('a')
-  a.href = url
-  a.download = app.value.artifact_filename || 'artifact'
-  // 带 JWT 的请求需要用 fetch
+  const url = `/api/v1/deploy/apps/${appId.value}/envs/${ae.env_id}/artifact/download`
   fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     .then(res => res.blob())
     .then(blob => {
       const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
       a.href = blobUrl
+      a.download = ae.artifact_filename || 'artifact'
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -849,120 +819,67 @@ onActivated(() => {
   color: var(--text-muted);
 }
 
-/* 构建产物管理 */
-.artifact-section {
-  margin-top: 24px;
-  padding: 20px;
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+/* 环境卡片内构建产物 */
+.env-artifact-divider {
+  margin: 12px 0;
+  border-top: 1px dashed var(--border-color);
 }
 
-.artifact-header {
-  margin-bottom: 16px;
-}
-
-.artifact-title {
-  font-size: 15px;
+.env-artifact-title {
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  margin-bottom: 10px;
 }
 
-.artifact-info {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.artifact-file {
+.env-artifact-file {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+  flex-wrap: wrap;
 }
 
-.artifact-file-icon {
+.env-artifact-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.env-artifact-icon {
   color: var(--primary-color);
   flex-shrink: 0;
 }
 
-.artifact-file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.artifact-file-name {
-  font-size: 14px;
+.env-artifact-name {
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
   word-break: break-all;
 }
 
-.artifact-file-meta {
+.env-artifact-meta {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 2px;
+  white-space: nowrap;
 }
 
-.artifact-file-actions {
+.env-artifact-actions {
   display: flex;
+  align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.artifact-reupload {
+.env-artifact-empty {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.artifact-upload {
-  width: 100%;
-}
-
-.artifact-upload :deep(.el-upload) {
-  width: 100%;
-}
-
-.artifact-upload :deep(.el-upload-dragger) {
-  width: 100%;
-  padding: 32px 20px;
-}
-
-.artifact-upload-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.artifact-upload-icon {
-  color: var(--text-muted);
-}
-
-.artifact-upload-text {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.artifact-upload-text em {
-  color: var(--primary-color);
-  font-style: normal;
-}
-
-.artifact-upload-hint {
+.env-artifact-hint {
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.artifact-upload-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
 }
 </style>

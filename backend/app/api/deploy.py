@@ -187,6 +187,11 @@ def _app_env_dict(ae) -> dict:
         "k8s_namespace": ae.k8s_namespace,
         "k8s_deployment": ae.k8s_deployment,
         "k8s_container_name": ae.k8s_container_name,
+        # 产物信息
+        "artifact_path": ae.artifact_path,
+        "artifact_filename": ae.artifact_filename,
+        "artifact_size": ae.artifact_size,
+        "artifact_uploaded_at": ae.artifact_uploaded_at.isoformat() if ae.artifact_uploaded_at else None,
         "created_at": ae.created_at.isoformat(),
         "updated_at": ae.updated_at.isoformat(),
     }
@@ -351,23 +356,25 @@ def _cleanup_old_artifacts(artifact_dir: str, keep: int = 10) -> None:
         pass
 
 
-@router.post("/apps/{app_id}/artifact")
+@router.post("/apps/{app_id}/envs/{env_id}/artifact")
 def api_upload_artifact(
     app_id: int,
+    env_id: int,
     file: UploadFile = File(...),
     request: Request = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    """上传构建产物（保留历史版本，每个应用最多 10 个）。"""
-    import time as _time
-
+    """为指定环境上传构建产物（保留历史版本，每个环境最多 3 个）。"""
     app = get_application(db, app_id)
     if app is None:
         raise HTTPException(status_code=404, detail="应用不存在")
+    app_env = get_app_env_by_pair(db, app_id, env_id)
+    if app_env is None:
+        raise HTTPException(status_code=404, detail="未找到该环境配置")
 
-    # 创建存储目录
-    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app_id))
+    # 创建存储目录：{app_id}/{env_id}/
+    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app_id), str(env_id))
     os.makedirs(artifact_dir, exist_ok=True)
 
     # 保存新文件（时间戳前缀，避免覆盖旧版本）
@@ -380,72 +387,79 @@ def api_upload_artifact(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # 更新应用元数据（指向最新产物）
-    app.artifact_path = file_path
-    app.artifact_filename = filename
-    app.artifact_size = len(content)
-    app.artifact_uploaded_at = datetime.now(CHINA_TZ)
+    # 更新环境产物元数据（指向最新产物）
+    app_env.artifact_path = file_path
+    app_env.artifact_filename = filename
+    app_env.artifact_size = len(content)
+    app_env.artifact_uploaded_at = datetime.now(CHINA_TZ)
     db.commit()
-    db.refresh(app)
+    db.refresh(app_env)
 
     # 清理旧产物，保留最近 3 个
     _cleanup_old_artifacts(artifact_dir, keep=3)
 
-    write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app",
-              target_id=app.id, target_name=f"{app.name}:{filename}", ip_address=get_client_ip(request))
+    env_name = app_env.environment.name if app_env.environment else str(env_id)
+    write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app_env",
+              target_id=app_env.id, target_name=f"{app.name}:{env_name}:{filename}",
+              ip_address=get_client_ip(request))
     db.commit()
 
-    return {"code": 0, "msg": "上传成功", "data": _app_dict(app)}
+    return {"code": 0, "msg": "上传成功", "data": _app_env_dict(app_env)}
 
 
-@router.delete("/apps/{app_id}/artifact")
+@router.delete("/apps/{app_id}/envs/{env_id}/artifact")
 def api_delete_artifact(
     app_id: int,
+    env_id: int,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    """删除构建产物。"""
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    """删除指定环境的构建产物。"""
+    app_env = get_app_env_by_pair(db, app_id, env_id)
+    if app_env is None:
+        raise HTTPException(status_code=404, detail="未找到该环境配置")
 
-    if app.artifact_path and os.path.isfile(app.artifact_path):
+    if app_env.artifact_path and os.path.isfile(app_env.artifact_path):
         try:
-            os.remove(app.artifact_path)
+            os.remove(app_env.artifact_path)
         except OSError:
             pass
 
-    app.artifact_path = ""
-    app.artifact_filename = ""
-    app.artifact_size = 0
-    app.artifact_uploaded_at = None
+    app_env.artifact_path = ""
+    app_env.artifact_filename = ""
+    app_env.artifact_size = 0
+    app_env.artifact_uploaded_at = None
     db.commit()
 
-    write_log(db, user=current_user, action="delete_artifact", target_type="deploy_app",
-              target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
+    app = get_application(db, app_id)
+    env_name = app_env.environment.name if app_env.environment else str(env_id)
+    write_log(db, user=current_user, action="delete_artifact", target_type="deploy_app_env",
+              target_id=app_env.id, target_name=f"{app.name if app else ''}:{env_name}",
+              ip_address=get_client_ip(request))
     db.commit()
 
     return {"code": 0, "msg": "已删除"}
 
 
-@router.get("/apps/{app_id}/artifact/download")
+@router.get("/apps/{app_id}/envs/{env_id}/artifact/download")
 def api_download_artifact(
     app_id: int,
+    env_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
-    """下载构建产物。"""
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    """下载指定环境的构建产物。"""
+    app_env = get_app_env_by_pair(db, app_id, env_id)
+    if app_env is None:
+        raise HTTPException(status_code=404, detail="未找到该环境配置")
 
-    if not app.artifact_path or not os.path.isfile(app.artifact_path):
+    if not app_env.artifact_path or not os.path.isfile(app_env.artifact_path):
         raise HTTPException(status_code=404, detail="暂无构建产物")
 
     return FileResponse(
-        path=app.artifact_path,
-        filename=app.artifact_filename or os.path.basename(app.artifact_path),
+        path=app_env.artifact_path,
+        filename=app_env.artifact_filename or os.path.basename(app_env.artifact_path),
         media_type="application/octet-stream",
     )
 
@@ -590,8 +604,8 @@ def api_execute_deploy(
         "deploy_strategy": app.deploy_strategy,
         "env_id": body.env_id,
         "app_env_id": app_env.id,
-        "artifact_path": app.artifact_path,
-        "artifact_filename": app.artifact_filename,
+        "artifact_path": app_env.artifact_path,
+        "artifact_filename": app_env.artifact_filename,
     }, ensure_ascii=False)
 
     record = create_record(
