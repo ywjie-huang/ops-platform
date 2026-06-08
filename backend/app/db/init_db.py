@@ -212,19 +212,6 @@ def _ensure_deploy_artifact_columns() -> None:
 
                 cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
 
-                # Migrate health_check_port from app level to env level
-                cur.execute("SHOW COLUMNS FROM deploy_applications LIKE 'health_check_port'")
-                if cur.fetchone() is not None:
-                    # Copy existing values to app_envs before dropping
-                    cur.execute(
-                        "UPDATE deploy_app_envs ae "
-                        "JOIN deploy_applications a ON ae.app_id = a.id "
-                        "SET ae.health_check_port = a.health_check_port "
-                        "WHERE a.health_check_port > 0 AND ae.health_check_port = 0"
-                    )
-                    cur.execute("ALTER TABLE deploy_applications DROP COLUMN health_check_port")
-                    print('[init_db] Migrated health_check_port from deploy_applications to deploy_app_envs')
-
             # deploy_app_envs: 环境级产物字段 + 健康检查端口
             cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
             if cur.fetchone() is not None:
@@ -239,6 +226,20 @@ def _ensure_deploy_artifact_columns() -> None:
                     if cur.fetchone() is None:
                         cur.execute(f"ALTER TABLE deploy_app_envs ADD COLUMN {col} {col_def}")
                         print(f'[init_db] Added {col} to deploy_app_envs')
+
+            # Migrate health_check_port from app level to env level (one-time)
+            cur.execute("SHOW TABLES LIKE 'deploy_applications'")
+            if cur.fetchone() is not None:
+                cur.execute("SHOW COLUMNS FROM deploy_applications LIKE 'health_check_port'")
+                if cur.fetchone() is not None:
+                    cur.execute(
+                        "UPDATE deploy_app_envs ae "
+                        "JOIN deploy_applications a ON ae.app_id = a.id "
+                        "SET ae.health_check_port = a.health_check_port "
+                        "WHERE a.health_check_port > 0 AND ae.health_check_port = 0"
+                    )
+                    cur.execute("ALTER TABLE deploy_applications DROP COLUMN health_check_port")
+                    print('[init_db] Migrated health_check_port from deploy_applications to deploy_app_envs')
 
             conn.commit()
     except Exception as e:
