@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">{{ app.name || '应用详情' }}</h2>
       <div class="header-actions">
-        <el-button @click="$router.push(`/deploy/apps/${appId}/edit`)">编辑</el-button>
+        <el-button @click="$router.push(`/deploy/apps/${appName}/edit`)">编辑</el-button>
         <el-button type="danger" @click="handleDelete">删除</el-button>
         <el-button @click="$router.push('/deploy/apps')">返回列表</el-button>
       </div>
@@ -359,13 +359,13 @@ import { getDockerHosts, getClusters } from '@/api/containers'
 
 const route = useRoute()
 const router = useRouter()
-const appId = ref(Number(route.params.id))
+const appName = ref(String(route.params.name))
 const activeTab = ref('overview')
 
 // ── 应用数据 ──
 const app = ref<any>({})
 async function fetchApp() {
-  const res: any = await getDeployApp(appId.value)
+  const res: any = await getDeployApp(appName.value)
   app.value = res.data
 }
 
@@ -375,7 +375,7 @@ const appEnvs = ref<any[]>([])
 async function fetchEnvs() {
   envLoading.value = true
   try {
-    const res: any = await getAppEnvs(appId.value)
+    const res: any = await getAppEnvs(appName.value)
     appEnvs.value = res.data
   } finally {
     envLoading.value = false
@@ -407,7 +407,7 @@ const statusTypeMap: Record<string, string> = { pending: 'info', building: 'warn
 async function fetchRecords() {
   recordsLoading.value = true
   try {
-    const res: any = await getDeployRecords({ app_id: appId.value, page_size: 50 })
+    const res: any = await getDeployRecords({ app_name: appName.value, page_size: 50 })
     records.value = res.data.items
   } finally {
     recordsLoading.value = false
@@ -432,7 +432,7 @@ const configForm = reactive({
 async function fetchConfigs() {
   configsLoading.value = true
   try {
-    const res: any = await getAppConfigs(appId.value)
+    const res: any = await getAppConfigs(appName.value)
     configs.value = res.data
   } finally {
     configsLoading.value = false
@@ -466,7 +466,7 @@ async function handleSaveConfig() {
     if (editingConfigId.value) {
       await updateAppConfig(editingConfigId.value, { ...configForm })
     } else {
-      await createAppConfig(appId.value, { ...configForm })
+      await createAppConfig(appName.value, { ...configForm })
     }
     ElMessage.success('保存成功')
     configDialogVisible.value = false
@@ -504,7 +504,7 @@ async function handleAddEnv() {
   }
   addEnvLoading.value = true
   try {
-    await updateAppEnv(appId.value, addEnvId.value, { enabled: true })
+    await updateAppEnv(appName.value, addEnvId.value, { enabled: true })
     ElMessage.success('添加成功')
     addEnvDialogVisible.value = false
     fetchEnvs()
@@ -560,7 +560,7 @@ function openEnvDialog(ae: any) {
 async function handleSaveEnv() {
   envSaving.value = true
   try {
-    await updateAppEnv(appId.value, editingEnv.value.env_id, { ...envForm })
+    await updateAppEnv(appName.value, editingEnv.value.env_id, { ...envForm })
     ElMessage.success('保存成功')
     envDialogVisible.value = false
     fetchEnvs()
@@ -576,7 +576,7 @@ async function handleDelete() {
     return
   }
   try {
-    await deleteDeployApp(appId.value)
+    await deleteDeployApp(appName.value)
     ElMessage.success('删除成功')
     router.push('/deploy/apps')
   } catch (e: any) {
@@ -585,7 +585,7 @@ async function handleDelete() {
 }
 
 async function handleRemoveEnv(envId: number) {
-  await deleteAppEnv(appId.value, envId)
+  await deleteAppEnv(appName.value, envId)
   ElMessage.success('已移除')
   fetchEnvs()
 }
@@ -606,7 +606,7 @@ async function handleDeploy() {
   deploying.value = true
   try {
     const res: any = await executeDeploy({
-      app_id: appId.value,
+      app_name: appName.value,
       env_id: deployingEnv.value.env_id,
       version: deployVersion.value,
     })
@@ -626,7 +626,7 @@ const uploadingEnvId = ref<number | null>(null)
 async function handleUploadArtifact(envId: number, file: File) {
   uploadingEnvId.value = envId
   try {
-    await uploadArtifact(appId.value, envId, file)
+    await uploadArtifact(appName.value, envId, file)
     ElMessage.success('上传成功')
     fetchEnvs()
   } catch (e: any) {
@@ -638,14 +638,14 @@ async function handleUploadArtifact(envId: number, file: File) {
 }
 
 async function handleDeleteArtifact(envId: number) {
-  await deleteArtifact(appId.value, envId)
+  await deleteArtifact(appName.value, envId)
   ElMessage.success('已删除')
   fetchEnvs()
 }
 
 function handleDownloadArtifact(ae: any) {
   const token = localStorage.getItem('token')
-  const url = `/api/v1/deploy/apps/${appId.value}/envs/${ae.env_id}/artifact/download`
+  const url = `/api/v1/deploy/apps/${appName.value}/envs/${ae.env_id}/artifact/download`
   fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     .then(res => res.blob())
     .then(blob => {
@@ -688,7 +688,7 @@ function formatDuration(sec: number) {
 
 // ── 初始化（keep-alive: onActivated 每次进入都刷新） ──
 onActivated(() => {
-  appId.value = Number(route.params.id)
+  appName.value = String(route.params.name)
   fetchApp()
   fetchEnvs()
   fetchDropdowns()

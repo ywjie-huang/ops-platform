@@ -5,8 +5,8 @@
     </div>
 
     <div class="filter-bar">
-      <el-select v-model="filters.app_id" placeholder="筛选应用" clearable filterable style="width: 200px" @change="fetchData">
-        <el-option v-for="a in appList" :key="a.id" :label="a.name" :value="a.id" />
+      <el-select v-model="filters.app_name" placeholder="筛选应用" clearable filterable style="width: 200px" @change="fetchData">
+        <el-option v-for="a in appList" :key="a.id" :label="a.name" :value="a.name" />
       </el-select>
       <el-select v-model="filters.env_id" placeholder="筛选环境" clearable style="width: 130px" @change="fetchData">
         <el-option v-for="e in envList" :key="e.id" :label="e.name" :value="e.id" />
@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDeployRecords, getDeployApps, getDeployEnvs } from '@/api/deploy'
 import { usePagination } from '@/hooks/usePagination'
@@ -80,7 +80,7 @@ const loading = ref(false)
 const items = ref<any[]>([])
 const { currentPage, pageSize, total, paginationLayout, handleCurrentChange, handleSizeChange } = usePagination(fetchData)
 
-const filters = reactive({ app_id: null as number | null, env_id: null as number | null, status: '' })
+const filters = reactive({ app_name: '' as string, env_id: null as number | null, status: '' })
 
 const appList = ref<any[]>([])
 const envList = ref<any[]>([])
@@ -117,7 +117,7 @@ async function fetchData(extra?: any) {
       page: extra?.page || currentPage.value,
       page_size: extra?.page_size || pageSize.value,
     }
-    if (filters.app_id) params.app_id = filters.app_id
+    if (filters.app_name) params.app_name = filters.app_name
     if (filters.env_id) params.env_id = filters.env_id
     if (filters.status) params.status = filters.status
     const res: any = await getDeployRecords(params)
@@ -141,7 +141,7 @@ function handleRowClick(row: any) {
   router.push(`/deploy/records/${row.id}`)
 }
 
-onMounted(() => {
+onActivated(() => {
   fetchData()
   fetchDropdowns()
 })

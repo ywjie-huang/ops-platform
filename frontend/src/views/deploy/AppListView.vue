@@ -40,7 +40,7 @@
           v-for="app in items"
           :key="app.id"
           class="app-card"
-          @click="$router.push(`/deploy/apps/${app.id}`)"
+          @click="$router.push(`/deploy/apps/${app.name}`)"
         >
           <div class="app-card-header">
             <span class="app-card-name">{{ app.name }}</span>
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { getDeployApps } from '@/api/deploy'
 import { usePagination } from '@/hooks/usePagination'
@@ -138,7 +138,7 @@ async function fetchData(extra?: any) {
   }
 }
 
-onMounted(fetchData)
+onActivated(fetchData)
 </script>
 
 <style scoped>

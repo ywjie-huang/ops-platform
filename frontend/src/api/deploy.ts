@@ -12,33 +12,33 @@ export function getDeployApps(params?: {
   return request.get('/deploy/apps', { params })
 }
 
-export function getDeployApp(id: number) {
-  return request.get(`/deploy/apps/${id}`)
+export function getDeployApp(name: string) {
+  return request.get(`/deploy/apps/${name}`)
 }
 
 export function createDeployApp(data: any) {
   return request.post('/deploy/apps', data)
 }
 
-export function updateDeployApp(id: number, data: any) {
-  return request.put(`/deploy/apps/${id}`, data)
+export function updateDeployApp(name: string, data: any) {
+  return request.put(`/deploy/apps/${name}`, data)
 }
 
-export function deleteDeployApp(id: number) {
-  return request.delete(`/deploy/apps/${id}`)
+export function deleteDeployApp(name: string) {
+  return request.delete(`/deploy/apps/${name}`)
 }
 
 // ── 构建产物（环境级别） ──
-export function uploadArtifact(appId: number, envId: number, file: File) {
+export function uploadArtifact(appName: string, envId: number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post(`/deploy/apps/${appId}/envs/${envId}/artifact`, formData, {
+  return request.post(`/deploy/apps/${appName}/envs/${envId}/artifact`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
 
-export function deleteArtifact(appId: number, envId: number) {
-  return request.delete(`/deploy/apps/${appId}/envs/${envId}/artifact`)
+export function deleteArtifact(appName: string, envId: number) {
+  return request.delete(`/deploy/apps/${appName}/envs/${envId}/artifact`)
 }
 
 // ── 环境列表 ──
@@ -47,20 +47,20 @@ export function getDeployEnvs() {
 }
 
 // ── 应用环境配置 ──
-export function getAppEnvs(appId: number) {
-  return request.get(`/deploy/apps/${appId}/envs`)
+export function getAppEnvs(appName: string) {
+  return request.get(`/deploy/apps/${appName}/envs`)
 }
 
-export function updateAppEnv(appId: number, envId: number, data: any) {
-  return request.put(`/deploy/apps/${appId}/envs/${envId}`, data)
+export function updateAppEnv(appName: string, envId: number, data: any) {
+  return request.put(`/deploy/apps/${appName}/envs/${envId}`, data)
 }
 
-export function deleteAppEnv(appId: number, envId: number) {
-  return request.delete(`/deploy/apps/${appId}/envs/${envId}`)
+export function deleteAppEnv(appName: string, envId: number) {
+  return request.delete(`/deploy/apps/${appName}/envs/${envId}`)
 }
 
 // ── 部署执行 ──
-export function executeDeploy(data: { app_id: number; env_id: number; version?: string }) {
+export function executeDeploy(data: { app_name: string; env_id: number; version?: string }) {
   return request.post('/deploy/execute', data)
 }
 
@@ -69,7 +69,7 @@ export function cancelDeploy(recordId: number) {
 }
 
 export function getDeployRecords(params?: {
-  app_id?: number
+  app_name?: string
   env_id?: number
   status?: string
   page?: number
@@ -100,12 +100,12 @@ export function rejectDeploy(approvalId: number, comment?: string) {
 }
 
 // ── 配置管理 ──
-export function getAppConfigs(appId: number, envId?: number) {
-  return request.get(`/deploy/apps/${appId}/configs`, { params: envId ? { env_id: envId } : {} })
+export function getAppConfigs(appName: string, envId?: number) {
+  return request.get(`/deploy/apps/${appName}/configs`, { params: envId ? { env_id: envId } : {} })
 }
 
-export function createAppConfig(appId: number, data: any) {
-  return request.post(`/deploy/apps/${appId}/configs`, data)
+export function createAppConfig(appName: string, data: any) {
+  return request.post(`/deploy/apps/${appName}/configs`, data)
 }
 
 export function updateAppConfig(configId: number, data: any) {

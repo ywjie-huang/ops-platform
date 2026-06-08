@@ -54,6 +54,14 @@ def get_application(db: Session, app_id: int) -> DeployApplication | None:
     return db.scalar(stmt)
 
 
+def get_application_by_name(db: Session, name: str) -> DeployApplication | None:
+    """按应用名称获取应用详情。"""
+    stmt = select(DeployApplication).options(
+        selectinload(DeployApplication.creator),
+    ).where(DeployApplication.name == name)
+    return db.scalar(stmt)
+
+
 def create_application(
     db: Session,
     *,

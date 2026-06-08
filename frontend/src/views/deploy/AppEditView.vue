@@ -97,7 +97,7 @@ import { getDeployApp, updateDeployApp } from '@/api/deploy'
 
 const route = useRoute()
 const router = useRouter()
-const appId = ref(Number(route.params.id))
+const appName = ref(String(route.params.name))
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const submitting = ref(false)
@@ -132,7 +132,7 @@ const rules: FormRules = {
 async function fetchApp() {
   loading.value = true
   try {
-    const res: any = await getDeployApp(appId.value)
+    const res: any = await getDeployApp(appName.value)
     Object.assign(form, {
       name: res.data.name,
       description: res.data.description,
@@ -160,9 +160,9 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    await updateDeployApp(appId.value, form)
+    await updateDeployApp(appName.value, form)
     ElMessage.success('保存成功')
-    router.push(`/deploy/apps/${appId.value}`)
+    router.push(`/deploy/apps/${appName.value}`)
   } finally {
     submitting.value = false
   }

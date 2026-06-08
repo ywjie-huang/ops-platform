@@ -18,6 +18,7 @@ from app.services.deploy.applications import (
     create_application,
     delete_application,
     get_application,
+    get_application_by_name,
     list_applications,
     list_environments,
     update_application,
@@ -197,6 +198,17 @@ def _app_env_dict(ae) -> dict:
     }
 
 
+# ──────────────────────── 辅助函数 ────────────────────────
+
+
+def _resolve_app(db: Session, app_name: str):
+    """按名称解析应用，不存在则 404。"""
+    app = get_application_by_name(db, app_name)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+    return app
+
+
 # ──────────────────────── 应用 CRUD ────────────────────────
 
 
@@ -231,15 +243,13 @@ def api_list_apps(
     }
 
 
-@router.get("/apps/{app_id}")
+@router.get("/apps/{app_name}")
 def api_get_app(
-    app_id: int,
+    app_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    app = _resolve_app(db, app_name)
     return {"code": 0, "data": _app_dict(app)}
 
 
@@ -278,22 +288,20 @@ def api_create_app(
     return {"code": 0, "msg": "创建成功", "data": _app_dict(app)}
 
 
-@router.put("/apps/{app_id}")
+@router.put("/apps/{app_name}")
 def api_update_app(
-    app_id: int,
+    app_name: str,
     body: AppUpdate,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    app = _resolve_app(db, app_name)
 
     # 检查名称唯一性（排除自身）
     if body.name != app.name:
         existing = list_applications(db, keyword=body.name)
-        if any(a.name == body.name and a.id != app_id for a in existing):
+        if any(a.name == body.name and a.id != app.id for a in existing):
             raise HTTPException(status_code=400, detail="应用名称已存在")
 
     update_application(
@@ -319,17 +327,14 @@ def api_update_app(
     return {"code": 0, "msg": "更新成功", "data": _app_dict(app)}
 
 
-@router.delete("/apps/{app_id}")
+@router.delete("/apps/{app_name}")
 def api_delete_app(
-    app_id: int,
+    app_name: str,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.delete")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
-
+    app = _resolve_app(db, app_name)
     write_log(db, user=current_user, action="delete", target_type="deploy_app", target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
     delete_application(db, app)
     db.commit()
@@ -356,9 +361,9 @@ def _cleanup_old_artifacts(artifact_dir: str, keep: int = 10) -> None:
         pass
 
 
-@router.post("/apps/{app_id}/envs/{env_id}/artifact")
+@router.post("/apps/{app_name}/envs/{env_id}/artifact")
 def api_upload_artifact(
-    app_id: int,
+    app_name: str,
     env_id: int,
     file: UploadFile = File(...),
     request: Request = None,
@@ -366,15 +371,13 @@ def api_upload_artifact(
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
     """为指定环境上传构建产物（保留历史版本，每个环境最多 3 个）。"""
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
-    app_env = get_app_env_by_pair(db, app_id, env_id)
+    app = _resolve_app(db, app_name)
+    app_env = get_app_env_by_pair(db, app.id, env_id)
     if app_env is None:
         raise HTTPException(status_code=404, detail="未找到该环境配置")
 
     # 创建存储目录：{app_id}/{env_id}/
-    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app_id), str(env_id))
+    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app.id), str(env_id))
     os.makedirs(artifact_dir, exist_ok=True)
 
     # 保存新文件（时间戳前缀，避免覆盖旧版本）
@@ -407,16 +410,17 @@ def api_upload_artifact(
     return {"code": 0, "msg": "上传成功", "data": _app_env_dict(app_env)}
 
 
-@router.delete("/apps/{app_id}/envs/{env_id}/artifact")
+@router.delete("/apps/{app_name}/envs/{env_id}/artifact")
 def api_delete_artifact(
-    app_id: int,
+    app_name: str,
     env_id: int,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
     """删除指定环境的构建产物。"""
-    app_env = get_app_env_by_pair(db, app_id, env_id)
+    app = _resolve_app(db, app_name)
+    app_env = get_app_env_by_pair(db, app.id, env_id)
     if app_env is None:
         raise HTTPException(status_code=404, detail="未找到该环境配置")
 
@@ -432,7 +436,6 @@ def api_delete_artifact(
     app_env.artifact_uploaded_at = None
     db.commit()
 
-    app = get_application(db, app_id)
     env_name = app_env.environment.name if app_env.environment else str(env_id)
     write_log(db, user=current_user, action="delete_artifact", target_type="deploy_app_env",
               target_id=app_env.id, target_name=f"{app.name if app else ''}:{env_name}",
@@ -442,15 +445,16 @@ def api_delete_artifact(
     return {"code": 0, "msg": "已删除"}
 
 
-@router.get("/apps/{app_id}/envs/{env_id}/artifact/download")
+@router.get("/apps/{app_name}/envs/{env_id}/artifact/download")
 def api_download_artifact(
-    app_id: int,
+    app_name: str,
     env_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
     """下载指定环境的构建产物。"""
-    app_env = get_app_env_by_pair(db, app_id, env_id)
+    app = _resolve_app(db, app_name)
+    app_env = get_app_env_by_pair(db, app.id, env_id)
     if app_env is None:
         raise HTTPException(status_code=404, detail="未找到该环境配置")
 
@@ -479,34 +483,30 @@ def api_list_envs(
 # ──────────────────────── 应用环境配置 ────────────────────────
 
 
-@router.get("/apps/{app_id}/envs")
+@router.get("/apps/{app_name}/envs")
 def api_list_app_envs(
-    app_id: int,
+    app_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
-    envs = list_app_envs(db, app_id)
+    app = _resolve_app(db, app_name)
+    envs = list_app_envs(db, app.id)
     return {"code": 0, "data": [_app_env_dict(e) for e in envs]}
 
 
-@router.put("/apps/{app_id}/envs/{env_id}")
+@router.put("/apps/{app_name}/envs/{env_id}")
 def api_update_app_env(
-    app_id: int,
+    app_name: str,
     env_id: int,
     body: AppEnvUpdate,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    app = _resolve_app(db, app_name)
     app_env = upsert_app_env(
         db,
-        app_id=app_id,
+        app_id=app.id,
         env_id=env_id,
         enabled=body.enabled,
         ssh_asset_id=body.ssh_asset_id,
@@ -529,18 +529,16 @@ def api_update_app_env(
     return {"code": 0, "msg": "保存成功", "data": _app_env_dict(app_env)}
 
 
-@router.delete("/apps/{app_id}/envs/{env_id}")
+@router.delete("/apps/{app_name}/envs/{env_id}")
 def api_delete_app_env(
-    app_id: int,
+    app_name: str,
     env_id: int,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.update")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
-    app_env = get_app_env_by_pair(db, app_id, env_id)
+    app = _resolve_app(db, app_name)
+    app_env = get_app_env_by_pair(db, app.id, env_id)
     if app_env is None:
         raise HTTPException(status_code=404, detail="环境配置不存在")
     write_log(db, user=current_user, action="delete", target_type="deploy_app_env", target_id=app_env.id, target_name=f"{app.name}:{env_id}", ip_address=get_client_ip(request))
@@ -574,7 +572,7 @@ def _record_dict(r) -> dict:
 
 
 class DeployExecute(BaseModel):
-    app_id: int
+    app_name: str
     env_id: int
     version: str = ""
 
@@ -586,12 +584,10 @@ def api_execute_deploy(
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.execute")),
 ):
-    app = get_application(db, body.app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    app = _resolve_app(db, body.app_name)
 
     # 查找 app_env
-    app_env = get_app_env_by_pair(db, body.app_id, body.env_id)
+    app_env = get_app_env_by_pair(db, app.id, body.env_id)
     if app_env is None:
         raise HTTPException(status_code=400, detail="该应用未配置此环境，请先配置部署目标")
     if not app_env.enabled:
@@ -697,7 +693,7 @@ def api_rollback(
 
 @router.get("/records")
 def api_list_records(
-    app_id: int | None = None,
+    app_name: str = "",
     env_id: int | None = None,
     status: str = "",
     page: int = 1,
@@ -705,7 +701,12 @@ def api_list_records(
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
-    items = list_records(db, app_id=app_id, env_id=env_id, status=status)
+    resolved_app_id = None
+    if app_name:
+        app = get_application_by_name(db, app_name)
+        if app:
+            resolved_app_id = app.id
+    items = list_records(db, app_id=resolved_app_id, env_id=env_id, status=status)
     total = len(items)
     start = (max(page, 1) - 1) * page_size
     return {
@@ -896,34 +897,30 @@ class ConfigUpdate(BaseModel):
     description: str = ""
 
 
-@router.get("/apps/{app_id}/configs")
+@router.get("/apps/{app_name}/configs")
 def api_list_configs(
-    app_id: int,
+    app_name: str,
     env_id: int | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.view")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
-    items = list_configs(db, app_id=app_id, env_id=env_id)
+    app = _resolve_app(db, app_name)
+    items = list_configs(db, app_id=app.id, env_id=env_id)
     return {"code": 0, "data": [_config_dict(c) for c in items]}
 
 
-@router.post("/apps/{app_id}/configs")
+@router.post("/apps/{app_name}/configs")
 def api_create_config(
-    app_id: int,
+    app_name: str,
     body: ConfigCreate,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.config")),
 ):
-    app = get_application(db, app_id)
-    if app is None:
-        raise HTTPException(status_code=404, detail="应用不存在")
+    app = _resolve_app(db, app_name)
     cfg = create_config(
         db,
-        app_id=app_id,
+        app_id=app.id,
         env_id=body.env_id,
         key=body.key.strip(),
         value=body.value,
