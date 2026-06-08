@@ -38,6 +38,7 @@ def execute_ssh_deploy(
     deploy_path = app_env.deploy_path or f"/opt/apps/{app.name}"
     deploy_script = app_env.deploy_script or ""
     health_url = app.health_check_url or ""
+    health_port = app.health_check_port or 0
     health_timeout = app.health_check_timeout or 30
 
     # 构建 auth dict（使用资产自带的 SSH 凭据）
@@ -123,7 +124,20 @@ def execute_ssh_deploy(
             update_status(db, record, "cancelled")
             return
 
-        if health_url:
+        # TCP 端口检测（优先）
+        if health_port:
+            host_ip = asset.ip_address
+            append_log(db, record, f"健康检查: TCP {host_ip}:{health_port} (超时 {health_timeout}s)")
+            healthy = _check_port_via_ssh(ssh, host_ip, health_port, timeout=health_timeout)
+            if healthy:
+                append_log(db, record, f"端口 {health_port} 检测通过 ✓")
+            else:
+                update_status(db, record, "failed")
+                set_error(db, record, f"端口 {health_port} 检测超时 ({health_timeout}s)")
+                append_log(db, record, "健康检查超时，部署失败")
+                return
+        elif health_url:
+            # HTTP 健康检查（兼容旧配置）
             append_log(db, record, f"健康检查: {health_url} (超时 {health_timeout}s)")
             healthy = poll_health(health_url, timeout=health_timeout)
             if healthy:
@@ -131,7 +145,7 @@ def execute_ssh_deploy(
             else:
                 update_status(db, record, "failed")
                 set_error(db, record, f"健康检查超时 ({health_timeout}s)")
-                append_log(db, record, f"健康检查超时，部署失败")
+                append_log(db, record, "健康检查超时，部署失败")
                 return
 
         # ── 完成 ──
@@ -155,6 +169,27 @@ def execute_ssh_deploy(
                 ssh.close()
             except Exception:
                 pass
+
+
+def _check_port_via_ssh(ssh, host: str, port: int, timeout: int = 30) -> bool:
+    """通过已有 SSH 连接检测目标端口是否可达（在远程主机上执行端口检测）。"""
+    import time as _time
+
+    deadline = _time.time() + timeout
+    # 优先用 nc（netcat），回退到 bash /dev/tcp
+    check_cmd = (
+        f"for i in $(seq 1 {timeout}); do "
+        f"  nc -z -w1 {host} {port} 2>/dev/null && exit 0; "
+        f"  sleep 1; "
+        f"done; exit 1"
+    )
+
+    try:
+        stdin, stdout, stderr = ssh.exec_command(check_cmd, timeout=timeout + 5)
+        exit_code = stdout.channel.recv_exit_status()
+        return exit_code == 0
+    except Exception:
+        return False
 
 
 def _make_progress_cb(db: Session, record: DeployRecord):

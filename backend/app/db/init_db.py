@@ -212,6 +212,11 @@ def _ensure_deploy_artifact_columns() -> None:
 
                 cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
 
+                cur.execute("SHOW COLUMNS FROM deploy_applications LIKE 'health_check_port'")
+                if cur.fetchone() is None:
+                    cur.execute("ALTER TABLE deploy_applications ADD COLUMN health_check_port INT NOT NULL DEFAULT 0")
+                    print('[init_db] Added health_check_port to deploy_applications')
+
             # deploy_app_envs: 环境级产物字段
             cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
             if cur.fetchone() is not None:

@@ -37,7 +37,8 @@ class DeployApplication(Base):
     jenkins_token: Mapped[str] = mapped_column(String(200), default="")
 
     # 健康检查
-    health_check_url: Mapped[str] = mapped_column(String(500), default="")
+    health_check_url: Mapped[str] = mapped_column(String(500), default="")    # HTTP 健康检查 URL（可选）
+    health_check_port: Mapped[int] = mapped_column(Integer, default=0)        # TCP 端口检测（0=不检测）
     health_check_timeout: Mapped[int] = mapped_column(Integer, default=30)    # 秒
 
     creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

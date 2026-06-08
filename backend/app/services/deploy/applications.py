@@ -78,6 +78,7 @@ def create_application(
     jenkins_job_name: str = "",
     jenkins_token: str = "",
     health_check_url: str = "",
+    health_check_port: int = 0,
     health_check_timeout: int = 30,
     creator_id: int | None = None,
 ) -> DeployApplication:
@@ -96,6 +97,7 @@ def create_application(
         jenkins_job_name=jenkins_job_name,
         jenkins_token=jenkins_token,
         health_check_url=health_check_url,
+        health_check_port=health_check_port,
         health_check_timeout=health_check_timeout,
         creator_id=creator_id,
     )
@@ -123,6 +125,7 @@ def update_application(
     jenkins_job_name: str = "",
     jenkins_token: str = "",
     health_check_url: str = "",
+    health_check_port: int = 0,
     health_check_timeout: int = 30,
 ) -> DeployApplication:
     """更新应用信息。"""
@@ -140,6 +143,7 @@ def update_application(
     app.jenkins_job_name = jenkins_job_name
     app.jenkins_token = jenkins_token
     app.health_check_url = health_check_url
+    app.health_check_port = health_check_port
     app.health_check_timeout = health_check_timeout
     app.updated_at = datetime.now(CHINA_TZ)
     db.commit()

@@ -29,7 +29,11 @@
             <el-descriptions-item label="默认分支">{{ app.git_branch || '—' }}</el-descriptions-item>
             <el-descriptions-item label="构建模式">{{ app.build_mode === 'jenkins' ? 'Jenkins' : '文件上传' }}</el-descriptions-item>
             <el-descriptions-item label="构建命令/Job">{{ app.build_mode === 'jenkins' ? app.jenkins_job_name : (app.build_command || '—') }}</el-descriptions-item>
-            <el-descriptions-item label="健康检查">{{ app.health_check_url || '—' }}</el-descriptions-item>
+            <el-descriptions-item label="健康检查">
+              <template v-if="app.health_check_port">端口 {{ app.health_check_port }}（{{ app.health_check_timeout }}s 超时）</template>
+              <template v-else-if="app.health_check_url">{{ app.health_check_url }}</template>
+              <span v-else>未配置</span>
+            </el-descriptions-item>
             <el-descriptions-item label="创建人">{{ app.creator_name || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(app.created_at) }}</el-descriptions-item>
           </el-descriptions>
