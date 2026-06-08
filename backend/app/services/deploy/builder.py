@@ -1,4 +1,4 @@
-"""Build service — local (SSH) and Jenkins build modes."""
+"""Build service — upload (artifact distribution) and Jenkins build modes."""
 from __future__ import annotations
 
 import json
@@ -45,13 +45,39 @@ def execute_build(
     """执行构建，返回产物路径。None 表示无产物或构建失败。"""
     from app.services.deploy.records import append_log, is_cancelled, update_status
 
-    build_mode = app.build_mode or "local"
+    build_mode = app.build_mode or "upload"
+
+    if build_mode == "upload":
+        # 文件上传模式：产物已通过 API 上传到平台，直接返回路径
+        artifact = app.artifact_path or ""
+        if artifact and os.path.isfile(artifact):
+            append_log(db, record, f"构建模式: 文件上传")
+            append_log(db, record, f"产物: {app.artifact_filename} ({_format_size(app.artifact_size)})")
+            return artifact
+        else:
+            append_log(db, record, "构建模式: 文件上传")
+            append_log(db, record, "未找到构建产物，请先在应用详情页上传构建产物")
+            return None
+
     append_log(db, record, f"构建模式: {build_mode}")
 
     if build_mode == "jenkins":
         return _build_jenkins(db, record, app)
     else:
+        # deprecated: 旧 local 模式兼容
         return _build_local(db, record, app, app_env)
+
+
+def _format_size(size: int) -> str:
+    """格式化文件大小。"""
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    elif size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
 def _build_local(

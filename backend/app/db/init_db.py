@@ -190,184 +190,70 @@ def _ensure_docker_columns() -> None:
         conn.close()
 
 
-def _ensure_deploy_tables() -> None:
-    """确保应用发布相关表存在（兼容旧库）。"""
+def _ensure_deploy_artifact_columns() -> None:
+    """为 deploy_applications 表补充产物元数据字段，并将旧 local 模式迁移为 upload。"""
     try:
         conn = pymysql.connect(
             host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
         )
         with conn.cursor() as cur:
-            # deploy_applications
             cur.execute("SHOW TABLES LIKE 'deploy_applications'")
             if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_applications (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        name VARCHAR(100) NOT NULL,
-                        description TEXT NOT NULL,
-                        app_type VARCHAR(30) NOT NULL DEFAULT 'web',
-                        deploy_strategy VARCHAR(20) NOT NULL DEFAULT 'ssh',
-                        status VARCHAR(20) NOT NULL DEFAULT 'active',
-                        git_url VARCHAR(500) NOT NULL DEFAULT '',
-                        git_branch VARCHAR(100) NOT NULL DEFAULT 'main',
-                        build_mode VARCHAR(20) NOT NULL DEFAULT 'local',
-                        build_command TEXT NOT NULL,
-                        artifact_path VARCHAR(500) NOT NULL DEFAULT '',
-                        jenkins_job_name VARCHAR(200) NOT NULL DEFAULT '',
-                        jenkins_token VARCHAR(200) NOT NULL DEFAULT '',
-                        health_check_url VARCHAR(500) NOT NULL DEFAULT '',
-                        health_check_timeout INT NOT NULL DEFAULT 30,
-                        creator_id INT NULL,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY uq_deploy_app_name (name),
-                        INDEX idx_deploy_app_status (status),
-                        FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE SET NULL
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_applications table')
+                conn.commit()
+                return
 
-            # deploy_environments
-            cur.execute("SHOW TABLES LIKE 'deploy_environments'")
-            if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_environments (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        name VARCHAR(50) NOT NULL,
-                        description TEXT NOT NULL,
-                        approval_required TINYINT(1) NOT NULL DEFAULT 0,
-                        sort_order INT NOT NULL DEFAULT 0,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE KEY uq_deploy_env_name (name)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_environments table')
+            for col, col_def in [
+                ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
+                ('artifact_size', "INT NOT NULL DEFAULT 0"),
+                ('artifact_uploaded_at', 'DATETIME NULL'),
+            ]:
+                cur.execute(f"SHOW COLUMNS FROM deploy_applications LIKE '{col}'")
+                if cur.fetchone() is None:
+                    cur.execute(f"ALTER TABLE deploy_applications ADD COLUMN {col} {col_def}")
+                    print(f'[init_db] Added {col} to deploy_applications')
 
-            # deploy_app_envs
-            cur.execute("SHOW TABLES LIKE 'deploy_app_envs'")
-            if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_app_envs (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        app_id INT NOT NULL,
-                        env_id INT NOT NULL,
-                        enabled TINYINT(1) NOT NULL DEFAULT 1,
-                        ssh_asset_id INT NULL,
-                        deploy_path VARCHAR(500) NOT NULL DEFAULT '',
-                        deploy_script TEXT NOT NULL,
-                        docker_host_id INT NULL,
-                        docker_image VARCHAR(500) NOT NULL DEFAULT '',
-                        docker_container_name VARCHAR(200) NOT NULL DEFAULT '',
-                        docker_ports VARCHAR(500) NOT NULL DEFAULT '',
-                        docker_env_vars TEXT NOT NULL,
-                        docker_network VARCHAR(100) NOT NULL DEFAULT '',
-                        docker_extra_args TEXT NOT NULL,
-                        k8s_cluster_id INT NULL,
-                        k8s_namespace VARCHAR(100) NOT NULL DEFAULT 'default',
-                        k8s_deployment VARCHAR(200) NOT NULL DEFAULT '',
-                        k8s_container_name VARCHAR(200) NOT NULL DEFAULT '',
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        FOREIGN KEY (app_id) REFERENCES deploy_applications(id) ON DELETE CASCADE,
-                        FOREIGN KEY (env_id) REFERENCES deploy_environments(id) ON DELETE CASCADE,
-                        FOREIGN KEY (ssh_asset_id) REFERENCES assets(id) ON DELETE SET NULL,
-                        FOREIGN KEY (docker_host_id) REFERENCES container_clusters(id) ON DELETE SET NULL,
-                        FOREIGN KEY (k8s_cluster_id) REFERENCES container_clusters(id) ON DELETE SET NULL,
-                        UNIQUE KEY uq_deploy_app_env (app_id, env_id)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_app_envs table')
-
-            # deploy_records
-            cur.execute("SHOW TABLES LIKE 'deploy_records'")
-            if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_records (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        app_id INT NOT NULL,
-                        env_id INT NULL,
-                        app_env_id INT NULL,
-                        version VARCHAR(100) NOT NULL DEFAULT '',
-                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
-                        trigger_type VARCHAR(20) NOT NULL DEFAULT 'manual',
-                        trigger_user_id INT NULL,
-                        deploy_config TEXT NOT NULL,
-                        log TEXT NOT NULL,
-                        error_message TEXT NOT NULL,
-                        duration FLOAT NULL,
-                        rollback_from INT NULL,
-                        started_at DATETIME NULL,
-                        finished_at DATETIME NULL,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (app_id) REFERENCES deploy_applications(id) ON DELETE CASCADE,
-                        FOREIGN KEY (env_id) REFERENCES deploy_environments(id) ON DELETE SET NULL,
-                        FOREIGN KEY (app_env_id) REFERENCES deploy_app_envs(id) ON DELETE SET NULL,
-                        FOREIGN KEY (trigger_user_id) REFERENCES users(id) ON DELETE SET NULL,
-                        INDEX idx_deploy_record_app (app_id),
-                        INDEX idx_deploy_record_status (status)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_records table')
-
-            # deploy_approvals
-            cur.execute("SHOW TABLES LIKE 'deploy_approvals'")
-            if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_approvals (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        record_id INT NOT NULL,
-                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
-                        approver_id INT NULL,
-                        comment TEXT NOT NULL,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        resolved_at DATETIME NULL,
-                        FOREIGN KEY (record_id) REFERENCES deploy_records(id) ON DELETE CASCADE,
-                        FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
-                        INDEX idx_deploy_approval_status (status)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_approvals table')
-
-            # deploy_configs
-            cur.execute("SHOW TABLES LIKE 'deploy_configs'")
-            if cur.fetchone() is None:
-                cur.execute("""
-                    CREATE TABLE deploy_configs (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        app_id INT NOT NULL,
-                        env_id INT NULL,
-                        `key` VARCHAR(200) NOT NULL,
-                        value TEXT NOT NULL,
-                        is_encrypted TINYINT(1) NOT NULL DEFAULT 0,
-                        description TEXT NOT NULL,
-                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        FOREIGN KEY (app_id) REFERENCES deploy_applications(id) ON DELETE CASCADE,
-                        FOREIGN KEY (env_id) REFERENCES deploy_environments(id) ON DELETE CASCADE,
-                        INDEX idx_deploy_config_app (app_id)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """)
-                print('[init_db] Created deploy_configs table')
-
+            # 旧 local 模式迁移为 upload
+            cur.execute("UPDATE deploy_applications SET build_mode='upload' WHERE build_mode='local'")
             conn.commit()
     except Exception as e:
-        print(f'[init_db] _ensure_deploy_tables error: {e}')
+        print(f'[init_db] _ensure_deploy_artifact_columns error: {e}')
     finally:
         conn.close()
+
+
+def _ensure_deploy_tables() -> None:
+    """确保应用发布相关表存在（模型定义即真相，create_all 只建缺失的表）。"""
+    try:
+        from app.models.deploy import (
+            DeployApplication, DeployEnvironment, DeployAppEnv,
+            DeployRecord, DeployApproval, DeployConfig,
+        )
+        Base.metadata.create_all(bind=engine, tables=[
+            DeployEnvironment.__table__,
+            DeployApplication.__table__,
+            DeployAppEnv.__table__,
+            DeployRecord.__table__,
+            DeployApproval.__table__,
+            DeployConfig.__table__,
+        ])
+        print('[init_db] Verified deploy tables exist')
+    except Exception as e:
+        print(f'[init_db] _ensure_deploy_tables error: {e}')
 
 
 def _seed_deploy_environments(db: Session) -> None:
     """种子数据：3 个默认环境（dev / staging / prod）。"""
     env_specs = [
-        ("dev", "开发环境", False, 1),
-        ("staging", "预发布环境", False, 2),
-        ("prod", "生产环境", True, 3),
+        ("dev", "开发环境", "开发", False, 1),
+        ("staging", "预发布环境", "预发布", False, 2),
+        ("prod", "生产环境", "生产", True, 3),
     ]
-    for name, desc, approval, sort in env_specs:
+    for name, desc, display, approval, sort in env_specs:
         existing = db.scalar(select(DeployEnvironment).where(DeployEnvironment.name == name))
         if existing is None:
             db.add(DeployEnvironment(
                 name=name,
+                display_name=display,
                 description=desc,
                 approval_required=approval,
                 sort_order=sort,
@@ -382,6 +268,7 @@ def init_db() -> None:
     _ensure_container_token_column()
     _ensure_docker_columns()
     _ensure_deploy_tables()
+    _ensure_deploy_artifact_columns()
 
     with Session(engine) as db:
         _seed_permissions(db)

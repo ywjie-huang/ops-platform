@@ -28,6 +28,19 @@ export function deleteDeployApp(id: number) {
   return request.delete(`/deploy/apps/${id}`)
 }
 
+// ── 构建产物 ──
+export function uploadArtifact(appId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post(`/deploy/apps/${appId}/artifact`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export function deleteArtifact(appId: number) {
+  return request.delete(`/deploy/apps/${appId}/artifact`)
+}
+
 // ── 环境列表 ──
 export function getDeployEnvs() {
   return request.get('/deploy/envs')

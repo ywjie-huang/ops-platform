@@ -51,23 +51,15 @@
         <div class="form-section-title">构建配置</div>
         <el-form-item label="构建模式" prop="build_mode">
           <el-radio-group v-model="form.build_mode">
-            <el-radio-button value="local">本地构建</el-radio-button>
+            <el-radio-button value="upload">文件上传</el-radio-button>
             <el-radio-button value="jenkins">Jenkins</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
-        <!-- 本地构建 -->
-        <template v-if="form.build_mode === 'local'">
-          <el-form-item label="构建命令">
-            <el-input
-              v-model="form.build_command"
-              type="textarea"
-              :rows="3"
-              placeholder="如：npm install && npm run build"
-            />
-          </el-form-item>
-          <el-form-item label="产物路径">
-            <el-input v-model="form.artifact_path" placeholder="如：dist/ 或 target/app.jar" />
+        <!-- 文件上传模式 -->
+        <template v-if="form.build_mode === 'upload'">
+          <el-form-item label=" ">
+            <el-text type="info" size="small">创建后可在应用详情页上传构建产物（jar / war / zip 等），部署时自动分发到目标服务器。</el-text>
           </el-form-item>
         </template>
 
@@ -101,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createDeployApp } from '@/api/deploy'
@@ -117,7 +109,7 @@ const form = reactive({
   deploy_strategy: 'ssh',
   git_url: '',
   git_branch: 'main',
-  build_mode: 'local',
+  build_mode: 'upload',
   build_command: '',
   artifact_path: '',
   jenkins_job_name: '',
@@ -149,6 +141,26 @@ async function handleSubmit() {
     submitting.value = false
   }
 }
+
+// keep-alive: 每次进入页面重置表单
+onActivated(() => {
+  Object.assign(form, {
+    name: '',
+    description: '',
+    app_type: 'web',
+    deploy_strategy: 'ssh',
+    git_url: '',
+    git_branch: 'main',
+    build_mode: 'upload',
+    build_command: '',
+    artifact_path: '',
+    jenkins_job_name: '',
+    jenkins_token: '',
+    health_check_url: '',
+    health_check_timeout: 30,
+  })
+  formRef.value?.clearValidate()
+})
 </script>
 
 <style scoped>

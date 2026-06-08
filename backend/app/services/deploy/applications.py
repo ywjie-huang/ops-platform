@@ -30,6 +30,7 @@ def list_applications(
         stmt = stmt.where(
             or_(
                 DeployApplication.name.ilike(like_val),
+                DeployApplication.display_name.ilike(like_val),
                 DeployApplication.description.ilike(like_val),
                 DeployApplication.git_url.ilike(like_val),
             )
@@ -57,12 +58,13 @@ def create_application(
     db: Session,
     *,
     name: str,
+    display_name: str = "",
     description: str = "",
     app_type: str = "web",
     deploy_strategy: str = "ssh",
     git_url: str = "",
     git_branch: str = "main",
-    build_mode: str = "local",
+    build_mode: str = "upload",
     build_command: str = "",
     artifact_path: str = "",
     jenkins_job_name: str = "",
@@ -74,6 +76,7 @@ def create_application(
     """创建新应用。"""
     app = DeployApplication(
         name=name,
+        display_name=display_name,
         description=description,
         app_type=app_type,
         deploy_strategy=deploy_strategy,
@@ -99,13 +102,14 @@ def update_application(
     app: DeployApplication,
     *,
     name: str,
+    display_name: str = "",
     description: str = "",
     app_type: str = "web",
     deploy_strategy: str = "ssh",
     status: str = "active",
     git_url: str = "",
     git_branch: str = "main",
-    build_mode: str = "local",
+    build_mode: str = "upload",
     build_command: str = "",
     artifact_path: str = "",
     jenkins_job_name: str = "",
@@ -115,6 +119,7 @@ def update_application(
 ) -> DeployApplication:
     """更新应用信息。"""
     app.name = name
+    app.display_name = display_name
     app.description = description
     app.app_type = app_type
     app.deploy_strategy = deploy_strategy

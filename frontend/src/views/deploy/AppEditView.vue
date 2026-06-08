@@ -54,16 +54,13 @@
         <div class="form-section-title">构建配置</div>
         <el-form-item label="构建模式" prop="build_mode">
           <el-radio-group v-model="form.build_mode">
-            <el-radio-button value="local">本地构建</el-radio-button>
+            <el-radio-button value="upload">文件上传</el-radio-button>
             <el-radio-button value="jenkins">Jenkins</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <template v-if="form.build_mode === 'local'">
-          <el-form-item label="构建命令">
-            <el-input v-model="form.build_command" type="textarea" :rows="3" />
-          </el-form-item>
-          <el-form-item label="产物路径">
-            <el-input v-model="form.artifact_path" />
+        <template v-if="form.build_mode === 'upload'">
+          <el-form-item label=" ">
+            <el-text type="info" size="small">在应用详情页上传构建产物（jar / war / zip 等），部署时自动分发到目标服务器。</el-text>
           </el-form-item>
         </template>
         <template v-if="form.build_mode === 'jenkins'">
@@ -113,7 +110,7 @@ const form = reactive({
   status: 'active',
   git_url: '',
   git_branch: 'main',
-  build_mode: 'local',
+  build_mode: 'upload',
   build_command: '',
   artifact_path: '',
   jenkins_job_name: '',

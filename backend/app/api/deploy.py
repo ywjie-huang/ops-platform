@@ -1,13 +1,16 @@
 """应用发布 API。"""
 import json
+import os
 import threading
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
+from app.core.config import CHINA_TZ, DEPLOY_ARTIFACT_DIR
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -58,12 +61,13 @@ router = APIRouter(prefix="/deploy", tags=["应用发布"])
 
 class AppCreate(BaseModel):
     name: str
+    display_name: str = ""
     description: str = ""
     app_type: str = "web"
     deploy_strategy: str = "ssh"
     git_url: str = ""
     git_branch: str = "main"
-    build_mode: str = "local"
+    build_mode: str = "upload"
     build_command: str = ""
     artifact_path: str = ""
     jenkins_job_name: str = ""
@@ -74,13 +78,14 @@ class AppCreate(BaseModel):
 
 class AppUpdate(BaseModel):
     name: str
+    display_name: str = ""
     description: str = ""
     app_type: str = "web"
     deploy_strategy: str = "ssh"
     status: str = "active"
     git_url: str = ""
     git_branch: str = "main"
-    build_mode: str = "local"
+    build_mode: str = "upload"
     build_command: str = ""
     artifact_path: str = ""
     jenkins_job_name: str = ""
@@ -117,6 +122,7 @@ def _app_dict(app) -> dict:
     return {
         "id": app.id,
         "name": app.name,
+        "display_name": app.display_name,
         "description": app.description,
         "app_type": app.app_type,
         "deploy_strategy": app.deploy_strategy,
@@ -126,6 +132,9 @@ def _app_dict(app) -> dict:
         "build_mode": app.build_mode,
         "build_command": app.build_command,
         "artifact_path": app.artifact_path,
+        "artifact_filename": app.artifact_filename,
+        "artifact_size": app.artifact_size,
+        "artifact_uploaded_at": app.artifact_uploaded_at.isoformat() if app.artifact_uploaded_at else None,
         "jenkins_job_name": app.jenkins_job_name,
         "jenkins_token": app.jenkins_token,
         "health_check_url": app.health_check_url,
@@ -141,6 +150,7 @@ def _env_dict(env) -> dict:
     return {
         "id": env.id,
         "name": env.name,
+        "display_name": env.display_name,
         "description": env.description,
         "approval_required": env.approval_required,
         "sort_order": env.sort_order,
@@ -243,12 +253,13 @@ def api_create_app(
     app = create_application(
         db,
         name=body.name.strip(),
+        display_name=body.display_name.strip(),
         description=body.description.strip(),
         app_type=body.app_type.strip() or "web",
         deploy_strategy=body.deploy_strategy.strip() or "ssh",
         git_url=body.git_url.strip(),
         git_branch=body.git_branch.strip() or "main",
-        build_mode=body.build_mode.strip() or "local",
+        build_mode=body.build_mode.strip() or "upload",
         build_command=body.build_command.strip(),
         artifact_path=body.artifact_path.strip(),
         jenkins_job_name=body.jenkins_job_name.strip(),
@@ -283,13 +294,14 @@ def api_update_app(
     update_application(
         db, app,
         name=body.name.strip(),
+        display_name=body.display_name.strip(),
         description=body.description.strip(),
         app_type=body.app_type.strip() or "web",
         deploy_strategy=body.deploy_strategy.strip() or "ssh",
         status=body.status.strip() or "active",
         git_url=body.git_url.strip(),
         git_branch=body.git_branch.strip() or "main",
-        build_mode=body.build_mode.strip() or "local",
+        build_mode=body.build_mode.strip() or "upload",
         build_command=body.build_command.strip(),
         artifact_path=body.artifact_path.strip(),
         jenkins_job_name=body.jenkins_job_name.strip(),
@@ -317,6 +329,109 @@ def api_delete_app(
     delete_application(db, app)
     db.commit()
     return {"code": 0, "msg": "删除成功"}
+
+
+# ──────────────────────── 构建产物管理 ────────────────────────
+
+
+@router.post("/apps/{app_id}/artifact")
+def api_upload_artifact(
+    app_id: int,
+    file: UploadFile = File(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """上传构建产物。"""
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    # 创建存储目录
+    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app_id))
+    os.makedirs(artifact_dir, exist_ok=True)
+
+    # 删除旧文件（如果存在）
+    if app.artifact_path and os.path.isfile(app.artifact_path):
+        try:
+            os.remove(app.artifact_path)
+        except OSError:
+            pass
+
+    # 保存新文件
+    filename = file.filename or "artifact"
+    safe_filename = filename.replace("/", "_").replace("\\", "_")
+    file_path = os.path.join(artifact_dir, safe_filename)
+
+    content = file.file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # 更新应用元数据
+    app.artifact_path = file_path
+    app.artifact_filename = filename
+    app.artifact_size = len(content)
+    app.artifact_uploaded_at = datetime.now(CHINA_TZ)
+    db.commit()
+    db.refresh(app)
+
+    write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app",
+              target_id=app.id, target_name=f"{app.name}:{filename}", ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "上传成功", "data": _app_dict(app)}
+
+
+@router.delete("/apps/{app_id}/artifact")
+def api_delete_artifact(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """删除构建产物。"""
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    if app.artifact_path and os.path.isfile(app.artifact_path):
+        try:
+            os.remove(app.artifact_path)
+        except OSError:
+            pass
+
+    app.artifact_path = ""
+    app.artifact_filename = ""
+    app.artifact_size = 0
+    app.artifact_uploaded_at = None
+    db.commit()
+
+    write_log(db, user=current_user, action="delete_artifact", target_type="deploy_app",
+              target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "已删除"}
+
+
+@router.get("/apps/{app_id}/artifact/download")
+def api_download_artifact(
+    app_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """下载构建产物。"""
+    app = get_application(db, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    if not app.artifact_path or not os.path.isfile(app.artifact_path):
+        raise HTTPException(status_code=404, detail="暂无构建产物")
+
+    return FileResponse(
+        path=app.artifact_path,
+        filename=app.artifact_filename or os.path.basename(app.artifact_path),
+        media_type="application/octet-stream",
+    )
 
 
 # ──────────────────────── 环境列表 ────────────────────────
@@ -487,6 +602,7 @@ def api_execute_deploy(
     thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
     thread.start()
 
+    print(f"[deploy] 触发部署: record_id={record.id}, app={app.name}")
     return {"code": 0, "msg": "部署已触发", "data": _record_dict(record)}
 
 
@@ -620,7 +736,11 @@ def api_record_log_sse(
             import time
             time.sleep(1)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ──────────────────────── 审批 ────────────────────────

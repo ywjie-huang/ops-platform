@@ -14,6 +14,7 @@ class DeployApplication(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(100), default="")         # 显示名称
     description: Mapped[str] = mapped_column(Text, default="")
     app_type: Mapped[str] = mapped_column(String(30), default="web")          # web / api / worker / frontend / other
     deploy_strategy: Mapped[str] = mapped_column(String(20), default="ssh")   # ssh / docker / k8s
@@ -24,9 +25,12 @@ class DeployApplication(Base):
     git_branch: Mapped[str] = mapped_column(String(100), default="main")
 
     # 构建配置
-    build_mode: Mapped[str] = mapped_column(String(20), default="local")      # local / jenkins
+    build_mode: Mapped[str] = mapped_column(String(20), default="upload")     # upload / jenkins
     build_command: Mapped[str] = mapped_column(Text, default="")
-    artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 构建产物路径
+    artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 构建产物存储路径（平台本地）
+    artifact_filename: Mapped[str] = mapped_column(String(255), default="")   # 原始文件名
+    artifact_size: Mapped[int] = mapped_column(Integer, default=0)            # 文件大小（字节）
+    artifact_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 上传时间
 
     # Jenkins 配置（build_mode=jenkins 时使用）
     jenkins_job_name: Mapped[str] = mapped_column(String(200), default="")
@@ -52,6 +56,7 @@ class DeployEnvironment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(100), default="")         # 显示名称
     description: Mapped[str] = mapped_column(Text, default="")
     approval_required: Mapped[bool] = mapped_column(Boolean, default=False)    # 该环境是否需要审批
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

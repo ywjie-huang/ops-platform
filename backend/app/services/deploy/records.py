@@ -112,7 +112,9 @@ def update_status(db: Session, record: DeployRecord, status: str) -> None:
     if status in ("success", "failed", "cancelled"):
         record.finished_at = datetime.now(CHINA_TZ)
         if record.started_at:
-            record.duration = (record.finished_at - record.started_at).total_seconds()
+            started = record.started_at.replace(tzinfo=None) if record.started_at.tzinfo else record.started_at
+            finished = record.finished_at.replace(tzinfo=None) if record.finished_at.tzinfo else record.finished_at
+            record.duration = (finished - started).total_seconds()
     db.commit()
 
 
@@ -166,8 +168,12 @@ def execute_deploy(record_id: int) -> None:
                 return
 
             # ── 构建阶段 ──
-            build_mode = app.build_mode or "local"
-            has_build = (build_mode == "jenkins" and app.jenkins_job_name) or (build_mode == "local" and app.build_command)
+            build_mode = app.build_mode or "upload"
+            has_build = (
+                (build_mode == "upload" and app.artifact_path)
+                or (build_mode == "jenkins" and app.jenkins_job_name)
+                or (build_mode == "local" and app.build_command)
+            )
             if has_build:
                 update_status(db, record, "building")
                 append_log(db, record, "开始构建…")
@@ -176,11 +182,11 @@ def execute_deploy(record_id: int) -> None:
                 if is_cancelled(record.id):
                     update_status(db, record, "cancelled")
                     return
-                if artifact is None and build_mode == "jenkins":
-                    # Jenkins 构建失败则中止
+                if artifact is None and build_mode in ("jenkins", "upload"):
+                    # Jenkins 构建失败 / upload 模式无产物 → 中止
                     if record.status != "failed":
                         update_status(db, record, "failed")
-                        set_error(db, record, "构建失败")
+                        set_error(db, record, "构建失败" if build_mode == "jenkins" else "未上传构建产物")
                     return
                 # 将构建产物路径临时写入 app（不持久化）
                 if artifact:

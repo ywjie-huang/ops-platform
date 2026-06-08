@@ -4,6 +4,7 @@
       <h2 class="page-title">{{ app.name || '应用详情' }}</h2>
       <div class="header-actions">
         <el-button @click="$router.push(`/deploy/apps/${appId}/edit`)">编辑</el-button>
+        <el-button type="danger" @click="handleDelete">删除</el-button>
         <el-button @click="$router.push('/deploy/apps')">返回列表</el-button>
       </div>
     </div>
@@ -26,20 +27,96 @@
             <el-descriptions-item label="描述" :span="2">{{ app.description || '—' }}</el-descriptions-item>
             <el-descriptions-item label="Git 仓库">{{ app.git_url || '—' }}</el-descriptions-item>
             <el-descriptions-item label="默认分支">{{ app.git_branch || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="构建模式">{{ app.build_mode === 'jenkins' ? 'Jenkins' : '本地构建' }}</el-descriptions-item>
+            <el-descriptions-item label="构建模式">{{ app.build_mode === 'jenkins' ? 'Jenkins' : '文件上传' }}</el-descriptions-item>
             <el-descriptions-item label="构建命令/Job">{{ app.build_mode === 'jenkins' ? app.jenkins_job_name : (app.build_command || '—') }}</el-descriptions-item>
-            <el-descriptions-item label="产物路径">{{ app.artifact_path || '—' }}</el-descriptions-item>
+            <el-descriptions-item label="构建产物">
+              <template v-if="app.artifact_filename">
+                {{ app.artifact_filename }}
+                <el-text type="info" size="small" style="margin-left: 8px">({{ formatSize(app.artifact_size) }})</el-text>
+              </template>
+              <span v-else>未上传</span>
+            </el-descriptions-item>
             <el-descriptions-item label="健康检查">{{ app.health_check_url || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建人">{{ app.creator_name || '—' }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(app.created_at) }}</el-descriptions-item>
           </el-descriptions>
+
+          <!-- 构建产物管理 -->
+          <div v-if="app.build_mode !== 'jenkins'" class="artifact-section">
+            <div class="artifact-header">
+              <span class="artifact-title">构建产物</span>
+            </div>
+
+            <!-- 已有产物 -->
+            <div v-if="app.artifact_filename" class="artifact-info">
+              <div class="artifact-file">
+                <div class="artifact-file-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                </div>
+                <div class="artifact-file-info">
+                  <div class="artifact-file-name">{{ app.artifact_filename }}</div>
+                  <div class="artifact-file-meta">
+                    {{ formatSize(app.artifact_size) }}
+                    <span v-if="app.artifact_uploaded_at"> · {{ formatTime(app.artifact_uploaded_at) }} 上传</span>
+                  </div>
+                </div>
+                <div class="artifact-file-actions">
+                  <el-button size="small" type="primary" text @click="handleDownloadArtifact">
+                    <el-icon><Download /></el-icon>下载
+                  </el-button>
+                  <el-popconfirm title="确认删除当前构建产物？" @confirm="handleDeleteArtifact">
+                    <template #reference>
+                      <el-button size="small" type="danger" text>删除</el-button>
+                    </template>
+                  </el-popconfirm>
+                </div>
+              </div>
+              <div class="artifact-reupload">
+                <el-upload
+                  :show-file-list="false"
+                  :before-upload="handleUploadArtifact"
+                  accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
+                  :disabled="uploading"
+                >
+                  <el-button size="small" text type="primary" :loading="uploading">重新上传</el-button>
+                </el-upload>
+              </div>
+            </div>
+
+            <!-- 无产物：上传区域 -->
+            <div v-else class="artifact-upload">
+              <el-upload
+                drag
+                :show-file-list="false"
+                :before-upload="handleUploadArtifact"
+                accept=".jar,.war,.zip,.tar,.tar.gz,.tgz,.gz,.rpm,.deb,.whl,.pyz"
+                :disabled="uploading"
+              >
+                <div v-if="uploading" class="artifact-upload-loading">
+                  <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+                  <div>上传中…</div>
+                </div>
+                <div v-else class="artifact-upload-content">
+                  <el-icon :size="32" class="artifact-upload-icon"><UploadFilled /></el-icon>
+                  <div class="artifact-upload-text">将构建产物拖到此处，或<em>点击上传</em></div>
+                  <div class="artifact-upload-hint">支持 jar / war / zip / tar.gz 等格式</div>
+                </div>
+              </el-upload>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
 
       <!-- Tab 2: 环境管理 -->
       <el-tab-pane label="环境管理" name="envs">
         <div v-loading="envLoading">
-          <el-empty v-if="!envLoading && appEnvs.length === 0" description="暂无环境配置" />
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 16px">
+            <el-button type="primary" size="small" @click="openAddEnvDialog">+ 添加环境</el-button>
+          </div>
+          <el-empty v-if="!envLoading && appEnvs.length === 0" description="暂无环境配置，点击上方按钮添加" />
 
           <div v-for="ae in appEnvs" :key="ae.id" class="env-card">
             <div class="env-card-header">
@@ -153,6 +230,26 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 添加环境弹窗 -->
+    <el-dialog v-model="addEnvDialogVisible" title="添加环境" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="选择环境">
+          <el-select v-model="addEnvId" placeholder="请选择环境" style="width: 100%">
+            <el-option
+              v-for="e in availableEnvs"
+              :key="e.id"
+              :label="e.display_name || e.name"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addEnvDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAddEnv" :loading="addEnvLoading">确定</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 环境配置弹窗 -->
     <el-dialog v-model="envDialogVisible" :title="`配置 — ${editingEnv?.env_name || ''}`" width="680px" top="5vh">
@@ -279,11 +376,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onActivated } from 'vue'
+import { ref, reactive, computed, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Warning } from '@element-plus/icons-vue'
-import { getDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig } from '@/api/deploy'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Warning, Download, UploadFilled, Loading } from '@element-plus/icons-vue'
+import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -412,6 +509,37 @@ async function handleDeleteConfig(id: number) {
   fetchConfigs()
 }
 
+// ── 添加环境弹窗 ──
+const addEnvDialogVisible = ref(false)
+const addEnvId = ref<number | null>(null)
+const addEnvLoading = ref(false)
+
+const availableEnvs = computed(() => {
+  const existingIds = new Set(appEnvs.value.map((ae: any) => ae.env_id))
+  return envList.value.filter((e: any) => !existingIds.has(e.id))
+})
+
+function openAddEnvDialog() {
+  addEnvId.value = null
+  addEnvDialogVisible.value = true
+}
+
+async function handleAddEnv() {
+  if (!addEnvId.value) {
+    ElMessage.warning('请选择环境')
+    return
+  }
+  addEnvLoading.value = true
+  try {
+    await updateAppEnv(appId.value, addEnvId.value, { enabled: true })
+    ElMessage.success('添加成功')
+    addEnvDialogVisible.value = false
+    fetchEnvs()
+  } finally {
+    addEnvLoading.value = false
+  }
+}
+
 // ── 环境配置弹窗 ──
 const envDialogVisible = ref(false)
 const editingEnv = ref<any>(null)
@@ -468,6 +596,21 @@ async function handleSaveEnv() {
   }
 }
 
+async function handleDelete() {
+  try {
+    await ElMessageBox.confirm('确认删除此应用？删除后不可恢复。', '确认删除', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await deleteDeployApp(appId.value)
+    ElMessage.success('删除成功')
+    router.push('/deploy/apps')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '删除失败')
+  }
+}
+
 async function handleRemoveEnv(envId: number) {
   await deleteAppEnv(appId.value, envId)
   ElMessage.success('已移除')
@@ -494,6 +637,7 @@ async function handleDeploy() {
       env_id: deployingEnv.value.env_id,
       version: deployVersion.value,
     })
+    console.log('[deploy] API 返回:', res.data)
     ElMessage.success('部署已触发')
     deployDialogVisible.value = false
     // 跳转到部署详情页
@@ -501,6 +645,50 @@ async function handleDeploy() {
   } finally {
     deploying.value = false
   }
+}
+
+// ── 构建产物 ──
+const uploading = ref(false)
+
+async function handleUploadArtifact(file: File) {
+  uploading.value = true
+  try {
+    await uploadArtifact(appId.value, file)
+    ElMessage.success('上传成功')
+    fetchApp()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '上传失败')
+  } finally {
+    uploading.value = false
+  }
+  return false // 阻止 el-upload 默认上传
+}
+
+async function handleDeleteArtifact() {
+  await deleteArtifact(appId.value)
+  ElMessage.success('已删除')
+  fetchApp()
+}
+
+function handleDownloadArtifact() {
+  const token = localStorage.getItem('token')
+  const url = `/api/v1/deploy/apps/${appId.value}/artifact/download`
+  // 创建临时 a 标签下载
+  const a = document.createElement('a')
+  a.href = url
+  a.download = app.value.artifact_filename || 'artifact'
+  // 带 JWT 的请求需要用 fetch
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(res => res.blob())
+    .then(blob => {
+      const blobUrl = URL.createObjectURL(blob)
+      a.href = blobUrl
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    })
+    .catch(() => ElMessage.error('下载失败'))
 }
 
 // ── 辅助 ──
@@ -511,6 +699,14 @@ const strategyType = (v: string) => ({ ssh: '', docker: 'warning', k8s: 'danger'
 function formatTime(iso: string) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('zh-CN')
+}
+
+function formatSize(bytes: number) {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
 function formatDuration(sec: number) {
@@ -651,5 +847,122 @@ onActivated(() => {
   margin-left: 10px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 构建产物管理 */
+.artifact-section {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.artifact-header {
+  margin-bottom: 16px;
+}
+
+.artifact-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.artifact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifact-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.artifact-file-icon {
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.artifact-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.artifact-file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.artifact-file-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.artifact-file-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.artifact-reupload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifact-upload {
+  width: 100%;
+}
+
+.artifact-upload :deep(.el-upload) {
+  width: 100%;
+}
+
+.artifact-upload :deep(.el-upload-dragger) {
+  width: 100%;
+  padding: 32px 20px;
+}
+
+.artifact-upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifact-upload-icon {
+  color: var(--text-muted);
+}
+
+.artifact-upload-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.artifact-upload-text em {
+  color: var(--primary-color);
+  font-style: normal;
+}
+
+.artifact-upload-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.artifact-upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
 }
 </style>

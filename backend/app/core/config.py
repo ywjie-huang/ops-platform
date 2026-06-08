@@ -26,6 +26,9 @@ SECRET_KEY: Final = "dev-secret-key-change-me"
 DEMO_USERNAME: Final = "admin"
 DEMO_PASSWORD: Final = "admin123"
 
+# 构建产物存储目录
+DEPLOY_ARTIFACT_DIR: Final = DATA_DIR / "deploy_artifacts"
+
 # Prometheus 配置
 PROMETHEUS_URL: Final = "http://172.16.24.31:30001"
 
