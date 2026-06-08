@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime
 
@@ -166,6 +167,18 @@ def execute_deploy(record_id: int) -> None:
                 update_status(db, record, "failed")
                 set_error(db, record, "未找到环境配置，请先配置部署目标")
                 return
+
+            # ── 回滚：从快照恢复产物路径 ──
+            if record.trigger_type == "rollback" and record.deploy_config:
+                try:
+                    snapshot = json.loads(record.deploy_config)
+                    snap_artifact = snapshot.get("artifact_path", "")
+                    if snap_artifact and os.path.isfile(snap_artifact):
+                        app.artifact_path = snap_artifact
+                        app.artifact_filename = snapshot.get("artifact_filename", "")
+                        append_log(db, record, f"回滚: 使用原部署产物 {app.artifact_filename or snap_artifact}")
+                except (json.JSONDecodeError, KeyError):
+                    pass
 
             # ── 构建阶段 ──
             build_mode = app.build_mode or "upload"

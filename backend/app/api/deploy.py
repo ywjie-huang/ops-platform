@@ -567,13 +567,15 @@ def api_execute_deploy(
     if not app_env.enabled:
         raise HTTPException(status_code=400, detail="该环境已禁用")
 
-    # 构建配置快照
+    # 构建配置快照（包含产物信息，回滚时使用）
     config_snapshot = json.dumps({
         "app_id": app.id,
         "app_name": app.name,
         "deploy_strategy": app.deploy_strategy,
         "env_id": body.env_id,
         "app_env_id": app_env.id,
+        "artifact_path": app.artifact_path,
+        "artifact_filename": app.artifact_filename,
     }, ensure_ascii=False)
 
     record = create_record(
