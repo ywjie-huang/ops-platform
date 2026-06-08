@@ -86,7 +86,16 @@ def execute_ssh_deploy(
             remote_path = f"{deploy_path}/{remote_filename}"
             progress_cb = _make_progress_cb(db, record)
             sftp.put(artifact_path, remote_path, callback=progress_cb)
+            sftp.close()
             append_log(db, record, f"上传完成: {remote_path}")
+
+            # 创建软链接：原始文件名 → 带时间戳的文件
+            # 这样 restart.sh 引用原始文件名就能自动指向最新版本
+            original_filename = app_env.artifact_filename or ""
+            if original_filename and original_filename != remote_filename:
+                symlink_path = f"{deploy_path}/{original_filename}"
+                ssh_exec(ssh, f"ln -sf {remote_filename} {symlink_path}")
+                append_log(db, record, f"软链接: {original_filename} → {remote_filename}")
         elif artifact_path:
             append_log(db, record, f"产物路径不存在，跳过上传: {artifact_path}")
         else:
