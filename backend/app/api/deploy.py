@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required, get_client_ip
 from app.core.config import CHINA_TZ, DEPLOY_ARTIFACT_DIR
 from app.db.database import get_db
+from app.models.deploy import DeployApplication
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.deploy.applications import (
@@ -243,6 +244,41 @@ def api_list_apps(
     }
 
 
+@router.get("/apps/stats")
+def api_app_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """返回应用统计概览：总数、各状态数量、各类型数量、各策略数量。"""
+    from sqlalchemy import func
+
+    total = db.query(func.count(DeployApplication.id)).scalar() or 0
+    status_rows = (
+        db.query(DeployApplication.status, func.count(DeployApplication.id))
+        .group_by(DeployApplication.status)
+        .all()
+    )
+    type_rows = (
+        db.query(DeployApplication.app_type, func.count(DeployApplication.id))
+        .group_by(DeployApplication.app_type)
+        .all()
+    )
+    strategy_rows = (
+        db.query(DeployApplication.deploy_strategy, func.count(DeployApplication.id))
+        .group_by(DeployApplication.deploy_strategy)
+        .all()
+    )
+    return {
+        "code": 0,
+        "data": {
+            "total": total,
+            "by_status": {row[0]: row[1] for row in status_rows},
+            "by_type": {row[0]: row[1] for row in type_rows},
+            "by_strategy": {row[0]: row[1] for row in strategy_rows},
+        },
+    }
+
+
 @router.get("/apps/{app_name}")
 def api_get_app(
     app_name: str,
@@ -372,8 +408,11 @@ def api_upload_artifact(
     if app_env is None:
         raise HTTPException(status_code=404, detail="未找到该环境配置")
 
-    # 创建存储目录：{app_id}/{env_id}/
-    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), str(app.id), str(env_id))
+    # 创建存储目录：{app_name}/{env_name}/
+    env_name = app_env.environment.name if app_env.environment else str(env_id)
+    safe_app = app.name.replace("/", "_").replace("\\", "_").replace(" ", "_")
+    safe_env = env_name.replace("/", "_").replace("\\", "_").replace(" ", "_")
+    artifact_dir = os.path.join(str(DEPLOY_ARTIFACT_DIR), safe_app, safe_env)
     os.makedirs(artifact_dir, exist_ok=True)
 
     # 保存新文件（时间戳前缀，避免覆盖旧版本）
@@ -397,7 +436,6 @@ def api_upload_artifact(
     # 清理旧产物，保留最近 3 个
     _cleanup_old_artifacts(artifact_dir, keep=3)
 
-    env_name = app_env.environment.name if app_env.environment else str(env_id)
     write_log(db, user=current_user, action="upload_artifact", target_type="deploy_app_env",
               target_id=app_env.id, target_name=f"{app.name}:{env_name}:{filename}",
               ip_address=get_client_ip(request))
@@ -658,29 +696,40 @@ def api_rollback(
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.rollback")),
 ):
-    """回滚：基于历史记录的配置快照重新执行部署。"""
+    """回滚：找到该应用+环境的上一次成功部署，基于其快照重新执行。"""
     original = get_record(db, record_id)
     if original is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     if original.status not in ("success", "failed", "cancelled"):
         raise HTTPException(status_code=400, detail="只能回滚已完成的部署记录")
 
-    # 创建新记录，关联原记录
+    # 查找该应用+环境的上一次成功部署（排除当前记录）
+    from sqlalchemy import select
+    from app.models.deploy import DeployRecord as DR
+    prev_success = db.scalar(
+        select(DR)
+        .where(DR.app_id == original.app_id, DR.env_id == original.env_id, DR.status == "success", DR.id < record_id)
+        .order_by(DR.id.desc())
+    )
+    if prev_success is None:
+        raise HTTPException(status_code=400, detail="未找到可回滚的成功部署记录")
+
+    # 创建新记录，使用上一次成功部署的快照
     new_record = create_record(
         db,
         app_id=original.app_id,
         env_id=original.env_id,
         app_env_id=original.app_env_id,
-        version=original.version,
+        version=prev_success.version,
         trigger_type="rollback",
         trigger_user_id=current_user.id,
-        deploy_config=original.deploy_config,
+        deploy_config=prev_success.deploy_config,
     )
-    new_record.rollback_from = original.id
+    new_record.rollback_from = prev_success.id
     db.commit()
 
-    append_log(db, new_record, f"从部署 #{original.id} 回滚")
-    write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{original.id} → #{new_record.id}", ip_address=get_client_ip(request))
+    append_log(db, new_record, f"回滚到部署 #{prev_success.id}（从 #{record_id} 触发）")
+    write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{record_id} → #{prev_success.id} → #{new_record.id}", ip_address=get_client_ip(request))
     db.commit()
 
     # 异步线程执行部署
