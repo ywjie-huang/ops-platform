@@ -73,21 +73,31 @@ def execute_ssh_deploy(
         append_log(db, record, f"创建部署目录 {deploy_path}")
         ssh_exec(ssh, f"mkdir -p {deploy_path}")
 
-        # ── 3. 上传产物（如果本地有构建产物） ──
+        # ── 3. 上传产物（回滚时如果远程文件已存在则跳过） ──
         if is_cancelled(record.id):
             update_status(db, record, "cancelled")
             return
 
         artifact_path = app_env.artifact_path or ""
+        is_rollback = record.trigger_type == "rollback"
+
         if artifact_path and os.path.isfile(artifact_path):
-            append_log(db, record, f"上传产物 {artifact_path} → {deploy_path}/")
-            sftp = ssh.open_sftp()
             remote_filename = os.path.basename(artifact_path)
             remote_path = f"{deploy_path}/{remote_filename}"
-            progress_cb = _make_progress_cb(db, record)
-            sftp.put(artifact_path, remote_path, callback=progress_cb)
-            sftp.close()
-            append_log(db, record, f"上传完成: {remote_path}")
+
+            need_upload = True
+            if is_rollback:
+                # 回滚：检查远程是否已有该文件
+                check_exit, _, _ = ssh_exec(ssh, f"test -f {remote_path}")
+                if check_exit == 0:
+                    append_log(db, record, f"回滚: 远程文件已存在，跳过上传")
+                    need_upload = False
+                else:
+                    append_log(db, record, f"回滚: 远程文件不存在，重新上传")
+
+            if need_upload:
+                _do_upload(ssh, sftp, db, record, artifact_path, remote_path)
+                sftp = None  # _do_upload 内部关闭 sftp
 
             # 创建软链接：原始文件名 → 带时间戳的文件
             # 这样 restart.sh 引用原始文件名就能自动指向最新版本
@@ -178,6 +188,17 @@ def execute_ssh_deploy(
                 ssh.close()
             except Exception:
                 pass
+
+
+def _do_upload(ssh, sftp, db: Session, record: DeployRecord, local_path: str, remote_path: str) -> None:
+    """通过 SFTP 上传文件到远程主机。"""
+    append_log(db, record, f"上传产物 {local_path} → {remote_path}")
+    if sftp is None:
+        sftp = ssh.open_sftp()
+    progress_cb = _make_progress_cb(db, record)
+    sftp.put(local_path, remote_path, callback=progress_cb)
+    sftp.close()
+    append_log(db, record, f"上传完成: {remote_path}")
 
 
 def _check_port_via_ssh(ssh, host: str, port: int, timeout: int = 30) -> bool:
