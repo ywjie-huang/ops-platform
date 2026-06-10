@@ -200,7 +200,8 @@ def _build_jenkins(
 
             # 从 queue URL 获取 build number
             queue_url = resp.headers.get("Location", "")
-            append_log(db, record, "构建已触发，等待队列分配…")
+            append_log(db, record, f"构建已触发，等待队列分配…")
+            logger.info("Jenkins trigger response: status=%s, Location=%s", resp.status_code, queue_url)
 
     except Exception as e:
         append_log(db, record, f"Jenkins 触发异常: {e}")
@@ -212,8 +213,13 @@ def _build_jenkins(
 
     build_number = _wait_for_build_start(base_url, auth, job_name, queue_url, db, record, timeout=120)
     if build_number is None:
-        append_log(db, record, "Jenkins 构建未在超时时间内开始")
-        return None
+        # 尝试获取最新构建号作为 fallback
+        build_number = _get_latest_build_number(base_url, auth, job_name)
+        if build_number:
+            append_log(db, record, f"使用最新构建 #{build_number}")
+        else:
+            append_log(db, record, "Jenkins 构建未在超时时间内开始")
+            return None
 
     append_log(db, record, f"构建 #{build_number} 开始执行…")
 
@@ -245,28 +251,63 @@ def _wait_for_build_start(
     from app.services.deploy.records import append_log, is_cancelled
 
     deadline = time.time() + timeout
-    queue_path = queue_url.lstrip("/") if queue_url else ""
+    # 处理相对路径的 queue_url
+    if queue_url:
+        if queue_url.startswith("http"):
+            queue_api = f"{queue_url}api/json"
+        else:
+            queue_path = queue_url.lstrip("/")
+            queue_api = f"{base_url}/{queue_path}api/json"
+    else:
+        queue_api = ""
+
+    logger.info("Jenkins queue API: %s", queue_api)
 
     while time.time() < deadline:
         if is_cancelled(record.id):
             return None
 
         try:
-            if queue_path:
+            if queue_api:
                 with httpx.Client(timeout=_JENKINS_TIMEOUT, verify=False) as client:
-                    resp = client.get(f"{base_url}/{queue_path}api/json", auth=auth)
+                    resp = client.get(queue_api, auth=auth)
                     if resp.status_code == 200:
                         data = resp.json()
                         if data.get("cancelled"):
                             return None
                         executable = data.get("executable")
                         if executable:
-                            return executable.get("number")
-        except Exception:
-            pass
+                            build_num = executable.get("number")
+                            logger.info("Jenkins build started: #%s", build_num)
+                            return build_num
+                        # 显示队列状态
+                        why = data.get("why")
+                        if why:
+                            logger.debug("Jenkins queue why: %s", why)
+        except Exception as e:
+            logger.debug("Jenkins queue poll error: %s", e)
 
         time.sleep(3)
 
+    return None
+
+
+def _get_latest_build_number(
+    base_url: str,
+    auth: tuple | None,
+    job_name: str,
+) -> int | None:
+    """获取 Job 的最新构建号。"""
+    try:
+        with httpx.Client(timeout=_JENKINS_TIMEOUT, verify=False) as client:
+            resp = client.get(f"{base_url}/job/{job_name}/api/json?tree=lastBuild[number]", auth=auth)
+            if resp.status_code == 200:
+                data = resp.json()
+                last_build = data.get("lastBuild")
+                if last_build:
+                    return last_build.get("number")
+    except Exception as e:
+        logger.debug("Jenkins get latest build error: %s", e)
     return None
 
 
