@@ -12,6 +12,10 @@ export function getDeployApps(params?: {
   return request.get('/deploy/apps', { params })
 }
 
+export function getDeployAppStats() {
+  return request.get('/deploy/apps/stats')
+}
+
 export function getDeployApp(name: string) {
   return request.get(`/deploy/apps/${name}`)
 }
@@ -114,4 +118,47 @@ export function updateAppConfig(configId: number, data: any) {
 
 export function deleteAppConfig(configId: number) {
   return request.delete(`/deploy/configs/${configId}`)
+}
+
+// ── Webhook + 构建记录 ──
+export function getBuilds(appName: string, params?: {
+  status?: string
+  tag?: string
+  keyword?: string
+  page?: number
+  page_size?: number
+}) {
+  return request.get(`/deploy/apps/${appName}/builds`, { params })
+}
+
+export function getBuild(appName: string, buildNumber: string) {
+  return request.get(`/deploy/apps/${appName}/builds/${buildNumber}`)
+}
+
+export function deployBuild(appName: string, buildNumber: string, data: { app_name: string; env_id: number }) {
+  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/deploy`, data)
+}
+
+export function deleteBuild(appName: string, buildNumber: string) {
+  return request.delete(`/deploy/apps/${appName}/builds/${buildNumber}`)
+}
+
+export function updateBuildTag(appName: string, buildNumber: string, tag: string) {
+  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/tag`, { tag })
+}
+
+export function pinBuild(appName: string, buildNumber: string) {
+  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/pin`)
+}
+
+export function unpinBuild(appName: string, buildNumber: string) {
+  return request.delete(`/deploy/apps/${appName}/builds/${buildNumber}/pin`)
+}
+
+export function generateWebhookSecret(appName: string) {
+  return request.post(`/deploy/apps/${appName}/webhook-secret/generate`)
+}
+
+export function getWebhookUrl(appName: string) {
+  return request.get(`/deploy/apps/${appName}/webhook-url`)
 }

@@ -52,6 +52,7 @@
         <el-form-item label="构建模式" prop="build_mode">
           <el-radio-group v-model="form.build_mode">
             <el-radio-button value="upload">文件上传</el-radio-button>
+            <el-radio-button value="webhook">Webhook</el-radio-button>
             <el-radio-button value="jenkins">Jenkins</el-radio-button>
           </el-radio-group>
         </el-form-item>
@@ -60,6 +61,16 @@
         <template v-if="form.build_mode === 'upload'">
           <el-form-item label=" ">
             <el-text type="info" size="small">创建后可在应用详情页上传构建产物（jar / war / zip 等），部署时自动分发到目标服务器。</el-text>
+          </el-form-item>
+        </template>
+
+        <!-- Webhook 模式 -->
+        <template v-if="form.build_mode === 'webhook'">
+          <el-form-item label=" ">
+            <el-text type="info" size="small">
+              通过 Webhook 接收 CI/CD 系统（Jenkins、GitHub Actions、GitLab CI 等）推送的构建产物。
+              创建后可在应用详情页获取 Webhook URL 和密钥。
+            </el-text>
           </el-form-item>
         </template>
 

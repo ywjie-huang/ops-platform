@@ -36,6 +36,9 @@ class DeployApplication(Base):
     jenkins_job_name: Mapped[str] = mapped_column(String(200), default="")
     jenkins_token: Mapped[str] = mapped_column(String(200), default="")
 
+    # Webhook 配置（build_mode=webhook 时使用）
+    webhook_secret: Mapped[str] = mapped_column(String(64), default="")        # Webhook 签名密钥
+
     creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ), onupdate=lambda: datetime.now(CHINA_TZ))
@@ -200,6 +203,12 @@ class DeployBuild(Base):
     artifact_path: Mapped[str] = mapped_column(String(500), default="")        # 产物存储路径（平台本地）
     artifact_filename: Mapped[str] = mapped_column(String(255), default="")    # 原始文件名
     artifact_size: Mapped[int] = mapped_column(Integer, default=0)             # 文件大小（字节）
+
+    # 版本管理
+    tag: Mapped[str] = mapped_column(String(100), default="")                  # 版本标签（如 v1.0.0）
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)            # 永久保留，不参与自动清理
+    deployed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 最后部署时间
+    deploy_count: Mapped[int] = mapped_column(Integer, default=0)              # 部署次数
 
     # 元数据
     build_duration: Mapped[int] = mapped_column(Integer, default=0)            # 构建耗时（秒）

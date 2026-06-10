@@ -291,6 +291,8 @@ def cleanup_old_builds(
 ) -> int:
     """清理旧的构建记录和产物文件。
 
+    跳过 pinned（永久保留）和 tagged（有版本标签）的构建。
+
     Args:
         app_id: 应用 ID
         keep_count: 保留的构建数量
@@ -305,10 +307,15 @@ def cleanup_old_builds(
         DeployBuild.app_id == app_id,
     ).order_by(DeployBuild.created_at.desc()).all()
 
-    if len(builds) <= keep_count:
+    # 分离出需要保留的构建（pinned 或 tagged）
+    protected_builds = [b for b in builds if b.is_pinned or b.tag]
+    unprotected_builds = [b for b in builds if not b.is_pinned and not b.tag]
+
+    # 只清理 unprotected_builds 中超出 keep_count 的部分
+    if len(unprotected_builds) <= keep_count:
         return 0
 
-    to_delete = builds[keep_count:]
+    to_delete = unprotected_builds[keep_count:]
     deleted_count = 0
 
     for build in to_delete:
@@ -329,5 +336,5 @@ def cleanup_old_builds(
         deleted_count += 1
 
     db.commit()
-    logger.info("Cleaned up %d old builds for app %d", deleted_count, app_id)
+    logger.info("Cleaned up %d old builds for app %d (protected: %d)", deleted_count, app_id, len(protected_builds))
     return deleted_count

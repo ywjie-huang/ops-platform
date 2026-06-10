@@ -147,6 +147,7 @@ def _app_dict(app) -> dict:
         "artifact_uploaded_at": app.artifact_uploaded_at.isoformat() if app.artifact_uploaded_at else None,
         "jenkins_job_name": app.jenkins_job_name,
         "jenkins_token": app.jenkins_token,
+        "webhook_secret_configured": bool(app.webhook_secret),  # 只显示是否已配置，不暴露密钥
         "creator_id": app.creator_id,
         "creator_name": app.creator.username if app.creator else None,
         "created_at": app.created_at.isoformat(),
@@ -1042,6 +1043,10 @@ def _build_dict(b) -> dict:
         "status": b.status,
         "artifact_filename": b.artifact_filename,
         "artifact_size": b.artifact_size,
+        "tag": b.tag,
+        "is_pinned": b.is_pinned,
+        "deploy_count": b.deploy_count,
+        "deployed_at": b.deployed_at.isoformat() if b.deployed_at else None,
         "build_duration": b.build_duration,
         "created_at": b.created_at.isoformat(),
     }
@@ -1051,6 +1056,8 @@ def _build_dict(b) -> dict:
 def api_list_builds(
     app_name: str,
     status: str = "",
+    tag: str = "",
+    keyword: str = "",
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
@@ -1062,6 +1069,14 @@ def api_list_builds(
     query = db.query(DeployBuild).filter(DeployBuild.app_id == app.id)
     if status:
         query = query.filter(DeployBuild.status == status)
+    if tag:
+        query = query.filter(DeployBuild.tag == tag)
+    if keyword:
+        query = query.filter(
+            (DeployBuild.build_number.contains(keyword))
+            | (DeployBuild.commit.contains(keyword))
+            | (DeployBuild.tag.contains(keyword))
+        )
 
     total = query.count()
     builds = query.order_by(DeployBuild.created_at.desc()).offset(
@@ -1191,15 +1206,9 @@ def api_generate_webhook_secret(
 
     secret = generate_webhook_secret()
 
-    # 更新 build_config
-    try:
-        config = json.loads(app.build_config) if app.build_config else {}
-    except json.JSONDecodeError:
-        config = {}
-    config["secret"] = secret
-
+    # 更新 webhook_secret 字段
     from app.models.deploy import DeployApplication as DA
-    db.query(DA).filter(DA.id == app.id).update({"build_config": json.dumps(config)})
+    db.query(DA).filter(DA.id == app.id).update({"webhook_secret": secret})
     db.commit()
 
     write_log(db, user=current_user, action="generate_webhook_secret", target_type="deploy_app",
@@ -1274,13 +1283,8 @@ async def api_webhook_push(
     # 读取请求体用于签名验证
     body = await request.body()
 
-    # 验证签名
-    try:
-        config = json.loads(app.build_config) if app.build_config else {}
-    except json.JSONDecodeError:
-        config = {}
-
-    secret = config.get("secret", "")
+    # 验证签名（使用 webhook_secret 字段）
+    secret = app.webhook_secret or ""
     if secret and not verify_webhook_signature(body, x_webhook_signature or "", secret):
         raise HTTPException(status_code=401, detail="签名验证失败")
 
@@ -1386,14 +1390,9 @@ async def api_webhook_callback(
     # 读取请求体
     body = await request.body()
 
-    # 验证签名
+    # 验证签名（使用 webhook_secret 字段）
     x_webhook_signature = request.headers.get("X-Webhook-Signature", "")
-    try:
-        config = json.loads(app.build_config) if app.build_config else {}
-    except json.JSONDecodeError:
-        config = {}
-
-    secret = config.get("secret", "")
+    secret = app.webhook_secret or ""
     if secret and not verify_webhook_signature(body, x_webhook_signature, secret):
         raise HTTPException(status_code=401, detail="签名验证失败")
 
@@ -1488,3 +1487,94 @@ def api_delete_build(
     db.commit()
 
     return {"code": 0, "msg": "已删除"}
+
+
+class BuildTagUpdate(BaseModel):
+    tag: str
+
+
+@router.post("/apps/{app_name}/builds/{build_number}/tag")
+def api_update_build_tag(
+    app_name: str,
+    build_number: str,
+    body: BuildTagUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """为构建设置版本标签。"""
+    app = _resolve_app(db, app_name)
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在")
+
+    old_tag = build.tag
+    build.tag = body.tag.strip()
+    db.commit()
+
+    write_log(db, user=current_user, action="update_build_tag", target_type="deploy_build",
+              target_id=build.id, target_name=f"{app.name}:{build_number}:{old_tag}->{build.tag}",
+              ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "标签已更新", "data": _build_dict(build)}
+
+
+@router.post("/apps/{app_name}/builds/{build_number}/pin")
+def api_pin_build(
+    app_name: str,
+    build_number: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """固定构建（永久保留，不参与自动清理）。"""
+    app = _resolve_app(db, app_name)
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在")
+
+    build.is_pinned = True
+    db.commit()
+
+    write_log(db, user=current_user, action="pin_build", target_type="deploy_build",
+              target_id=build.id, target_name=f"{app.name}:{build_number}", ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "已固定", "data": _build_dict(build)}
+
+
+@router.delete("/apps/{app_name}/builds/{build_number}/pin")
+def api_unpin_build(
+    app_name: str,
+    build_number: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """取消固定构建。"""
+    app = _resolve_app(db, app_name)
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在")
+
+    build.is_pinned = False
+    db.commit()
+
+    write_log(db, user=current_user, action="unpin_build", target_type="deploy_build",
+              target_id=build.id, target_name=f"{app.name}:{build_number}", ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "已取消固定", "data": _build_dict(build)}
