@@ -273,7 +273,12 @@ def _build_jenkins(
         append_log(db, record, f"产物下载成功: {artifact_path} ({_format_size(artifact_size)})")
         return artifact_path
     except Exception as e:
-        append_log(db, record, f"产物下载失败: {e}")
+        error_msg = str(e)
+        if "404" in error_msg:
+            append_log(db, record, "产物下载失败: Jenkins Job 未配置归档产物（Archive the artifacts）")
+            append_log(db, record, "请在 Jenkins Job 配置中添加"构建后操作 → 归档产物"")
+        else:
+            append_log(db, record, f"产物下载失败: {error_msg}")
         logger.error("Jenkins artifact download failed: %s", e)
         return None
 
