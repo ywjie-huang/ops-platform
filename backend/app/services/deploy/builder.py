@@ -221,16 +221,21 @@ def _build_jenkins(
         append_log(db, record, f"Jenkins 触发异常: {e}")
         return None
 
-    # ── 2. 等待构建开始 ──
+    # ── 2. 获取构建号 ──
     if is_cancelled(record.id):
         return None
 
-    build_number = _wait_for_build_start(base_url, auth, job_name, queue_url, db, record, timeout=120)
+    build_number = None
+    if queue_url:
+        # 有队列 URL，等待构建开始
+        build_number = _wait_for_build_start(base_url, auth, job_name, queue_url, db, record, timeout=120)
+
     if build_number is None:
-        # 尝试获取最新构建号作为 fallback
+        # 没有队列 URL 或等待超时，获取最新构建号
+        time.sleep(2)  # 等待 Jenkins 更新
         build_number = _get_latest_build_number(base_url, auth, job_name)
         if build_number:
-            append_log(db, record, f"使用最新构建 #{build_number}")
+            append_log(db, record, f"获取到构建 #{build_number}")
         else:
             append_log(db, record, "Jenkins 构建未在超时时间内开始")
             return None
