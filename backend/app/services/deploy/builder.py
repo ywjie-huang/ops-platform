@@ -255,8 +255,27 @@ def _build_jenkins(
 
     append_log(db, record, f"Jenkins 构建 #{build_number} 成功 ✓")
 
-    # 返回产物路径（Jenkins 构建产物通常在 workspace 中）
-    return app.artifact_path or None
+    # ── 4. 从 Jenkins 下载产物 ──
+    if is_cancelled(record.id):
+        return None
+
+    append_log(db, record, "正在从 Jenkins 下载构建产物…")
+    try:
+        from app.services.deploy.webhook import download_from_jenkins
+        artifact_path, artifact_size = download_from_jenkins(
+            jenkins_url=base_url,
+            job_name=job_name,
+            build_number=build_number,
+            username=username,
+            token=token,
+            app_id=app.id,
+        )
+        append_log(db, record, f"产物下载成功: {artifact_path} ({_format_size(artifact_size)})")
+        return artifact_path
+    except Exception as e:
+        append_log(db, record, f"产物下载失败: {e}")
+        logger.error("Jenkins artifact download failed: %s", e)
+        return None
 
 
 def _wait_for_build_start(
