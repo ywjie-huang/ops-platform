@@ -108,6 +108,21 @@
             </div>
 
             <div class="env-card-body" :class="{ collapsed: collapsedEnvs.has(ae.env_id) }">
+              <!-- 构建信息提示 -->
+              <div class="env-build-info">
+                <div class="env-build-info-label">构建方式：</div>
+                <el-tag size="small" :type="buildModeTagType(app.build_mode)">{{ buildModeLabel(app.build_mode) }}</el-tag>
+                <template v-if="app.build_mode === 'jenkins'">
+                  <span class="env-build-detail">Job: {{ app.jenkins_job_name || '未配置' }}</span>
+                </template>
+                <template v-else-if="app.build_mode === 'webhook'">
+                  <span class="env-build-detail">通过 Webhook 接收构建产物</span>
+                </template>
+                <template v-else>
+                  <span class="env-build-detail">手动上传构建产物</span>
+                </template>
+              </div>
+
               <!-- SSH 策略 -->
               <template v-if="app.deploy_strategy === 'ssh'">
                 <div class="env-field"><span class="env-field-label">目标主机：</span>{{ ae.ssh_asset_name ? `${ae.ssh_asset_name} (${ae.ssh_asset_ip})` : '未配置' }}</div>
@@ -1364,6 +1379,10 @@ function buildModeLabel(mode: string) {
   return { upload: '文件上传', webhook: 'Webhook', jenkins: 'Jenkins' }[mode] || mode
 }
 
+function buildModeTagType(mode: string) {
+  return { upload: 'info', webhook: 'success', jenkins: 'warning' }[mode] || '' as any
+}
+
 function buildModeDetail(app: any) {
   if (app.build_mode === 'jenkins') return app.jenkins_job_name || '—'
   if (app.build_mode === 'webhook') return app.webhook_secret_configured ? '已配置密钥' : '未配置密钥'
@@ -1589,6 +1608,29 @@ onDeactivated(() => {
   font-size: 12px;
   color: var(--text-primary);
   word-break: break-all;
+}
+
+/* ── 构建信息提示 ── */
+.env-build-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+}
+
+.env-build-info-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.env-build-detail {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 /* ── 部署确认 ── */
