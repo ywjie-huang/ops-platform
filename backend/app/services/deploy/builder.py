@@ -187,13 +187,17 @@ def _build_jenkins(
 
     try:
         with httpx.Client(timeout=_JENKINS_TIMEOUT, verify=False) as client:
-            resp = client.post(trigger_url, auth=auth)
-            if resp.status_code not in (200, 201, 202):
-                # 尝试用 parameters 格式
-                resp = client.post(
-                    f"{base_url}/job/{job_name}/buildWithParameters",
-                    auth=auth,
-                )
+            # 使用 token 触发时用 GET，使用 BasicAuth 时用 POST
+            if app.jenkins_token:
+                resp = client.get(trigger_url, auth=auth)
+            else:
+                resp = client.post(trigger_url, auth=auth)
+                if resp.status_code not in (200, 201, 202):
+                    # 尝试用 parameters 格式
+                    resp = client.post(
+                        f"{base_url}/job/{job_name}/buildWithParameters",
+                        auth=auth,
+                    )
             if resp.status_code not in (200, 201, 202):
                 append_log(db, record, f"Jenkins 触发失败: HTTP {resp.status_code}")
                 return None
