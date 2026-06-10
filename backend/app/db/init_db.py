@@ -10,7 +10,7 @@ from app.core.config import DEMO_PASSWORD, DEMO_USERNAME, MYSQL_DATABASE, MYSQL_
 from app.db.database import Base, engine
 from app.models.alert import Alert
 from app.models.asset import Asset
-from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployConfig, DeployEnvironment, DeployRecord
+from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployBuild, DeployConfig, DeployEnvironment, DeployRecord
 from app.models.rbac import Permission, Role
 from app.models.ticket import Ticket
 from app.models.conversation import Conversation, Message
@@ -271,7 +271,7 @@ def _ensure_deploy_tables() -> None:
     try:
         from app.models.deploy import (
             DeployApplication, DeployEnvironment, DeployAppEnv,
-            DeployRecord, DeployApproval, DeployConfig,
+            DeployRecord, DeployApproval, DeployConfig, DeployBuild,
         )
         Base.metadata.create_all(bind=engine, tables=[
             DeployEnvironment.__table__,
@@ -280,10 +280,47 @@ def _ensure_deploy_tables() -> None:
             DeployRecord.__table__,
             DeployApproval.__table__,
             DeployConfig.__table__,
+            DeployBuild.__table__,
         ])
         print('[init_db] Verified deploy tables exist')
     except Exception as e:
         print(f'[init_db] _ensure_deploy_tables error: {e}')
+
+
+def _ensure_webhook_columns() -> None:
+    """为 deploy_applications 表补充 webhook_secret 字段，为 deploy_builds 表补充新字段（兼容旧库）。"""
+    try:
+        conn = pymysql.connect(
+            host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
+        )
+        with conn.cursor() as cur:
+            # deploy_applications: webhook_secret 字段
+            cur.execute("SHOW TABLES LIKE 'deploy_applications'")
+            if cur.fetchone() is not None:
+                cur.execute("SHOW COLUMNS FROM deploy_applications LIKE 'webhook_secret'")
+                if cur.fetchone() is None:
+                    cur.execute("ALTER TABLE deploy_applications ADD COLUMN webhook_secret VARCHAR(64) NOT NULL DEFAULT ''")
+                    print('[init_db] Added webhook_secret to deploy_applications')
+
+            # deploy_builds: 新字段
+            cur.execute("SHOW TABLES LIKE 'deploy_builds'")
+            if cur.fetchone() is not None:
+                for col, col_def in [
+                    ('tag', "VARCHAR(100) NOT NULL DEFAULT ''"),
+                    ('is_pinned', 'TINYINT(1) NOT NULL DEFAULT 0'),
+                    ('deployed_at', 'DATETIME NULL'),
+                    ('deploy_count', 'INT NOT NULL DEFAULT 0'),
+                ]:
+                    cur.execute(f"SHOW COLUMNS FROM deploy_builds LIKE '{col}'")
+                    if cur.fetchone() is None:
+                        cur.execute(f"ALTER TABLE deploy_builds ADD COLUMN {col} {col_def}")
+                        print(f'[init_db] Added {col} to deploy_builds')
+
+            conn.commit()
+    except Exception as e:
+        print(f'[init_db] _ensure_webhook_columns error: {e}')
+    finally:
+        conn.close()
 
 
 def _seed_deploy_environments(db: Session) -> None:
@@ -314,6 +351,7 @@ def init_db() -> None:
     _ensure_docker_columns()
     _ensure_deploy_tables()
     _ensure_deploy_artifact_columns()
+    _ensure_webhook_columns()
 
     with Session(engine) as db:
         _seed_permissions(db)
