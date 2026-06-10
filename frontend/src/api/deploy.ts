@@ -86,8 +86,12 @@ export function getDeployRecord(id: number) {
   return request.get(`/deploy/records/${id}`)
 }
 
-export function rollbackDeploy(recordId: number) {
-  return request.post(`/deploy/records/${recordId}/rollback`)
+export function rollbackDeploy(recordId: number, buildNumber?: string) {
+  return request.post(`/deploy/records/${recordId}/rollback`, buildNumber ? { build_number: buildNumber } : {})
+}
+
+export function getRollbackTargets(recordId: number) {
+  return request.get(`/deploy/records/${recordId}/rollback-targets`)
 }
 
 // ── 审批 ──
@@ -161,4 +165,16 @@ export function generateWebhookSecret(appName: string) {
 
 export function getWebhookUrl(appName: string) {
   return request.get(`/deploy/apps/${appName}/webhook-url`)
+}
+
+export function getCleanupConfig(appName: string) {
+  return request.get(`/deploy/apps/${appName}/cleanup-config`)
+}
+
+export function updateCleanupConfig(appName: string, data: { keep_count: number; keep_days: number }) {
+  return request.put(`/deploy/apps/${appName}/cleanup-config`, data)
+}
+
+export function cleanupBuilds(appName: string) {
+  return request.post(`/deploy/apps/${appName}/builds/cleanup`)
 }

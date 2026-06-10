@@ -199,9 +199,15 @@
               </el-select>
               <el-input v-model="buildSearch" placeholder="搜索 build_number / commit / tag" clearable size="small" style="width: 240px" />
             </div>
-            <el-button v-if="app.build_mode === 'webhook'" type="primary" size="small" @click="showWebhookConfig = true">
-              Webhook 配置
-            </el-button>
+            <div class="build-actions">
+              <el-button v-if="app.build_mode === 'webhook'" type="primary" size="small" @click="showWebhookConfig = true">
+                Webhook 配置
+              </el-button>
+              <el-button size="small" @click="showCleanupConfig = true">清理策略</el-button>
+              <el-popconfirm title="确认手动清理旧构建？将根据清理策略删除多余记录。" @confirm="handleCleanupBuilds">
+                <template #reference><el-button size="small" type="warning">手动清理</el-button></template>
+              </el-popconfirm>
+            </div>
           </div>
           <el-table :data="builds" stripe v-loading="buildsLoading">
             <el-table-column prop="build_number" label="Build #" width="140">
@@ -544,6 +550,36 @@
       </template>
     </el-dialog>
 
+    <!-- 清理策略配置弹窗 -->
+    <el-dialog v-model="showCleanupConfig" title="构建清理策略" width="480px" top="5vh" @open="fetchCleanupConfig" aria-labelledby="cleanup-config-title">
+      <div class="cleanup-config">
+        <el-form label-width="100px">
+          <el-form-item label="保留数量">
+            <el-input-number v-model="cleanupKeepCount" :min="1" :max="1000" />
+            <span class="form-hint">保留最近 N 个构建记录</span>
+          </el-form-item>
+          <el-form-item label="保留天数">
+            <el-input-number v-model="cleanupKeepDays" :min="1" :max="365" />
+            <span class="form-hint">超过此天数的记录将被清理</span>
+          </el-form-item>
+        </el-form>
+        <el-alert type="info" :closable="false" show-icon>
+          <template #title>清理规则</template>
+          <template #default>
+            <ul class="cleanup-rules">
+              <li>已固定（pinned）的构建不会被清理</li>
+              <li>有版本标签（tag）的构建不会被清理</li>
+              <li>清理策略为全局配置，对所有应用生效</li>
+            </ul>
+          </template>
+        </el-alert>
+      </div>
+      <template #footer>
+        <el-button @click="showCleanupConfig = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveCleanupConfig" :loading="cleanupSaving">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- Webhook 配置弹窗 -->
     <el-dialog v-model="showWebhookConfig" title="Webhook 配置" width="600px" top="5vh" @open="fetchWebhookConfig" aria-labelledby="webhook-config-title">
       <div class="webhook-config">
@@ -621,7 +657,7 @@ import { ref, reactive, computed, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning, Download, UploadFilled, Lock, ArrowRight } from '@element-plus/icons-vue'
-import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact, getBuilds, deployBuild, deleteBuild, pinBuild, unpinBuild, generateWebhookSecret, getWebhookUrl } from '@/api/deploy'
+import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact, getBuilds, deployBuild, deleteBuild, pinBuild, unpinBuild, generateWebhookSecret, getWebhookUrl, getCleanupConfig, updateCleanupConfig, cleanupBuilds } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -734,6 +770,12 @@ const showWebhookConfig = ref(false)
 const webhookUrl = ref('')
 const webhookSecret = ref('')
 
+// 清理策略配置
+const showCleanupConfig = ref(false)
+const cleanupKeepCount = ref(20)
+const cleanupKeepDays = ref(30)
+const cleanupSaving = ref(false)
+
 async function fetchBuilds() {
   buildsLoading.value = true
   try {
@@ -834,6 +876,43 @@ function copyToClipboard(text: string) {
   }).catch(() => {
     ElMessage.error('复制失败')
   })
+}
+
+// ── 清理策略配置 ──
+async function fetchCleanupConfig() {
+  try {
+    const res: any = await getCleanupConfig(appName.value)
+    cleanupKeepCount.value = res.data.keep_count
+    cleanupKeepDays.value = res.data.keep_days
+  } catch (e: any) {
+    ElMessage.error('获取清理配置失败')
+  }
+}
+
+async function handleSaveCleanupConfig() {
+  cleanupSaving.value = true
+  try {
+    await updateCleanupConfig(appName.value, {
+      keep_count: cleanupKeepCount.value,
+      keep_days: cleanupKeepDays.value,
+    })
+    ElMessage.success('配置已保存')
+    showCleanupConfig.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '保存失败')
+  } finally {
+    cleanupSaving.value = false
+  }
+}
+
+async function handleCleanupBuilds() {
+  try {
+    const res: any = await cleanupBuilds(appName.value)
+    ElMessage.success(res.msg || '清理完成')
+    fetchBuilds()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '清理失败')
+  }
 }
 
 // ── 配置管理（带搜索） ──
@@ -1666,6 +1745,28 @@ onActivated(() => {
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   color: var(--primary-color);
   min-width: 160px;
+}
+
+/* ── 清理策略 ── */
+.build-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cleanup-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cleanup-rules {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.cleanup-rules li {
+  margin-bottom: 4px;
 }
 
 @media (max-width: 768px) {

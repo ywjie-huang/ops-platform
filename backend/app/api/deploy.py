@@ -703,43 +703,90 @@ def api_cancel_deploy(
 def api_rollback(
     record_id: int,
     request: Request,
+    body: dict | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.rollback")),
 ):
-    """回滚：找到该应用+环境的上一次成功部署，基于其快照重新执行。"""
+    """回滚：基于上一次成功部署或指定构建版本重新执行。
+
+    Body (可选):
+        build_number: 指定回滚到的构建版本号（不指定则回滚到上一次成功部署）
+    """
     original = get_record(db, record_id)
     if original is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     if original.status not in ("success", "failed", "cancelled"):
         raise HTTPException(status_code=400, detail="只能回滚已完成的部署记录")
 
-    # 查找该应用+环境的上一次成功部署（排除当前记录）
-    from sqlalchemy import select
-    from app.models.deploy import DeployRecord as DR
-    prev_success = db.scalar(
-        select(DR)
-        .where(DR.app_id == original.app_id, DR.env_id == original.env_id, DR.status == "success", DR.id < record_id)
-        .order_by(DR.id.desc())
-    )
-    if prev_success is None:
-        raise HTTPException(status_code=400, detail="未找到可回滚的成功部署记录")
+    build_number = (body or {}).get("build_number")
 
-    # 创建新记录，使用上一次成功部署的快照
-    new_record = create_record(
-        db,
-        app_id=original.app_id,
-        env_id=original.env_id,
-        app_env_id=original.app_env_id,
-        version=prev_success.version,
-        trigger_type="rollback",
-        trigger_user_id=current_user.id,
-        deploy_config=prev_success.deploy_config,
-    )
-    new_record.rollback_from = prev_success.id
-    db.commit()
+    if build_number:
+        # 回滚到指定构建版本
+        build = db.query(DeployBuild).filter(
+            DeployBuild.app_id == original.app_id,
+            DeployBuild.build_number == build_number,
+            DeployBuild.status == "success",
+        ).first()
+        if build is None:
+            raise HTTPException(status_code=404, detail="指定的构建版本不存在或未成功")
 
-    append_log(db, new_record, f"回滚到部署 #{prev_success.id}（从 #{record_id} 触发）")
-    write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{record_id} → #{prev_success.id} → #{new_record.id}", ip_address=get_client_ip(request))
+        if not build.artifact_path or not os.path.isfile(build.artifact_path):
+            raise HTTPException(status_code=400, detail="构建产物文件不存在")
+
+        # 构建配置快照
+        config_snapshot = json.dumps({
+            "app_id": original.app_id,
+            "app_name": original.application.name if original.application else "",
+            "deploy_strategy": original.application.deploy_strategy if original.application else "ssh",
+            "env_id": original.env_id,
+            "app_env_id": original.app_env_id,
+            "artifact_path": build.artifact_path,
+            "artifact_filename": build.artifact_filename,
+            "build_number": build.build_number,
+        }, ensure_ascii=False)
+
+        new_record = create_record(
+            db,
+            app_id=original.app_id,
+            env_id=original.env_id,
+            app_env_id=original.app_env_id,
+            version=build_number,
+            trigger_type="rollback",
+            trigger_user_id=current_user.id,
+            deploy_config=config_snapshot,
+        )
+        new_record.rollback_from = record_id
+        db.commit()
+
+        append_log(db, new_record, f"回滚到构建版本 #{build_number}（从 #{record_id} 触发）")
+    else:
+        # 回滚到上一次成功部署（原有逻辑）
+        from sqlalchemy import select
+        from app.models.deploy import DeployRecord as DR
+        prev_success = db.scalar(
+            select(DR)
+            .where(DR.app_id == original.app_id, DR.env_id == original.env_id, DR.status == "success", DR.id < record_id)
+            .order_by(DR.id.desc())
+        )
+        if prev_success is None:
+            raise HTTPException(status_code=400, detail="未找到可回滚的成功部署记录")
+
+        new_record = create_record(
+            db,
+            app_id=original.app_id,
+            env_id=original.env_id,
+            app_env_id=original.app_env_id,
+            version=prev_success.version,
+            trigger_type="rollback",
+            trigger_user_id=current_user.id,
+            deploy_config=prev_success.deploy_config,
+        )
+        new_record.rollback_from = prev_success.id
+        db.commit()
+
+        append_log(db, new_record, f"回滚到部署 #{prev_success.id}（从 #{record_id} 触发）")
+
+    write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{record_id} → #{new_record.id}", ip_address=get_client_ip(request))
     db.commit()
 
     # 异步线程执行部署
@@ -747,6 +794,44 @@ def api_rollback(
     thread.start()
 
     return {"code": 0, "msg": "回滚已触发", "data": _record_dict(new_record)}
+
+
+@router.get("/records/{record_id}/rollback-targets")
+def api_rollback_targets(
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """获取可用的回滚目标（成功部署记录 + 成功构建版本）。"""
+    record = get_record(db, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+    # 获取该应用+环境的成功部署记录（最近 10 条）
+    from sqlalchemy import select
+    from app.models.deploy import DeployRecord as DR
+    prev_records = db.scalars(
+        select(DR)
+        .where(DR.app_id == record.app_id, DR.env_id == record.env_id, DR.status == "success", DR.id < record_id)
+        .order_by(DR.id.desc())
+        .limit(10)
+    ).all()
+
+    # 获取该应用的成功构建版本（最近 20 条）
+    builds = db.scalars(
+        select(DeployBuild)
+        .where(DeployBuild.app_id == record.app_id, DeployBuild.status == "success")
+        .order_by(DeployBuild.created_at.desc())
+        .limit(20)
+    ).all()
+
+    return {
+        "code": 0,
+        "data": {
+            "records": [_record_dict(r) for r in prev_records],
+            "builds": [_build_dict(b) for b in builds],
+        },
+    }
 
 
 @router.get("/records")
@@ -1578,3 +1663,116 @@ def api_unpin_build(
     db.commit()
 
     return {"code": 0, "msg": "已取消固定", "data": _build_dict(build)}
+
+
+# ──────────────────────── 构建清理策略 ────────────────────────
+
+
+@router.get("/apps/{app_name}/cleanup-config")
+def api_get_cleanup_config(
+    app_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """获取应用的构建清理策略配置。"""
+    app = _resolve_app(db, app_name)
+
+    # 从 system_config 读取全局配置
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import select
+
+    keep_count = 20  # 默认值
+    keep_days = 30   # 默认值
+
+    cfg_count = db.scalar(select(SystemConfig).where(SystemConfig.key == "deploy.keep_build_count"))
+    if cfg_count and cfg_count.value:
+        try:
+            keep_count = int(cfg_count.value)
+        except ValueError:
+            pass
+
+    cfg_days = db.scalar(select(SystemConfig).where(SystemConfig.key == "deploy.keep_build_days"))
+    if cfg_days and cfg_days.value:
+        try:
+            keep_days = int(cfg_days.value)
+        except ValueError:
+            pass
+
+    return {
+        "code": 0,
+        "data": {
+            "keep_count": keep_count,
+            "keep_days": keep_days,
+        },
+    }
+
+
+class CleanupConfigUpdate(BaseModel):
+    keep_count: int = 20
+    keep_days: int = 30
+
+
+@router.put("/apps/{app_name}/cleanup-config")
+def api_update_cleanup_config(
+    app_name: str,
+    body: CleanupConfigUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """更新构建清理策略配置（全局配置）。"""
+    app = _resolve_app(db, app_name)
+
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import select
+
+    # 更新或创建配置
+    for key, value in [
+        ("deploy.keep_build_count", str(body.keep_count)),
+        ("deploy.keep_build_days", str(body.keep_days)),
+    ]:
+        cfg = db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+        if cfg:
+            cfg.value = value
+        else:
+            db.add(SystemConfig(key=key, value=value, description="构建清理策略配置"))
+
+    db.commit()
+
+    write_log(db, user=current_user, action="update_cleanup_config", target_type="deploy_app",
+              target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "配置已更新"}
+
+
+@router.post("/apps/{app_name}/builds/cleanup")
+def api_cleanup_builds(
+    app_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """手动触发构建清理。"""
+    app = _resolve_app(db, app_name)
+
+    # 读取配置
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import select
+
+    keep_count = 20
+    cfg = db.scalar(select(SystemConfig).where(SystemConfig.key == "deploy.keep_build_count"))
+    if cfg and cfg.value:
+        try:
+            keep_count = int(cfg.value)
+        except ValueError:
+            pass
+
+    # 执行清理
+    deleted = cleanup_old_builds(db, app.id, keep_count=keep_count)
+
+    write_log(db, user=current_user, action="cleanup_builds", target_type="deploy_app",
+              target_id=app.id, target_name=f"{app.name}:deleted={deleted}", ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": f"已清理 {deleted} 个构建记录"}

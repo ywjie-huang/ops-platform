@@ -56,6 +56,53 @@
         </div>
       </div>
     </div>
+
+    <!-- 回滚对话框 -->
+    <el-dialog v-model="rollbackDialogVisible" title="回滚部署" width="560px" top="5vh" aria-labelledby="rollback-dialog-title">
+      <div v-loading="loadingTargets" class="rollback-content">
+        <p class="rollback-hint">选择回滚目标：</p>
+        <el-radio-group v-model="rollbackTarget" class="rollback-options">
+          <el-radio value="last" class="rollback-radio">
+            <div class="rollback-option">
+              <div class="rollback-option-title">回滚到上一次成功部署</div>
+              <div v-if="rollbackTargets.records.length > 0" class="rollback-option-desc">
+                部署 #{{ rollbackTargets.records[0].id }} · 版本 {{ rollbackTargets.records[0].version || '—' }} · {{ formatTime(rollbackTargets.records[0].created_at) }}
+              </div>
+              <div v-else class="rollback-option-desc">无可用的历史部署记录</div>
+            </div>
+          </el-radio>
+
+          <div class="rollback-divider">或者选择构建版本：</div>
+
+          <el-radio
+            v-for="build in rollbackTargets.builds"
+            :key="build.build_number"
+            :value="`build:${build.build_number}`"
+            class="rollback-radio"
+          >
+            <div class="rollback-option">
+              <div class="rollback-option-title">
+                构建 #{{ build.build_number }}
+                <el-tag v-if="build.tag" size="small" type="warning">{{ build.tag }}</el-tag>
+              </div>
+              <div class="rollback-option-desc">
+                <span v-if="build.commit">Commit: {{ build.commit.substring(0, 7) }} · </span>
+                <span v-if="build.branch">分支: {{ build.branch }} · </span>
+                {{ formatTime(build.created_at) }}
+              </div>
+            </div>
+          </el-radio>
+
+          <el-empty v-if="!loadingTargets && rollbackTargets.builds.length === 0" description="暂无可用的构建版本" :image-size="60" />
+        </el-radio-group>
+      </div>
+      <template #footer>
+        <el-button @click="rollbackDialogVisible = false">取消</el-button>
+        <el-button type="warning" @click="confirmRollback" :loading="rollingback" :disabled="rollbackTarget === 'last' && rollbackTargets.records.length === 0">
+          <el-icon><Refresh /></el-icon>确认回滚
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -64,7 +111,7 @@ import { ref, computed, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { getDeployRecord, cancelDeploy, rollbackDeploy } from '@/api/deploy'
+import { getDeployRecord, cancelDeploy, rollbackDeploy, getRollbackTargets } from '@/api/deploy'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,6 +121,12 @@ const cancelling = ref(false)
 const rollingback = ref(false)
 const record = ref<any>({})
 const logContainer = ref<HTMLElement | null>(null)
+
+// 回滚对话框
+const rollbackDialogVisible = ref(false)
+const rollbackTarget = ref('last')  // 'last' 或 'build:xxx'
+const rollbackTargets = ref<{ records: any[]; builds: any[] }>({ records: [], builds: [] })
+const loadingTargets = ref(false)
 
 const steps = [
   { key: 'pending', label: '待执行' },
@@ -176,11 +229,33 @@ async function handleCancel() {
 }
 
 async function handleRollback() {
+  // 打开回滚对话框
+  rollbackTarget.value = 'last'
+  rollbackDialogVisible.value = true
+  loadingTargets.value = true
+  try {
+    const res: any = await getRollbackTargets(recordId.value)
+    rollbackTargets.value = res.data
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '获取回滚目标失败')
+  } finally {
+    loadingTargets.value = false
+  }
+}
+
+async function confirmRollback() {
   rollingback.value = true
   try {
-    const res: any = await rollbackDeploy(recordId.value)
+    let buildNumber: string | undefined
+    if (rollbackTarget.value.startsWith('build:')) {
+      buildNumber = rollbackTarget.value.substring(6)
+    }
+    const res: any = await rollbackDeploy(recordId.value, buildNumber)
     ElMessage.success('回滚已触发')
+    rollbackDialogVisible.value = false
     router.push(`/deploy/records/${res.data.id}`)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '回滚失败')
   } finally {
     rollingback.value = false
   }
@@ -389,5 +464,61 @@ onDeactivated(() => {
   .detail-sidebar {
     width: 100%;
   }
+}
+
+/* ── 回滚对话框 ── */
+.rollback-content {
+  min-height: 200px;
+}
+
+.rollback-hint {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.rollback-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.rollback-radio {
+  width: 100%;
+  margin-right: 0;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--surface-color);
+}
+
+.rollback-radio:hover {
+  border-color: var(--primary-color);
+}
+
+.rollback-option {
+  margin-left: 8px;
+}
+
+.rollback-option-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rollback-option-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.rollback-divider {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
 }
 </style>
