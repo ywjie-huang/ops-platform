@@ -60,6 +60,8 @@ class LLMTestBody(BaseModel):
 
 class TestConnectionBody(BaseModel):
     url: str
+    username: str = ""
+    token: str = ""
 
 
 # ── 具体路由（必须在通配符路由之前） ──
@@ -174,7 +176,11 @@ def api_test_connection(
         raise HTTPException(status_code=400, detail=f"不支持的服务: {service}")
 
     try:
-        with httpx.Client(timeout=5, follow_redirects=False) as client:
+        auth = None
+        if service == "jenkins" and body.username and body.token:
+            auth = httpx.BasicAuth(body.username, body.token)
+
+        with httpx.Client(timeout=5, follow_redirects=False, auth=auth) as client:
             resp = client.get(test_url)
             if resp.status_code == 200:
                 return {"code": 0, "msg": f"{service} 连接成功", "data": {"url": url, "ok": True}}

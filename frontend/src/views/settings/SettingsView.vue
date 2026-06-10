@@ -136,7 +136,10 @@ async function handleTestJenkins() {
     return
   }
   try {
-    const res: any = await testConnection('jenkins', jenkinsConfig.url.trim())
+    const res: any = await testConnection('jenkins', jenkinsConfig.url.trim(), {
+      username: jenkinsConfig.username.trim(),
+      token: jenkinsConfig.token.trim(),
+    })
     testResults['jenkins'] = res.data?.ok ?? false
     if (testResults['jenkins']) {
       ElMessage.success(res.msg)
