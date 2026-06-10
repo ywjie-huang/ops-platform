@@ -226,12 +226,14 @@ def _build_jenkins(
         return None
 
     build_number = None
+
+    # 有队列 URL 时等待构建开始
     if queue_url:
-        # 有队列 URL，等待构建开始
+        append_log(db, record, "等待队列分配…")
         build_number = _wait_for_build_start(base_url, auth, job_name, queue_url, db, record, timeout=120)
 
+    # 没有队列 URL 或等待超时，获取最新构建号
     if build_number is None:
-        # 没有队列 URL 或等待超时，获取最新构建号
         time.sleep(2)  # 等待 Jenkins 更新
         build_number = _get_latest_build_number(base_url, auth, job_name)
         if build_number:
