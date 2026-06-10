@@ -178,3 +178,9 @@ export function updateCleanupConfig(appName: string, data: { keep_count: number;
 export function cleanupBuilds(appName: string) {
   return request.post(`/deploy/apps/${appName}/builds/cleanup`)
 }
+
+export function compareBuilds(appName: string, buildA: string, buildB: string) {
+  return request.get(`/deploy/apps/${appName}/builds/compare`, {
+    params: { build_a: buildA, build_b: buildB },
+  })
+}

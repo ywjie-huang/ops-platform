@@ -924,7 +924,7 @@ def api_record_log_sse(
 
 def _approval_dict(a) -> dict:
     rec = a.record
-    return {
+    result = {
         "id": a.id,
         "record_id": a.record_id,
         "status": a.status,
@@ -942,6 +942,33 @@ def _approval_dict(a) -> dict:
         "trigger_user_name": rec.trigger_user.username if rec and rec.trigger_user else None,
         "trigger_type": rec.trigger_type if rec else None,
     }
+
+    # 从 deploy_config 快照中提取构建信息
+    if rec and rec.deploy_config:
+        try:
+            config = json.loads(rec.deploy_config)
+            result["build_number"] = config.get("build_number", "")
+            result["artifact_filename"] = config.get("artifact_filename", "")
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # 如果有 build_number，尝试获取构建详情
+    build_number = result.get("build_number")
+    if build_number and rec:
+        from sqlalchemy import select
+        build = db.scalar(
+            select(DeployBuild).where(
+                DeployBuild.app_id == rec.app_id,
+                DeployBuild.build_number == build_number,
+            )
+        )
+        if build:
+            result["build_commit"] = build.commit
+            result["build_branch"] = build.branch
+            result["build_tag"] = build.tag
+            result["build_created_at"] = build.created_at.isoformat() if build.created_at else None
+
+    return result
 
 
 @router.get("/approvals")
@@ -1776,3 +1803,108 @@ def api_cleanup_builds(
     db.commit()
 
     return {"code": 0, "msg": f"已清理 {deleted} 个构建记录"}
+
+
+# ──────────────────────── 构建比较 ────────────────────────
+
+
+@router.get("/apps/{app_name}/builds/compare")
+def api_compare_builds(
+    app_name: str,
+    build_a: str,
+    build_b: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """比较两个构建版本的差异。
+
+    返回两个构建的详细信息，包括 commit、branch、tag、产物大小等。
+    """
+    app = _resolve_app(db, app_name)
+
+    # 获取两个构建记录
+    build1 = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_a,
+    ).first()
+
+    build2 = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_b,
+    ).first()
+
+    if build1 is None:
+        raise HTTPException(status_code=404, detail=f"构建版本 {build_a} 不存在")
+    if build2 is None:
+        raise HTTPException(status_code=404, detail=f"构建版本 {build_b} 不存在")
+
+    # 计算差异
+    size_diff = (build2.artifact_size or 0) - (build1.artifact_size or 0)
+    duration_diff = (build2.build_duration or 0) - (build1.build_duration or 0)
+
+    return {
+        "code": 0,
+        "data": {
+            "build_a": _build_dict(build1),
+            "build_b": _build_dict(build2),
+            "diff": {
+                "size_diff": size_diff,
+                "size_diff_formatted": format_size_diff(size_diff),
+                "duration_diff": duration_diff,
+                "duration_diff_formatted": format_duration_diff(duration_diff),
+                "same_commit": build1.commit == build2.commit and bool(build1.commit),
+                "same_branch": build1.branch == build2.branch and bool(build1.branch),
+                "time_diff": _calculate_time_diff(build1.created_at, build2.created_at),
+            },
+        },
+    }
+
+
+def format_size_diff(diff: int) -> str:
+    """格式化文件大小差异。"""
+    if diff == 0:
+        return "无变化"
+    prefix = "+" if diff > 0 else ""
+    abs_diff = abs(diff)
+    if abs_diff < 1024:
+        return f"{prefix}{diff} B"
+    elif abs_diff < 1024 * 1024:
+        return f"{prefix}{diff / 1024:.1f} KB"
+    elif abs_diff < 1024 * 1024 * 1024:
+        return f"{prefix}{diff / (1024 * 1024):.1f} MB"
+    else:
+        return f"{prefix}{diff / (1024 * 1024 * 1024):.1f} GB"
+
+
+def format_duration_diff(diff: int) -> str:
+    """格式化耗时差异。"""
+    if diff == 0:
+        return "无变化"
+    prefix = "+" if diff > 0 else ""
+    abs_diff = abs(diff)
+    if abs_diff < 60:
+        return f"{prefix}{diff}s"
+    else:
+        m = abs_diff // 60
+        s = abs_diff % 60
+        return f"{prefix}{m}m {s}s"
+
+
+def _calculate_time_diff(time1: datetime | None, time2: datetime | None) -> str:
+    """计算两个时间的差异。"""
+    if not time1 or not time2:
+        return ""
+
+    # 确保两个时间都是 naive 的
+    t1 = time1.replace(tzinfo=None) if time1.tzinfo else time1
+    t2 = time2.replace(tzinfo=None) if time2.tzinfo else time2
+
+    diff = abs((t2 - t1).total_seconds())
+    if diff < 60:
+        return f"{int(diff)} 秒"
+    elif diff < 3600:
+        return f"{int(diff // 60)} 分钟"
+    elif diff < 86400:
+        return f"{int(diff // 3600)} 小时"
+    else:
+        return f"{int(diff // 86400)} 天"

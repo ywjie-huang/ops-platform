@@ -13,14 +13,21 @@
             <el-tag size="small" effect="plain">{{ row.env_name || '—' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="version" label="版本" width="130">
+        <el-table-column label="版本/构建" min-width="180">
           <template #default="{ row }">
-            <code class="version-text">{{ row.version || '—' }}</code>
+            <div class="version-info">
+              <code v-if="row.version" class="version-text">{{ row.version }}</code>
+              <template v-if="row.build_number">
+                <el-tag v-if="row.build_tag" size="small" type="warning">{{ row.build_tag }}</el-tag>
+                <code v-if="row.build_commit" class="commit-text">{{ row.build_commit.substring(0, 7) }}</code>
+              </template>
+              <span v-if="!row.version && !row.build_number" class="text-muted">—</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="trigger_user_name" label="触发人" width="90" />
         <el-table-column prop="trigger_type" label="触发方式" width="90">
-          <template #default="{ row }">{{ { manual: '手动', rollback: '回滚' }[row.trigger_type] || row.trigger_type }}</template>
+          <template #default="{ row }">{{ { manual: '手动', rollback: '回滚', webhook: 'Webhook' }[row.trigger_type] || row.trigger_type }}</template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
@@ -135,12 +142,32 @@ onActivated(fetchData)
 </script>
 
 <style scoped>
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .version-text {
   background: var(--bg-color);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
   color: var(--text-primary);
+}
+
+.commit-text {
+  background: var(--bg-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text-primary);
+}
+
+.text-muted {
+  color: var(--text-muted);
 }
 
 .resolved-info {

@@ -203,6 +203,7 @@
               <el-button v-if="app.build_mode === 'webhook'" type="primary" size="small" @click="showWebhookConfig = true">
                 Webhook 配置
               </el-button>
+              <el-button size="small" @click="openCompareDialog">比较版本</el-button>
               <el-button size="small" @click="showCleanupConfig = true">清理策略</el-button>
               <el-popconfirm title="确认手动清理旧构建？将根据清理策略删除多余记录。" @confirm="handleCleanupBuilds">
                 <template #reference><el-button size="small" type="warning">手动清理</el-button></template>
@@ -550,6 +551,89 @@
       </template>
     </el-dialog>
 
+    <!-- 构建比较弹窗 -->
+    <el-dialog v-model="showCompareDialog" title="构建版本比较" width="680px" top="5vh" aria-labelledby="compare-dialog-title">
+      <div class="compare-content">
+        <div class="compare-selectors">
+          <el-select v-model="compareBuildA" placeholder="选择构建版本 A" filterable style="width: 260px">
+            <el-option
+              v-for="b in builds"
+              :key="b.build_number"
+              :label="`#${b.build_number}${b.tag ? ' [' + b.tag + ']' : ''}`"
+              :value="b.build_number"
+            />
+          </el-select>
+          <span class="compare-arrow">→</span>
+          <el-select v-model="compareBuildB" placeholder="选择构建版本 B" filterable style="width: 260px">
+            <el-option
+              v-for="b in builds"
+              :key="b.build_number"
+              :label="`#${b.build_number}${b.tag ? ' [' + b.tag + ']' : ''}`"
+              :value="b.build_number"
+            />
+          </el-select>
+          <el-button type="primary" @click="handleCompare" :loading="compareLoading">比较</el-button>
+        </div>
+
+        <div v-if="compareResult" class="compare-result">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="属性">
+              <div class="compare-label">版本 A: #{{ compareResult.build_a.build_number }}</div>
+            </el-descriptions-item>
+            <el-descriptions-item label="">
+              <div class="compare-label">版本 B: #{{ compareResult.build_b.build_number }}</div>
+            </el-descriptions-item>
+
+            <el-descriptions-item label="标签">
+              <el-tag v-if="compareResult.build_a.tag" size="small" type="warning">{{ compareResult.build_a.tag }}</el-tag>
+              <span v-else class="text-muted">—</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="标签">
+              <el-tag v-if="compareResult.build_b.tag" size="small" type="warning">{{ compareResult.build_b.tag }}</el-tag>
+              <span v-else class="text-muted">—</span>
+            </el-descriptions-item>
+
+            <el-descriptions-item label="Commit">
+              <code v-if="compareResult.build_a.commit" class="commit-text">{{ compareResult.build_a.commit.substring(0, 7) }}</code>
+              <span v-else class="text-muted">—</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="Commit">
+              <code v-if="compareResult.build_b.commit" class="commit-text">{{ compareResult.build_b.commit.substring(0, 7) }}</code>
+              <span v-else class="text-muted">—</span>
+            </el-descriptions-item>
+
+            <el-descriptions-item label="分支">{{ compareResult.build_a.branch || '—' }}</el-descriptions-item>
+            <el-descriptions-item label="分支">{{ compareResult.build_b.branch || '—' }}</el-descriptions-item>
+
+            <el-descriptions-item label="产物大小">{{ formatSize(compareResult.build_a.artifact_size) }}</el-descriptions-item>
+            <el-descriptions-item label="产物大小">
+              {{ formatSize(compareResult.build_b.artifact_size) }}
+              <el-tag :type="compareResult.diff.size_diff > 0 ? 'danger' : compareResult.diff.size_diff < 0 ? 'success' : 'info'" size="small" class="diff-tag">
+                {{ compareResult.diff.size_diff_formatted }}
+              </el-tag>
+            </el-descriptions-item>
+
+            <el-descriptions-item label="构建耗时">{{ formatDuration(compareResult.build_a.build_duration) }}</el-descriptions-item>
+            <el-descriptions-item label="构建耗时">
+              {{ formatDuration(compareResult.build_b.build_duration) }}
+              <el-tag :type="compareResult.diff.duration_diff > 0 ? 'warning' : compareResult.diff.duration_diff < 0 ? 'success' : 'info'" size="small" class="diff-tag">
+                {{ compareResult.diff.duration_diff_formatted }}
+              </el-tag>
+            </el-descriptions-item>
+
+            <el-descriptions-item label="创建时间">{{ formatTime(compareResult.build_a.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">
+              {{ formatTime(compareResult.build_b.created_at) }}
+              <span v-if="compareResult.diff.time_diff" class="time-diff">（{{ compareResult.diff.time_diff }}后）</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showCompareDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 清理策略配置弹窗 -->
     <el-dialog v-model="showCleanupConfig" title="构建清理策略" width="480px" top="5vh" @open="fetchCleanupConfig" aria-labelledby="cleanup-config-title">
       <div class="cleanup-config">
@@ -653,11 +737,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onActivated } from 'vue'
+import { ref, reactive, computed, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning, Download, UploadFilled, Lock, ArrowRight } from '@element-plus/icons-vue'
-import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact, getBuilds, deployBuild, deleteBuild, pinBuild, unpinBuild, generateWebhookSecret, getWebhookUrl, getCleanupConfig, updateCleanupConfig, cleanupBuilds } from '@/api/deploy'
+import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact, getBuilds, deployBuild, deleteBuild, pinBuild, unpinBuild, generateWebhookSecret, getWebhookUrl, getCleanupConfig, updateCleanupConfig, cleanupBuilds, compareBuilds } from '@/api/deploy'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -776,6 +860,13 @@ const cleanupKeepCount = ref(20)
 const cleanupKeepDays = ref(30)
 const cleanupSaving = ref(false)
 
+// 构建比较
+const showCompareDialog = ref(false)
+const compareBuildA = ref('')
+const compareBuildB = ref('')
+const compareResult = ref<any>(null)
+const compareLoading = ref(false)
+
 async function fetchBuilds() {
   buildsLoading.value = true
   try {
@@ -787,8 +878,37 @@ async function fetchBuilds() {
     })
     builds.value = res.data.items
     buildsTotal.value = res.data.total || 0
+
+    // 检查是否有 pending 状态的构建，如果有则启动轮询
+    const hasPending = builds.value.some((b: any) => b.status === 'pending')
+    if (hasPending) {
+      startBuildsPolling()
+    } else {
+      stopBuildsPolling()
+    }
   } finally {
     buildsLoading.value = false
+  }
+}
+
+// ── 构建状态轮询 ──
+let buildsPollTimer: ReturnType<typeof setInterval> | null = null
+
+function startBuildsPolling() {
+  if (buildsPollTimer) return // 已经在轮询
+  buildsPollTimer = setInterval(() => {
+    if (activeTab.value === 'builds') {
+      fetchBuilds()
+    } else {
+      stopBuildsPolling()
+    }
+  }, 8000) // 8 秒轮询一次
+}
+
+function stopBuildsPolling() {
+  if (buildsPollTimer) {
+    clearInterval(buildsPollTimer)
+    buildsPollTimer = null
   }
 }
 
@@ -912,6 +1032,34 @@ async function handleCleanupBuilds() {
     fetchBuilds()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '清理失败')
+  }
+}
+
+// ── 构建比较 ──
+function openCompareDialog() {
+  compareBuildA.value = ''
+  compareBuildB.value = ''
+  compareResult.value = null
+  showCompareDialog.value = true
+}
+
+async function handleCompare() {
+  if (!compareBuildA.value || !compareBuildB.value) {
+    ElMessage.warning('请选择两个构建版本')
+    return
+  }
+  if (compareBuildA.value === compareBuildB.value) {
+    ElMessage.warning('请选择不同的构建版本')
+    return
+  }
+  compareLoading.value = true
+  try {
+    const res: any = await compareBuilds(appName.value, compareBuildA.value, compareBuildB.value)
+    compareResult.value = res.data
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '比较失败')
+  } finally {
+    compareLoading.value = false
   }
 }
 
@@ -1249,6 +1397,10 @@ onActivated(() => {
   loadedTabs.value = new Set(['overview'])
   collapsedEnvs.value = new Set()
   fetchApp()
+})
+
+onDeactivated(() => {
+  stopBuildsPolling()
 })
 </script>
 
@@ -1767,6 +1919,44 @@ onActivated(() => {
 
 .cleanup-rules li {
   margin-bottom: 4px;
+}
+
+/* ── 构建比较 ── */
+.compare-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.compare-selectors {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.compare-arrow {
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.compare-result {
+  margin-top: 8px;
+}
+
+.compare-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diff-tag {
+  margin-left: 8px;
+}
+
+.time-diff {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 4px;
 }
 
 @media (max-width: 768px) {
