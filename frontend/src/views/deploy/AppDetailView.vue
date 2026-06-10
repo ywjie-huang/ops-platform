@@ -215,8 +215,8 @@
               <el-input v-model="buildSearch" placeholder="搜索 build_number / commit / tag" clearable size="small" style="width: 240px" />
             </div>
             <div class="build-actions">
-              <el-button v-if="app.build_mode === 'webhook'" type="primary" size="small" @click="showWebhookConfig = true">
-                Webhook 配置
+              <el-button v-if="app.build_mode === 'webhook' || app.build_mode === 'jenkins'" type="primary" size="small" @click="showWebhookConfig = true">
+                {{ app.build_mode === 'jenkins' ? 'Jenkins 配置' : 'Webhook 配置' }}
               </el-button>
               <el-button size="small" @click="openCompareDialog">比较版本</el-button>
               <el-button size="small" @click="showCleanupConfig = true">清理策略</el-button>
@@ -679,70 +679,114 @@
       </template>
     </el-dialog>
 
-    <!-- Webhook 配置弹窗 -->
-    <el-dialog v-model="showWebhookConfig" title="Webhook 配置" width="600px" top="5vh" @open="fetchWebhookConfig" aria-labelledby="webhook-config-title">
+    <!-- Webhook / Jenkins 配置弹窗 -->
+    <el-dialog v-model="showWebhookConfig" :title="app?.build_mode === 'jenkins' ? 'Jenkins 配置' : 'Webhook 配置'" width="600px" top="5vh" @open="fetchWebhookConfig" aria-labelledby="webhook-config-title">
       <div class="webhook-config">
-        <div class="webhook-section">
-          <div class="webhook-section-title">Webhook URL</div>
-          <div class="webhook-url-row">
-            <el-input :value="webhookUrl" readonly>
-              <template #append>
-                <el-button @click="copyToClipboard(webhookUrl)">复制</el-button>
-              </template>
-            </el-input>
+        <!-- Jenkins 模式：显示 Job 触发 URL -->
+        <template v-if="app?.build_mode === 'jenkins'">
+          <div class="webhook-section">
+            <div class="webhook-section-title">Job 名称</div>
+            <div class="webhook-url-row">
+              <el-input :value="app.jenkins_job_name || '未配置'" readonly />
+            </div>
+            <div class="webhook-hint">在应用设置中配置 Jenkins Job 名称</div>
           </div>
-          <div class="webhook-hint">将此 URL 配置到你的 CI/CD 系统中</div>
-        </div>
 
-        <div class="webhook-section">
-          <div class="webhook-section-title">签名密钥</div>
-          <div v-if="app.webhook_secret_configured" class="webhook-secret-info">
-            <el-tag type="success" size="small">已配置</el-tag>
-            <span class="webhook-hint">密钥已设置，用于验证 Webhook 请求的合法性</span>
+          <div class="webhook-section">
+            <div class="webhook-section-title">触发地址</div>
+            <div v-if="jenkinsJobUrl" class="webhook-url-row">
+              <el-input :value="jenkinsJobUrl" readonly>
+                <template #append>
+                  <el-button @click="copyToClipboard(jenkinsJobUrl)">复制</el-button>
+                </template>
+              </el-input>
+              <div class="webhook-hint">在 Jenkins Job 配置中添加"触发远程构建"，填入上面的 Token</div>
+            </div>
+            <div v-else class="webhook-hint" style="color: var(--danger-color)">
+              请先在配置中心设置 Jenkins 地址（设置 → Jenkins）
+            </div>
           </div>
-          <div v-else class="webhook-secret-info">
-            <el-tag type="warning" size="small">未配置</el-tag>
-            <span class="webhook-hint">建议生成密钥以确保安全</span>
-          </div>
-          <el-button type="primary" size="small" @click="handleGenerateSecret">
-            {{ app.webhook_secret_configured ? '重新生成密钥' : '生成密钥' }}
-          </el-button>
-          <div v-if="webhookSecret" class="webhook-new-secret">
-            <el-alert type="warning" :closable="false" show-icon>
-              <template #title>
-                新密钥已生成：<code>{{ webhookSecret }}</code>
-                <el-button size="small" text @click="copyToClipboard(webhookSecret)">复制</el-button>
-              </template>
-              <template #default>请妥善保存此密钥，关闭后将无法再次查看</template>
-            </el-alert>
-          </div>
-        </div>
 
-        <div class="webhook-section">
-          <div class="webhook-section-title">请求头说明</div>
-          <div class="webhook-headers">
-            <div class="webhook-header-item">
-              <code>X-Webhook-Signature</code>
-              <span>HMAC-SHA256 签名，格式 "sha256=xxx"</span>
-            </div>
-            <div class="webhook-header-item">
-              <code>X-Build-Number</code>
-              <span>构建号（可选，自动生成）</span>
-            </div>
-            <div class="webhook-header-item">
-              <code>X-Build-Status</code>
-              <span>构建状态：success / failed（默认 success）</span>
-            </div>
-            <div class="webhook-header-item">
-              <code>X-Commit</code>
-              <span>Git commit hash（可选）</span>
-            </div>
-            <div class="webhook-header-item">
-              <code>X-Branch</code>
-              <span>Git branch（可选）</span>
+          <div class="webhook-section">
+            <div class="webhook-section-title">使用说明</div>
+            <div class="webhook-headers">
+              <div class="webhook-header-item">
+                <span>1. 在 Jenkins 中创建 Job，配置构建触发 Token</span>
+              </div>
+              <div class="webhook-header-item">
+                <span>2. 构建完成后，Jenkins 需将产物通过 Webhook 推送到本平台</span>
+              </div>
+              <div class="webhook-header-item">
+                <span>3. 推送地址：<code>{{ webhookUrl }}</code></span>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
+
+        <!-- Webhook 模式：显示 Webhook URL -->
+        <template v-else>
+          <div class="webhook-section">
+            <div class="webhook-section-title">Webhook URL</div>
+            <div class="webhook-url-row">
+              <el-input :value="webhookUrl" readonly>
+                <template #append>
+                  <el-button @click="copyToClipboard(webhookUrl)">复制</el-button>
+                </template>
+              </el-input>
+            </div>
+            <div class="webhook-hint">将此 URL 配置到你的 CI/CD 系统中</div>
+          </div>
+
+          <div class="webhook-section">
+            <div class="webhook-section-title">签名密钥</div>
+            <div v-if="app.webhook_secret_configured" class="webhook-secret-info">
+              <el-tag type="success" size="small">已配置</el-tag>
+              <span class="webhook-hint">密钥已设置，用于验证 Webhook 请求的合法性</span>
+            </div>
+            <div v-else class="webhook-secret-info">
+              <el-tag type="warning" size="small">未配置</el-tag>
+              <span class="webhook-hint">建议生成密钥以确保安全</span>
+            </div>
+            <el-button type="primary" size="small" @click="handleGenerateSecret">
+              {{ app.webhook_secret_configured ? '重新生成密钥' : '生成密钥' }}
+            </el-button>
+            <div v-if="webhookSecret" class="webhook-new-secret">
+              <el-alert type="warning" :closable="false" show-icon>
+                <template #title>
+                  新密钥已生成：<code>{{ webhookSecret }}</code>
+                  <el-button size="small" text @click="copyToClipboard(webhookSecret)">复制</el-button>
+                </template>
+                <template #default>请妥善保存此密钥，关闭后将无法再次查看</template>
+              </el-alert>
+            </div>
+          </div>
+
+          <div class="webhook-section">
+            <div class="webhook-section-title">请求头说明</div>
+            <div class="webhook-headers">
+              <div class="webhook-header-item">
+                <code>X-Webhook-Signature</code>
+                <span>HMAC-SHA256 签名，格式 "sha256=xxx"</span>
+              </div>
+              <div class="webhook-header-item">
+                <code>X-Build-Number</code>
+                <span>构建号（可选，自动生成）</span>
+              </div>
+              <div class="webhook-header-item">
+                <code>X-Build-Status</code>
+                <span>构建状态：success / failed（默认 success）</span>
+              </div>
+              <div class="webhook-header-item">
+                <code>X-Commit</code>
+                <span>Git commit hash（可选）</span>
+              </div>
+              <div class="webhook-header-item">
+                <code>X-Branch</code>
+                <span>Git branch（可选）</span>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
       <template #footer>
         <el-button @click="showWebhookConfig = false">关闭</el-button>
@@ -757,6 +801,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Warning, Download, UploadFilled, Lock, ArrowRight } from '@element-plus/icons-vue'
 import { getDeployApp, deleteDeployApp, getAppEnvs, updateAppEnv, deleteAppEnv, executeDeploy, getDeployRecords, getDeployEnvs, getAppConfigs, createAppConfig, updateAppConfig, deleteAppConfig, uploadArtifact, deleteArtifact, getBuilds, deployBuild, deleteBuild, pinBuild, unpinBuild, generateWebhookSecret, getWebhookUrl, getCleanupConfig, updateCleanupConfig, cleanupBuilds, compareBuilds } from '@/api/deploy'
+import { getSetting } from '@/api/settings'
 import { getAssets } from '@/api/assets'
 import { getDockerHosts, getClusters } from '@/api/containers'
 
@@ -868,6 +913,12 @@ const buildSearch = ref('')
 const showWebhookConfig = ref(false)
 const webhookUrl = ref('')
 const webhookSecret = ref('')
+const jenkinsBaseUrl = ref('')
+
+const jenkinsJobUrl = computed(() => {
+  if (!jenkinsBaseUrl.value || !app.value?.jenkins_job_name) return ''
+  return `${jenkinsBaseUrl.value}/job/${app.value.jenkins_job_name}/build?token=${app.value.jenkins_token || ''}`
+})
 
 // 清理策略配置
 const showCleanupConfig = ref(false)
@@ -984,13 +1035,21 @@ async function togglePin(build: any) {
   }
 }
 
-// ── Webhook 配置 ──
+// ── Webhook / Jenkins 配置 ──
 async function fetchWebhookConfig() {
   try {
     const res: any = await getWebhookUrl(appName.value)
     webhookUrl.value = res.data.webhook_url
   } catch (e: any) {
     ElMessage.error('获取 Webhook URL 失败')
+  }
+  // Jenkins 模式下获取 Jenkins 地址
+  if (app.value?.build_mode === 'jenkins') {
+    try {
+      const res: any = await getSetting('jenkins_config')
+      const cfg = JSON.parse(res.data?.value || '{}')
+      jenkinsBaseUrl.value = (cfg.url || '').replace(/\/+$/, '')
+    } catch { /* ignore */ }
   }
 }
 

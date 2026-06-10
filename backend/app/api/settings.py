@@ -17,6 +17,7 @@ router = APIRouter(prefix="/settings", tags=["系统配置"])
 _CONFIG_SPECS: dict[str, str] = {
     "prometheus.url": "Prometheus 服务地址（例：http://172.16.24.31:30001）",
     "alertmanager.url": "Alertmanager 服务地址（例：http://172.16.24.31:30093）",
+    "jenkins_config": "Jenkins 配置（JSON：url, username, token）",
     "llm.base_url": "LLM API 地址（OpenAI 兼容，例：https://api.openai.com/v1）",
     "llm.api_key": "LLM API Key",
     "llm.model": "LLM 模型名称（例：gpt-4o、deepseek-chat、qwen-plus）",
@@ -167,6 +168,8 @@ def api_test_connection(
         test_url = f"{url.rstrip('/')}/api/v1/status/config"
     elif service == "alertmanager":
         test_url = f"{url.rstrip('/')}/api/v2/status"
+    elif service == "jenkins":
+        test_url = f"{url.rstrip('/')}/api/json"
     else:
         raise HTTPException(status_code=400, detail=f"不支持的服务: {service}")
 

@@ -28,6 +28,27 @@
           </el-tag>
         </el-form-item>
 
+        <el-divider content-position="left">Jenkins</el-divider>
+
+        <el-form-item label="Jenkins URL">
+          <el-input v-model="jenkinsConfig.url" placeholder="http://jenkins.example.com" />
+          <div class="form-tip">Jenkins 服务器地址，用于触发构建（如 Job 配置了 Authentication Token）</div>
+        </el-form-item>
+        <el-form-item label="用户名">
+          <el-input v-model="jenkinsConfig.username" placeholder="admin" />
+          <div class="form-tip">Jenkins API 用户名</div>
+        </el-form-item>
+        <el-form-item label="API Token">
+          <el-input v-model="jenkinsConfig.token" type="password" show-password placeholder="Jenkins API Token" />
+          <div class="form-tip">在 Jenkins → 用户设置 → API Token 中生成</div>
+        </el-form-item>
+        <el-form-item>
+          <el-button :loading="testing === 'jenkins'" @click="handleTestJenkins">测试连接</el-button>
+          <el-tag v-if="testResults['jenkins'] !== undefined" :type="testResults['jenkins'] ? 'success' : 'danger'" style="margin-left:8px">
+            {{ testResults['jenkins'] ? '连接成功' : '连接失败' }}
+          </el-tag>
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" :loading="saving" @click="handleSave">保存配置</el-button>
         </el-form-item>
@@ -45,7 +66,8 @@ const loading = ref(false)
 const saving = ref(false)
 const testing = ref('')
 const configs = reactive<Record<string, string>>({})
-const testResults = reactive<Record<string, boolean>>({})
+const testResults = reactive<Record<string, boolean | undefined>>({})
+const jenkinsConfig = reactive({ url: '', username: '', token: '' })
 
 async function fetchConfigs() {
   loading.value = true
@@ -54,6 +76,13 @@ async function fetchConfigs() {
     for (const item of res.data.items) {
       configs[item.key] = item.value
     }
+    // 解析 jenkins_config JSON
+    try {
+      const jc = JSON.parse(configs['jenkins_config'] || '{}')
+      jenkinsConfig.url = jc.url || ''
+      jenkinsConfig.username = jc.username || ''
+      jenkinsConfig.token = jc.token || ''
+    } catch { /* ignore */ }
   } finally { loading.value = false }
 }
 
@@ -61,8 +90,16 @@ async function handleSave() {
   saving.value = true
   try {
     for (const [key, value] of Object.entries(configs)) {
+      if (key === 'jenkins_config') continue // 单独处理
       await updateSetting(key, value)
     }
+    // 保存 Jenkins 配置
+    await updateSetting('jenkins_config', JSON.stringify({
+      url: jenkinsConfig.url.trim(),
+      username: jenkinsConfig.username.trim(),
+      token: jenkinsConfig.token.trim(),
+    }))
+    configs['jenkins_config'] = JSON.stringify({ url: jenkinsConfig.url, username: jenkinsConfig.username, token: jenkinsConfig.token })
     ElMessage.success('配置保存成功')
   } finally { saving.value = false }
 }
@@ -87,6 +124,27 @@ async function handleTest(service: string) {
     }
   } catch {
     testResults[service] = false
+  } finally { testing.value = '' }
+}
+
+async function handleTestJenkins() {
+  testing.value = 'jenkins'
+  testResults['jenkins'] = undefined
+  if (!jenkinsConfig.url.trim()) {
+    ElMessage.warning('请先输入 Jenkins URL')
+    testing.value = ''
+    return
+  }
+  try {
+    const res: any = await testConnection('jenkins', jenkinsConfig.url.trim())
+    testResults['jenkins'] = res.data?.ok ?? false
+    if (testResults['jenkins']) {
+      ElMessage.success(res.msg)
+    } else {
+      ElMessage.warning(res.msg)
+    }
+  } catch {
+    testResults['jenkins'] = false
   } finally { testing.value = '' }
 }
 
