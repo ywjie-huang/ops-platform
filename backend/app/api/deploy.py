@@ -4,7 +4,7 @@ import os
 import threading
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Header
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required, get_client_ip
 from app.core.config import CHINA_TZ, DEPLOY_ARTIFACT_DIR
 from app.db.database import get_db
-from app.models.deploy import DeployApplication
+from app.models.deploy import DeployApplication, DeployBuild
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.deploy.applications import (
@@ -53,6 +53,15 @@ from app.services.deploy.approvals import (
     get_approval,
     list_approvals,
     reject,
+)
+from app.services.deploy.webhook import (
+    verify_webhook_signature,
+    generate_webhook_secret,
+    save_artifact_file,
+    download_artifact_from_url,
+    create_build_record,
+    generate_build_number,
+    cleanup_old_builds,
 )
 
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
@@ -1017,3 +1026,465 @@ def api_delete_config(
     delete_config(db, cfg)
     db.commit()
     return {"code": 0, "msg": "删除成功"}
+
+
+# ──────────────────────── Webhook + 构建记录 ────────────────────────
+
+
+def _build_dict(b) -> dict:
+    return {
+        "id": b.id,
+        "app_id": b.app_id,
+        "build_number": b.build_number,
+        "source": b.source,
+        "commit": b.commit,
+        "branch": b.branch,
+        "status": b.status,
+        "artifact_filename": b.artifact_filename,
+        "artifact_size": b.artifact_size,
+        "build_duration": b.build_duration,
+        "created_at": b.created_at.isoformat(),
+    }
+
+
+@router.get("/apps/{app_name}/builds")
+def api_list_builds(
+    app_name: str,
+    status: str = "",
+    page: int = 1,
+    page_size: int = 20,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """获取应用的构建历史列表。"""
+    app = _resolve_app(db, app_name)
+
+    query = db.query(DeployBuild).filter(DeployBuild.app_id == app.id)
+    if status:
+        query = query.filter(DeployBuild.status == status)
+
+    total = query.count()
+    builds = query.order_by(DeployBuild.created_at.desc()).offset(
+        (max(page, 1) - 1) * page_size
+    ).limit(page_size).all()
+
+    return {
+        "code": 0,
+        "data": {
+            "items": [_build_dict(b) for b in builds],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        },
+    }
+
+
+@router.get("/apps/{app_name}/builds/{build_number}")
+def api_get_build(
+    app_name: str,
+    build_number: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """获取单个构建详情。"""
+    app = _resolve_app(db, app_name)
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在")
+
+    data = _build_dict(build)
+    data["build_log"] = build.build_log or ""
+    data["webhook_payload"] = build.webhook_payload or ""
+    return {"code": 0, "data": data}
+
+
+@router.post("/apps/{app_name}/builds/{build_number}/deploy")
+def api_deploy_build(
+    app_name: str,
+    build_number: str,
+    body: DeployExecute,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.execute")),
+):
+    """部署指定构建版本。"""
+    app = _resolve_app(db, app_name)
+
+    # 查找构建记录
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+        DeployBuild.status == "success",
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在或构建未成功")
+
+    if not build.artifact_path or not os.path.isfile(build.artifact_path):
+        raise HTTPException(status_code=400, detail="构建产物文件不存在")
+
+    # 查找 app_env
+    app_env = get_app_env_by_pair(db, app.id, body.env_id)
+    if app_env is None:
+        raise HTTPException(status_code=400, detail="该应用未配置此环境")
+    if not app_env.enabled:
+        raise HTTPException(status_code=400, detail="该环境已禁用")
+
+    # 构建配置快照
+    config_snapshot = json.dumps({
+        "app_id": app.id,
+        "app_name": app.name,
+        "deploy_strategy": app.deploy_strategy,
+        "env_id": body.env_id,
+        "app_env_id": app_env.id,
+        "artifact_path": build.artifact_path,
+        "artifact_filename": build.artifact_filename,
+        "build_number": build.build_number,
+    }, ensure_ascii=False)
+
+    record = create_record(
+        db,
+        app_id=app.id,
+        env_id=body.env_id,
+        app_env_id=app_env.id,
+        version=build_number,
+        trigger_type="manual",
+        trigger_user_id=current_user.id,
+        deploy_config=config_snapshot,
+    )
+    write_log(db, user=current_user, action="deploy_build", target_type="deploy_record",
+              target_id=record.id, target_name=f"{app.name}:{build_number}", ip_address=get_client_ip(request))
+
+    # 检查审批
+    env = app_env.environment
+    if env and env.approval_required:
+        approval = create_approval(db, record_id=record.id)
+        append_log(db, record, f"该环境需要审批，已创建审批记录 #{approval.id}")
+        db.commit()
+        return {"code": 0, "msg": "已提交审批", "data": _record_dict(record), "approval_id": approval.id}
+
+    db.commit()
+
+    # 异步执行
+    thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
+    thread.start()
+
+    return {"code": 0, "msg": "部署已触发", "data": _record_dict(record)}
+
+
+@router.post("/apps/{app_name}/webhook-secret/generate")
+def api_generate_webhook_secret(
+    app_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """为应用生成新的 Webhook 密钥。"""
+    app = _resolve_app(db, app_name)
+
+    if app.build_mode != "webhook":
+        raise HTTPException(status_code=400, detail="应用未配置为 Webhook 模式")
+
+    secret = generate_webhook_secret()
+
+    # 更新 build_config
+    try:
+        config = json.loads(app.build_config) if app.build_config else {}
+    except json.JSONDecodeError:
+        config = {}
+    config["secret"] = secret
+
+    from app.models.deploy import DeployApplication as DA
+    db.query(DA).filter(DA.id == app.id).update({"build_config": json.dumps(config)})
+    db.commit()
+
+    write_log(db, user=current_user, action="generate_webhook_secret", target_type="deploy_app",
+              target_id=app.id, target_name=app.name, ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "密钥已生成", "data": {"secret": secret}}
+
+
+@router.get("/apps/{app_name}/webhook-url")
+def api_get_webhook_url(
+    app_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("deploy.view")),
+):
+    """获取应用的 Webhook URL。"""
+    app = _resolve_app(db, app_name)
+
+    if app.build_mode != "webhook":
+        raise HTTPException(status_code=400, detail="应用未配置为 Webhook 模式")
+
+    # 从配置读取域名
+    from app.core.settings import get_setting
+    base_url = get_setting("system.base_url", "").rstrip("/")
+    if not base_url:
+        base_url = "http://localhost:8000"
+
+    webhook_url = f"{base_url}/api/v1/deploy/artifacts/webhook/{app.id}"
+    callback_url = f"{base_url}/api/v1/deploy/artifacts/callback/{app.id}"
+
+    return {
+        "code": 0,
+        "data": {
+            "webhook_url": webhook_url,
+            "callback_url": callback_url,
+        },
+    }
+
+
+@router.post("/artifacts/webhook/{app_id}")
+async def api_webhook_push(
+    app_id: int,
+    request: Request,
+    file: UploadFile = File(None),
+    x_webhook_signature: str = Header(None, alias="X-Webhook-Signature"),
+    x_build_number: str = Header(None, alias="X-Build-Number"),
+    x_build_status: str = Header(None, alias="X-Build-Status"),
+    x_commit: str = Header(None, alias="X-Commit"),
+    x_branch: str = Header(None, alias="X-Branch"),
+    db: Session = Depends(get_db),
+):
+    """Webhook 端点 — 接收 CI/CD 推送的构建产物。
+
+    Headers:
+        X-Webhook-Signature: HMAC-SHA256 签名，格式 "sha256=xxx"
+        X-Build-Number: 构建号（可选，自动生成）
+        X-Build-Status: 构建状态（success/failed，默认 success）
+        X-Commit: Git commit hash（可选）
+        X-Branch: Git branch（可选）
+
+    Body:
+        multipart/form-data 包含 file 字段，或 JSON 包含 artifact_url 字段
+    """
+    # 获取应用
+    app = db.query(DeployApplication).filter(DeployApplication.id == app_id).first()
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    if app.build_mode != "webhook":
+        raise HTTPException(status_code=400, detail="应用未配置为 Webhook 模式")
+
+    # 读取请求体用于签名验证
+    body = await request.body()
+
+    # 验证签名
+    try:
+        config = json.loads(app.build_config) if app.build_config else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    secret = config.get("secret", "")
+    if secret and not verify_webhook_signature(body, x_webhook_signature or "", secret):
+        raise HTTPException(status_code=401, detail="签名验证失败")
+
+    # 解析参数
+    build_number = x_build_number or generate_build_number()
+    build_status = x_build_status or "success"
+    commit = x_commit or ""
+    branch = x_branch or ""
+
+    if build_status == "failed":
+        # 构建失败，只记录状态
+        build = create_build_record(
+            db,
+            app_id=app_id,
+            build_number=build_number,
+            source="webhook",
+            artifact_path="",
+            artifact_filename="",
+            artifact_size=0,
+            commit=commit,
+            branch=branch,
+            status="failed",
+            webhook_payload=body.decode("utf-8", errors="replace"),
+        )
+        return {"code": 0, "msg": "构建失败已记录", "data": _build_dict(build)}
+
+    # 处理产物
+    artifact_path = ""
+    artifact_filename = ""
+    artifact_size = 0
+
+    if file:
+        # 从上传的文件保存
+        content = await file.read()
+        artifact_path, artifact_size = save_artifact_file(
+            content, file.filename or "artifact", app_id, build_number
+        )
+        artifact_filename = file.filename or "artifact"
+    else:
+        # 尝试从 JSON body 获取 artifact_url
+        try:
+            json_body = json.loads(body)
+            artifact_url = json_body.get("artifact_url")
+            if artifact_url:
+                artifact_path, artifact_size = download_artifact_from_url(
+                    artifact_url, app_id, build_number
+                )
+                artifact_filename = artifact_url.split("/")[-1].split("?")[0]
+        except (json.JSONDecodeError, Exception) as e:
+            raise HTTPException(status_code=400, detail=f"缺少产物文件或 URL: {e}")
+
+    if not artifact_path:
+        raise HTTPException(status_code=400, detail="未能获取构建产物")
+
+    # 创建构建记录
+    build = create_build_record(
+        db,
+        app_id=app_id,
+        build_number=build_number,
+        source="webhook",
+        artifact_path=artifact_path,
+        artifact_filename=artifact_filename,
+        artifact_size=artifact_size,
+        commit=commit,
+        branch=branch,
+        status="success",
+        webhook_payload=body.decode("utf-8", errors="replace"),
+    )
+
+    # 清理旧构建（保留最近 20 个）
+    cleanup_old_builds(db, app_id, keep_count=20)
+
+    return {"code": 0, "msg": "构建产物已接收", "data": _build_dict(build)}
+
+
+@router.post("/artifacts/callback/{app_id}")
+async def api_webhook_callback(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Webhook 回调端点 — 接收 CI/CD 的构建状态通知（不传文件）。
+
+    Body (JSON):
+        {
+            "build_number": "123",
+            "status": "success|failed",
+            "commit": "abc123",
+            "branch": "main",
+            "duration": 120,
+            "artifact_url": "https://...",  # 可选，产物下载地址
+            "logs": "..."                   # 可选，构建日志
+        }
+    """
+    # 获取应用
+    app = db.query(DeployApplication).filter(DeployApplication.id == app_id).first()
+    if app is None:
+        raise HTTPException(status_code=404, detail="应用不存在")
+
+    if app.build_mode != "webhook":
+        raise HTTPException(status_code=400, detail="应用未配置为 Webhook 模式")
+
+    # 读取请求体
+    body = await request.body()
+
+    # 验证签名
+    x_webhook_signature = request.headers.get("X-Webhook-Signature", "")
+    try:
+        config = json.loads(app.build_config) if app.build_config else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    secret = config.get("secret", "")
+    if secret and not verify_webhook_signature(body, x_webhook_signature, secret):
+        raise HTTPException(status_code=401, detail="签名验证失败")
+
+    # 解析 JSON
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="无效的 JSON")
+
+    build_number = data.get("build_number")
+    if not build_number:
+        raise HTTPException(status_code=400, detail="缺少 build_number")
+
+    build_status = data.get("status", "success")
+    commit = data.get("commit", "")
+    branch = data.get("branch", "")
+    duration = data.get("duration", 0)
+    artifact_url = data.get("artifact_url", "")
+    logs = data.get("logs", "")
+
+    # 处理产物
+    artifact_path = ""
+    artifact_filename = ""
+    artifact_size = 0
+
+    if artifact_url:
+        try:
+            artifact_path, artifact_size = download_artifact_from_url(
+                artifact_url, app_id, build_number
+            )
+            artifact_filename = artifact_url.split("/")[-1].split("?")[0]
+        except Exception as e:
+            logger.error("Failed to download artifact: %s", e)
+
+    # 创建构建记录
+    build = create_build_record(
+        db,
+        app_id=app_id,
+        build_number=build_number,
+        source="webhook",
+        artifact_path=artifact_path,
+        artifact_filename=artifact_filename,
+        artifact_size=artifact_size,
+        commit=commit,
+        branch=branch,
+        status=build_status,
+        build_duration=duration,
+        build_log=logs,
+        webhook_payload=body.decode("utf-8", errors="replace"),
+    )
+
+    # 清理旧构建
+    cleanup_old_builds(db, app_id, keep_count=20)
+
+    return {"code": 0, "msg": "回调已处理", "data": _build_dict(build)}
+
+
+@router.delete("/apps/{app_name}/builds/{build_number}")
+def api_delete_build(
+    app_name: str,
+    build_number: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("deploy.update")),
+):
+    """删除指定构建记录及其产物。"""
+    app = _resolve_app(db, app_name)
+    build = db.query(DeployBuild).filter(
+        DeployBuild.app_id == app.id,
+        DeployBuild.build_number == build_number,
+    ).first()
+
+    if build is None:
+        raise HTTPException(status_code=404, detail="构建记录不存在")
+
+    # 删除产物文件
+    if build.artifact_path and os.path.exists(build.artifact_path):
+        try:
+            build_dir = os.path.dirname(build.artifact_path)
+            if os.path.exists(build_dir):
+                import shutil
+                shutil.rmtree(build_dir)
+        except Exception as e:
+            logger.error("Failed to delete artifact: %s", e)
+
+    # 删除记录
+    db.delete(build)
+    db.commit()
+
+    write_log(db, user=current_user, action="delete_build", target_type="deploy_build",
+              target_id=build.id, target_name=f"{app.name}:{build_number}", ip_address=get_client_ip(request))
+    db.commit()
+
+    return {"code": 0, "msg": "已删除"}

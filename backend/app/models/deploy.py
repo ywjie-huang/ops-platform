@@ -25,7 +25,7 @@ class DeployApplication(Base):
     git_branch: Mapped[str] = mapped_column(String(100), default="main")
 
     # 构建配置
-    build_mode: Mapped[str] = mapped_column(String(20), default="upload")     # upload / jenkins
+    build_mode: Mapped[str] = mapped_column(String(20), default="upload")     # upload / webhook / jenkins
     build_command: Mapped[str] = mapped_column(Text, default="")
     artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 构建产物存储路径（平台本地）
     artifact_filename: Mapped[str] = mapped_column(String(255), default="")   # 原始文件名
@@ -44,6 +44,7 @@ class DeployApplication(Base):
     envs: Mapped[list["DeployAppEnv"]] = relationship(back_populates="application", cascade="all, delete-orphan")
     records: Mapped[list["DeployRecord"]] = relationship(back_populates="application", cascade="all, delete-orphan")
     configs: Mapped[list["DeployConfig"]] = relationship(back_populates="application", cascade="all, delete-orphan")
+    builds: Mapped[list["DeployBuild"]] = relationship(back_populates="application", cascade="all, delete-orphan")
 
 
 class DeployEnvironment(Base):
@@ -179,3 +180,41 @@ class DeployConfig(Base):
 
     application = relationship("DeployApplication", back_populates="configs")
     environment = relationship("DeployEnvironment", lazy="joined")
+
+
+class DeployBuild(Base):
+    """构建记录表 — 记录每次构建的元数据，支持版本化存储。"""
+    __tablename__ = "deploy_builds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    app_id: Mapped[int] = mapped_column(Integer, ForeignKey("deploy_applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    build_number: Mapped[str] = mapped_column(String(100), nullable=False)     # CI/CD 构建号或自动生成
+    source: Mapped[str] = mapped_column(String(50), default="upload")          # upload / webhook / jenkins / github_actions / gitlab_ci
+
+    # 构建信息
+    commit: Mapped[str] = mapped_column(String(100), default="")               # Git commit hash
+    branch: Mapped[str] = mapped_column(String(100), default="")               # Git branch
+    status: Mapped[str] = mapped_column(String(20), default="success")         # success / failed / pending
+
+    # 产物信息
+    artifact_path: Mapped[str] = mapped_column(String(500), default="")        # 产物存储路径（平台本地）
+    artifact_filename: Mapped[str] = mapped_column(String(255), default="")    # 原始文件名
+    artifact_size: Mapped[int] = mapped_column(Integer, default=0)             # 文件大小（字节）
+
+    # 元数据
+    build_duration: Mapped[int] = mapped_column(Integer, default=0)            # 构建耗时（秒）
+    build_log: Mapped[str] = mapped_column(Text, default="")                   # 构建日志
+    webhook_payload: Mapped[str] = mapped_column(Text, default="")             # 原始 webhook 数据（JSON）
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
+
+    application = relationship("DeployApplication", lazy="joined")
+
+    # 唯一约束：同一应用的同一构建号不能重复（幂等性）
+    __table_args__ = (
+        {"comment": "构建记录表 — 版本化存储构建产物"}
+    )
+
+
+# 在表创建后添加唯一约束（通过 init_db 或 migration）
+# UniqueConstraint('app_id', 'build_number', name='uq_app_build_number')
