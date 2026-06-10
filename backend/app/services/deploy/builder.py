@@ -198,14 +198,24 @@ def _build_jenkins(
                         f"{base_url}/job/{job_name}/buildWithParameters",
                         auth=auth,
                     )
+
+            logger.info("Jenkins trigger response: status=%s, headers=%s", resp.status_code, dict(resp.headers))
+
             if resp.status_code not in (200, 201, 202):
                 append_log(db, record, f"Jenkins 触发失败: HTTP {resp.status_code}")
                 return None
 
             # 从 queue URL 获取 build number
             queue_url = resp.headers.get("Location", "")
-            append_log(db, record, f"构建已触发，等待队列分配…")
-            logger.info("Jenkins trigger response: status=%s, Location=%s", resp.status_code, queue_url)
+
+            # 如果没有 Location header，尝试从响应中获取
+            if not queue_url:
+                # 有些 Jenkins 版本返回 200 但没有 Location
+                # 此时直接获取最新构建号
+                append_log(db, record, "构建已触发")
+                logger.info("Jenkins trigger: no Location header, will use fallback")
+            else:
+                append_log(db, record, f"构建已触发，等待队列分配…")
 
     except Exception as e:
         append_log(db, record, f"Jenkins 触发异常: {e}")
