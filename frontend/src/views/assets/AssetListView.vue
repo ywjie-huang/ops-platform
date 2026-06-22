@@ -595,11 +595,28 @@ onMounted(() => {
 .filter-panel {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 12px;
 }
 
+.filter-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-left :deep(.el-select) {
+  flex: 0 0 132px;
+  width: 132px;
+}
+
+.filter-right {
+  flex: none;
+  margin-left: auto;
+}
+
 .search-input {
+  flex: 0 0 292px;
   width: 292px;
 }
 
@@ -781,6 +798,7 @@ onMounted(() => {
 
   .search-input,
   .filter-left :deep(.el-select) {
+    flex-basis: 100%;
     width: 100%;
   }
 
