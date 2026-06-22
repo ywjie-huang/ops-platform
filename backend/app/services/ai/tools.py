@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -13,6 +14,33 @@ from app.models.patrol import PatrolReport
 from app.models.ticket import Ticket
 
 logger = logging.getLogger(__name__)
+
+
+def _endpoint_hostname(endpoint: str) -> str:
+    """Return the host part from a Docker Agent endpoint."""
+    value = (endpoint or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value if "://" in value else f"//{value}")
+    return parsed.hostname or value.split(":", 1)[0]
+
+
+def _find_docker_host_by_address(db: Session, address: str):
+    from app.models.container import ContainerCluster
+
+    target = (address or "").strip()
+    if not target:
+        return None
+
+    hosts = db.scalars(
+        select(ContainerCluster).where(ContainerCluster.provider == "docker")
+    ).all()
+    for host in hosts:
+        if (host.host_ip or "").strip() == target:
+            return host
+        if _endpoint_hostname(host.endpoint or "") == target:
+            return host
+    return None
 
 # ─── OpenAI function calling 格式的工具 schema ──────────────
 
@@ -316,7 +344,6 @@ def handle_query_alerts(db: Session, args: dict[str, Any]) -> str:
 
 def handle_query_containers(db: Session, args: dict[str, Any]) -> str:
     """查询 Docker 容器。"""
-    from app.models.container import ContainerCluster
     from app.services.docker_agent import list_docker_containers
 
     host_id = args.get("host_id")
@@ -325,13 +352,7 @@ def handle_query_containers(db: Session, args: dict[str, Any]) -> str:
 
     # 支持通过 IP 查找主机
     if not host_id and args.get("host_ip"):
-        from sqlalchemy import select as _select
-        cluster = db.scalars(
-            _select(ContainerCluster).where(
-                ContainerCluster.host_ip == args["host_ip"],
-                ContainerCluster.provider == "docker",
-            )
-        ).first()
+        cluster = _find_docker_host_by_address(db, args["host_ip"])
         if cluster:
             host_id = cluster.id
         else:
