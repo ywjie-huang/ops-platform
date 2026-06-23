@@ -64,7 +64,7 @@ def _build_ssh_client(asset: Asset, auth: dict[str, Any]) -> tuple[paramiko.SSHC
     else:
         port = int(auth.get("port", asset.ssh_port or 22))
         username = auth.get("username", asset.ssh_username or "root")
-        password = auth.get("password", asset.ssh_password or "")
+        password = auth.get("password") or asset.ssh_password or ""
         pkey = None
 
     if not password and not pkey:

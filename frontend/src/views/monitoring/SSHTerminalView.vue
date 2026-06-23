@@ -71,6 +71,7 @@ import SSHTerminalToolbar from './ssh/SSHTerminalToolbar.vue'
 import SSHLoginForm from './ssh/SSHLoginForm.vue'
 import SFTPFilePanel from './ssh/SFTPFilePanel.vue'
 import FileEditDialog from './ssh/FileEditDialog.vue'
+import { buildAuthPayload, getInitialLoginState } from './ssh/sshConnection'
 
 const route = useRoute()
 
@@ -202,20 +203,8 @@ function connectSSH(formData: { username: string; password: string; port: number
   ws.onopen = () => {
     showLoginForm.value = false
     nextTick(() => fitAddon?.fit())
-
-    const authData: any = {
-      username: formData.username,
-      port: formData.port,
-    }
-
-    if (formData.authMode === 'asset') {
-      authData.password = formData.password
-    } else {
-      const keyId = Number(formData.authMode.replace('key-', ''))
-      authData.key_id = keyId
-      currentKeyId = keyId
-    }
-
+    const authData: any = buildAuthPayload(formData)
+    currentKeyId = typeof authData.key_id === 'number' ? authData.key_id : undefined
     ws!.send(JSON.stringify(authData))
   }
 
@@ -330,23 +319,15 @@ onActivated(async () => {
     ])
     hostName.value = assetRes.data.name
     hostIp.value = assetRes.data.ip_address
-    const username = assetRes.data.ssh_username || 'root'
-    const port = assetRes.data.ssh_port || 22
-    loginUsername.value = username
-    loginPort.value = port
-
     sshKeys.value = keysRes.data.items || []
-    const defaultKey = sshKeys.value.find(k => k.is_default)
+    const initialLoginState = getInitialLoginState(assetRes.data, sshKeys.value)
+    loginUsername.value = initialLoginState.username
+    loginPort.value = initialLoginState.port
 
     await nextTick()
     if (loginFormRef.value) {
-      loginFormRef.value.setDefaults(username, port)
-      if (defaultKey) {
-        loginFormRef.value.setAuthMode(`key-${defaultKey.id}`)
-        loginFormRef.value.setDefaults(defaultKey.username, defaultKey.port)
-      } else {
-        loginFormRef.value.setAuthMode('asset')
-      }
+      loginFormRef.value.setDefaults(initialLoginState.username, initialLoginState.port)
+      loginFormRef.value.setAuthMode(initialLoginState.authMode)
       loginFormRef.value.clearPassword()
     }
   } catch {
