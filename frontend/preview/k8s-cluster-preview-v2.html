@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s Cluster Preview V2</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --primary: #5e6ad2;
+    --success: #22c55e;
+    --warning: #f5a623;
+    --danger: #e5484d;
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #f8f9fc;
+    --border: #e7eaf1;
+    --text-1: #111111;
+    --text-2: #626a79;
+    --text-3: #9399a6;
+    --sidebar: #141821;
+    --shadow: 0 8px 24px rgba(17, 17, 17, 0.05);
+    --radius: 8px;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-1);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.5;
+  }
+
+  .shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 216px 1fr;
+  }
+
+  .sidebar {
+    background: var(--sidebar);
+    color: rgba(255, 255, 255, 0.78);
+    padding: 18px 0;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px 18px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #7381f6, #5461ca);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+  }
+
+  .nav {
+    padding: 0 10px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  .nav-item.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .main {
+    min-width: 0;
+  }
+
+  .topbar {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .crumb {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #eef0ff;
+    color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .page {
+    padding: 24px;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .page-title {
+    margin: 0 0 6px;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .page-subtitle {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .input,
+  .button,
+  .segmented-item,
+  .tag {
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .input {
+    min-width: 220px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-2);
+  }
+
+  .button {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-1);
+    font-weight: 600;
+  }
+
+  .button.primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .segmented {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 9px;
+  }
+
+  .segmented-item {
+    padding: 6px 10px;
+    color: var(--text-2);
+  }
+
+  .segmented-item.active {
+    color: var(--primary);
+    background: var(--surface);
+    font-weight: 600;
+  }
+
+  .surface {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .section {
+    margin-bottom: 16px;
+  }
+
+  .summary-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .summary-card {
+    padding: 14px 16px;
+  }
+
+  .summary-label {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-bottom: 8px;
+  }
+
+  .summary-value {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .summary-foot {
+    font-size: 12px;
+    color: var(--text-2);
+  }
+
+  .banner {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .banner.warning {
+    background: color-mix(in srgb, var(--warning) 9%, #fff);
+    border: 1px solid color-mix(in srgb, var(--warning) 24%, #fff);
+    color: #8a5a08;
+    border-radius: 8px;
+  }
+
+  .panel {
+    padding: 16px 18px;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .panel-copy {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-3);
+    background: #fafbfe;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #eef1f5;
+    vertical-align: top;
+  }
+
+  tr.active-row {
+    background: #fafbff;
+  }
+
+  .cluster-name {
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .cluster-meta {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+  }
+
+  .tag.success {
+    color: #177245;
+    background: color-mix(in srgb, var(--success) 10%, #fff);
+    border-color: color-mix(in srgb, var(--success) 22%, #fff);
+  }
+
+  .tag.warning {
+    color: #8a5a08;
+    background: color-mix(in srgb, var(--warning) 11%, #fff);
+    border-color: color-mix(in srgb, var(--warning) 24%, #fff);
+  }
+
+  .tag.danger {
+    color: #ad2e33;
+    background: color-mix(in srgb, var(--danger) 9%, #fff);
+    border-color: color-mix(in srgb, var(--danger) 22%, #fff);
+  }
+
+  .tag.neutral {
+    color: var(--text-2);
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .muted {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+
+  .stack {
+    display: grid;
+    gap: 12px;
+  }
+
+  .workbench {
+    display: grid;
+    grid-template-columns: 1.45fr 0.92fr;
+    gap: 16px;
+  }
+
+  .detail-head {
+    padding: 16px 18px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .detail-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .detail-title h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .detail-meta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+
+  .mini-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .mini-card {
+    padding: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+  }
+
+  .mini-card .label {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-bottom: 6px;
+  }
+
+  .mini-card .value {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+
+  .tab {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+    padding-bottom: 8px;
+    border-bottom: 2px solid transparent;
+  }
+
+  .tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+
+  .toolbar-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .toolbar-line .spacer {
+    flex: 1;
+  }
+
+  .event-item {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  .event-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  .event-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .event-copy {
+    font-size: 12px;
+    color: var(--text-2);
+    margin-bottom: 8px;
+  }
+
+  .event-foot {
+    font-size: 12px;
+    color: var(--text-3);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .link-row {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+  }
+
+  @media (max-width: 1320px) {
+    .workbench {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .shell {
+      grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      display: none;
+    }
+
+    .summary-row,
+    .mini-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">OP</span>
+        <span>运维管理平台</span>
+      </div>
+      <div class="nav">
+        <div class="nav-item"><span>主机管理</span></div>
+        <div class="nav-item active"><span>K8s 集群</span></div>
+        <div class="nav-item"><span>Docker 监控</span></div>
+        <div class="nav-item"><span>主机监控</span></div>
+        <div class="nav-item"><span>告警管理</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="crumb">资产管理 / K8s 集群</div>
+        <div class="avatar">管</div>
+      </div>
+
+      <div class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">K8s 集群</h1>
+            <p class="page-subtitle">把页面收窄成两个动作：先找出问题集群，再进入一个更安静的单集群工作台处理。</p>
+          </div>
+          <div class="toolbar">
+            <div class="segmented">
+              <span class="segmented-item active">集群列表</span>
+              <span class="segmented-item">单集群工作台</span>
+            </div>
+            <input class="input" value="搜索集群">
+            <button class="button">刷新</button>
+            <button class="button primary">接入集群</button>
+          </div>
+        </div>
+
+        <section class="section summary-row">
+          <div class="surface summary-card">
+            <div class="summary-label">集群总数</div>
+            <div class="summary-value">23</div>
+            <div class="summary-foot">运行中 21，失联 2</div>
+          </div>
+          <div class="surface summary-card">
+            <div class="summary-label">异常集群</div>
+            <div class="summary-value">6</div>
+            <div class="summary-foot">优先看连接中断和副本不足</div>
+          </div>
+          <div class="surface summary-card">
+            <div class="summary-label">异常工作负载</div>
+            <div class="summary-value">47</div>
+            <div class="summary-foot">CrashLoop 12，Pending 19</div>
+          </div>
+          <div class="surface summary-card">
+            <div class="summary-label">节点就绪率</div>
+            <div class="summary-value">96.2%</div>
+            <div class="summary-foot">158 / 164 Ready</div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="banner warning">
+            <span>当前建议优先处理：`prod-hangzhou` 连接异常，`gray-shanghai` 有 2 个 Deployment 副本不足。</span>
+            <span>按风险排序</span>
+          </div>
+        </section>
+
+        <section class="section surface panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">集群列表</h2>
+              <div class="panel-copy">列只保留状态判断需要的最少信息，默认按风险从高到低排列。</div>
+            </div>
+            <span class="tag neutral">只看异常</span>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>集群</th>
+                <th>状态</th>
+                <th>节点</th>
+                <th>异常工作负载</th>
+                <th>负责人</th>
+                <th>最近同步</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="active-row">
+                <td>
+                  <div class="cluster-name">prod-hangzhou</div>
+                  <div class="cluster-meta">v1.29.3 · 杭州生产区</div>
+                </td>
+                <td><span class="tag danger">连接中断</span></td>
+                <td>
+                  <div>17 / 19 Ready</div>
+                  <div class="muted">2 个节点未就绪</div>
+                </td>
+                <td>
+                  <div>11 个异常 Pod</div>
+                  <div class="muted">3 个 Deployment 副本不足</div>
+                </td>
+                <td>王磊</td>
+                <td>
+                  <div>2 分钟前</div>
+                  <div class="muted">连续失败 3 次</div>
+                </td>
+                <td><div class="link-row"><span>进入</span><span>刷新</span></div></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cluster-name">gray-shanghai</div>
+                  <div class="cluster-meta">v1.28.7 · 上海灰度区</div>
+                </td>
+                <td><span class="tag warning">需关注</span></td>
+                <td>
+                  <div>12 / 12 Ready</div>
+                  <div class="muted">节点健康</div>
+                </td>
+                <td>
+                  <div>6 个异常 Pod</div>
+                  <div class="muted">2 个 Deployment 副本不足</div>
+                </td>
+                <td>陈晨</td>
+                <td>
+                  <div>18 秒前</div>
+                  <div class="muted">拉取正常</div>
+                </td>
+                <td><div class="link-row"><span>进入</span></div></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cluster-name">edge-nanjing</div>
+                  <div class="cluster-meta">v1.27.11 · 南京边缘区</div>
+                </td>
+                <td><span class="tag success">运行中</span></td>
+                <td>
+                  <div>8 / 8 Ready</div>
+                  <div class="muted">节点健康</div>
+                </td>
+                <td>
+                  <div>0 个异常 Pod</div>
+                  <div class="muted">无副本缺口</div>
+                </td>
+                <td>赵宁</td>
+                <td>
+                  <div>11 秒前</div>
+                  <div class="muted">拉取正常</div>
+                </td>
+                <td><div class="link-row"><span>进入</span></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <div class="page-header" style="margin-bottom: 12px;">
+            <div>
+              <h1 class="page-title" style="font-size: 20px; margin-bottom: 4px;">单集群工作台</h1>
+              <p class="page-subtitle">详情页不再同时展开所有资源，只保留“异常摘要 + 当前工作视图 + 辅助侧栏”。</p>
+            </div>
+            <div class="toolbar">
+              <div class="segmented">
+                <span class="segmented-item">集群列表</span>
+                <span class="segmented-item active">单集群工作台</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="workbench">
+            <div class="stack">
+              <div class="surface detail-head">
+                <div>
+                  <div class="detail-title">
+                    <h2>prod-hangzhou</h2>
+                    <span class="tag danger">连接不稳定</span>
+                    <span class="tag neutral">v1.29.3</span>
+                  </div>
+                  <div class="detail-meta">
+                    <span>杭州生产区</span>
+                    <span>最后成功拉取 2 分钟前</span>
+                    <span>API Server: api.prod-hz.company.local:6443</span>
+                  </div>
+                </div>
+                <div class="toolbar">
+                  <button class="button">刷新</button>
+                  <button class="button primary">查看排障</button>
+                </div>
+              </div>
+
+              <div class="surface panel">
+                <div class="mini-summary">
+                  <div class="mini-card">
+                    <div class="label">节点</div>
+                    <div class="value">19</div>
+                    <div class="muted">NotReady 2</div>
+                  </div>
+                  <div class="mini-card">
+                    <div class="label">Pods</div>
+                    <div class="value">684</div>
+                    <div class="muted">异常 11</div>
+                  </div>
+                  <div class="mini-card">
+                    <div class="label">Deployments</div>
+                    <div class="value">132</div>
+                    <div class="muted">副本不足 3</div>
+                  </div>
+                  <div class="mini-card">
+                    <div class="label">命名空间</div>
+                    <div class="value">42</div>
+                    <div class="muted">重点关注 payment</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="surface panel">
+                <div class="tabs">
+                  <span class="tab">总览</span>
+                  <span class="tab active">Pods</span>
+                  <span class="tab">Deployments</span>
+                  <span class="tab">节点</span>
+                  <span class="tab">命名空间</span>
+                </div>
+
+                <div class="toolbar-line">
+                  <span class="tag danger">只看异常</span>
+                  <span class="tag neutral">payment</span>
+                  <div class="spacer"></div>
+                  <input class="input" value="搜索 Pod / 状态">
+                </div>
+
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Pod</th>
+                      <th>状态</th>
+                      <th>原因</th>
+                      <th>节点</th>
+                      <th>重启</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div class="cluster-name">payment-worker-7dd8f7d67d-d4v8x</div>
+                        <div class="cluster-meta">payment · 10.42.31.19</div>
+                      </td>
+                      <td><span class="tag danger">CrashLoopBackOff</span></td>
+                      <td>配置注入失败</td>
+                      <td>worker-a-03</td>
+                      <td>18</td>
+                      <td><div class="link-row"><span>日志</span><span>事件</span></div></td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="cluster-name">api-gateway-5f76d57bf7-vr29x</div>
+                        <div class="cluster-meta">gateway · 10.42.11.22</div>
+                      </td>
+                      <td><span class="tag warning">Pending</span></td>
+                      <td>Insufficient CPU</td>
+                      <td>worker-b-02</td>
+                      <td>0</td>
+                      <td><div class="link-row"><span>事件</span></div></td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="cluster-name">trade-consumer-66bf8df48b-bm2dv</div>
+                        <div class="cluster-meta">trade · 10.42.21.55</div>
+                      </td>
+                      <td><span class="tag success">Running</span></td>
+                      <td>-</td>
+                      <td>worker-a-01</td>
+                      <td>6</td>
+                      <td><div class="link-row"><span>日志</span></div></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="surface panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">当前异常</h2>
+                    <div class="panel-copy">只保留最值得先处理的 2 到 3 条。</div>
+                  </div>
+                </div>
+                <div class="stack">
+                  <div class="event-item">
+                    <div class="event-top">
+                      <div class="event-title">payment 命名空间 Pod 重启异常</div>
+                      <span class="tag danger">高优先级</span>
+                    </div>
+                    <div class="event-copy">4 个副本在 10 分钟内重复重启，当前更适合先看 Pod 日志与配置项。</div>
+                    <div class="event-foot">
+                      <span>影响服务 2 个</span>
+                      <span>最近 1 分钟</span>
+                    </div>
+                  </div>
+                  <div class="event-item">
+                    <div class="event-top">
+                      <div class="event-title">api-gateway 副本不足</div>
+                      <span class="tag warning">处理中</span>
+                    </div>
+                    <div class="event-copy">期望副本 4，当前 2，调度失败与节点 CPU 紧张同时出现。</div>
+                    <div class="event-foot">
+                      <span>影响入口链路</span>
+                      <span>最近 37 秒</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="surface panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">关联视图</h2>
+                    <div class="panel-copy">右侧不再堆更多表格，只给下一步跳转线索。</div>
+                  </div>
+                </div>
+                <div class="stack">
+                  <div class="event-item">
+                    <div class="event-top">
+                      <div class="event-title">Deployment 视图</div>
+                      <span class="tag neutral">3 个异常</span>
+                    </div>
+                    <div class="event-copy">建议下一步查看 `api-gateway` 与 `payment-worker` 的副本和滚动状态。</div>
+                  </div>
+                  <div class="event-item">
+                    <div class="event-top">
+                      <div class="event-title">节点视图</div>
+                      <span class="tag neutral">2 个 NotReady</span>
+                    </div>
+                    <div class="event-copy">优先检查 `worker-a-03` 与 `worker-b-02`，它们和当前异常 Pod 有直接关联。</div>
+                  </div>
+                  <div class="event-item">
+                    <div class="event-top">
+                      <div class="event-title">命名空间视图</div>
+                      <span class="tag neutral">payment 热区</span>
+                    </div>
+                    <div class="event-copy">如果是业务侧问题，建议转到命名空间层面看资源、变更和暴露服务。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

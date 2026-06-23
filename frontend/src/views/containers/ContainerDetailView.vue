@@ -1,185 +1,115 @@
 <template>
   <main>
-    <div class="page-header">
-      <div class="page-header-left">
-        <el-button text @click="$router.push('/assets/containers')" aria-label="返回集群列表"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
-        <h2 class="page-title page-header-title">{{ cluster.name || '集群详情' }}</h2>
-        <el-tag :type="statusType(cluster.status)" size="small">{{ cluster.status || 'unknown' }}</el-tag>
-        <el-tag v-if="cluster.version" type="info" size="small">{{ cluster.version }}</el-tag>
-        <el-tag v-if="cluster.status === 'stopped' && cluster.status_message" type="warning" size="small" effect="plain">
-          {{ cluster.status_message }}
-        </el-tag>
+    <div class="detail-header surface-card">
+      <div class="detail-header-copy">
+        <div class="detail-title-row">
+          <el-button text @click="$router.push('/assets/containers')" aria-label="返回集群列表">
+            <el-icon><ArrowLeft /></el-icon>
+            返回
+          </el-button>
+          <h2 class="page-title detail-title">{{ cluster.name || '集群详情' }}</h2>
+          <el-tag :type="statusType(cluster.status)" size="small">{{ cluster.status === 'running' ? '运行中' : '连接异常' }}</el-tag>
+          <el-tag v-if="cluster.version" type="info" size="small">{{ cluster.version }}</el-tag>
+        </div>
+        <div class="detail-meta">
+          <span>{{ cluster.description || '未填写说明' }}</span>
+          <span class="mono">{{ cluster.endpoint || '-' }}</span>
+          <span>最后刷新：{{ formatTime(cluster.updated_at) }}</span>
+        </div>
       </div>
-      <el-button :loading="refreshing" @click="fetchResources" aria-label="刷新集群数据">
-        <el-icon><Refresh /></el-icon> 刷新
-      </el-button>
+      <div class="detail-header-actions">
+        <el-button :loading="refreshing" size="small" @click="fetchResources" aria-label="刷新集群数据">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
     </div>
 
-    <!-- 集群加载失败 -->
     <div v-if="clusterError" class="error-banner">
       <span class="error-banner-text">集群信息加载失败：{{ clusterError }}</span>
       <el-button size="small" @click="fetchCluster">重试</el-button>
     </div>
 
-    <!-- 异常摘要 -->
-    <div v-if="anomalyList.length" class="anomaly-banner" role="alert">
-      <div class="anomaly-banner-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="anomaly-icon"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        发现 {{ anomalyList.length }} 项异常
-      </div>
-      <div class="anomaly-items">
-        <el-button
-          v-for="item in anomalyList"
-          :key="item.tab"
-          link
-          type="warning"
-          size="small"
-          @click="activeTab = item.tab"
-        >{{ item.text }}</el-button>
-      </div>
-    </div>
-
-    <!-- 资源加载失败 -->
     <div v-if="resourcesError && !initialLoading" class="error-banner">
       <span class="error-banner-text">资源数据加载失败：{{ resourcesError }}</span>
       <el-button size="small" @click="fetchResources">重试</el-button>
     </div>
 
-    <!-- 统计卡片骨架 / 实际卡片 -->
-    <el-row :gutter="16" class="stat-row">
+    <div v-if="anomalyList.length" class="warning-banner" role="alert">
+      <span>当前建议优先处理：{{ anomalyList[0]?.text }}{{ anomalyList[1] ? `，${anomalyList[1].text}` : '' }}。</span>
+      <span class="warning-meta">异常优先</span>
+    </div>
+
+    <div class="summary-grid" role="region" aria-label="集群资源概览">
       <template v-if="initialLoading">
-        <el-col :span="4" v-for="i in 6" :key="i">
-          <div class="stat-card"><el-skeleton :rows="2" animated /></div>
-        </el-col>
+        <div v-for="i in 4" :key="i" class="summary-card"><el-skeleton :rows="2" animated /></div>
       </template>
       <template v-else>
-        <el-col :span="4" v-for="item in statCards" :key="item.label">
-          <div class="stat-card stat-card--clickable" role="button" tabindex="0" :aria-label="`${item.label}: ${item.value}`" @click="item.tab && (activeTab = item.tab)" @keydown.enter="item.tab && (activeTab = item.tab)">
-            <div class="stat-label">{{ item.label }}</div>
-            <div class="stat-value" :style="{ color: item.color }">{{ item.value }}</div>
-          </div>
-        </el-col>
+        <div v-for="item in topSummaryCards" :key="item.label" class="summary-card">
+          <div class="summary-label">{{ item.label }}</div>
+          <div class="summary-value">{{ item.value }}</div>
+          <div class="summary-foot">{{ item.foot }}</div>
+        </div>
       </template>
-    </el-row>
+    </div>
 
-    <!-- 资源 Tabs -->
-    <div class="data-card" v-loading="refreshing && !initialLoading">
-      <el-tabs v-model="activeTab">
-        <!-- 命名空间 -->
-        <el-tab-pane label="命名空间" name="namespaces">
-          <el-table :data="pagedNamespaces" stripe aria-label="命名空间列表">
-            <el-table-column prop="name" label="命名空间" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="pods" label="Pods" width="100" align="center" />
-            <el-table-column prop="abnormal_pods" label="异常 Pods" width="120" align="center">
-              <template #default="{row}">
-                <el-tag :type="row.abnormal_pods > 0 ? 'warning' : 'success'" size="small">{{ row.abnormal_pods }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="deployments" label="Deployments" width="140" align="center" />
-            <el-table-column prop="services" label="Services" width="120" align="center" />
-            <el-table-column label="操作" width="80" fixed="right">
-              <template #default="{row}">
-                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 详情`" @click="openNamespaceDetail(row)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="pagination-wrap">
-            <el-pagination
-              v-model:current-page="nsPage"
-              v-model:page-size="nsPageSize"
-              :page-sizes="[10, 20, 50]"
-              :total="(resources.namespace_overview || []).length"
-              layout="total, sizes, prev, pager, next"
-              small
-            />
-          </div>
-        </el-tab-pane>
+    <div class="workbench-grid">
+      <section class="surface-card workbench-main" v-loading="refreshing && !initialLoading">
+        <div class="tabs-row">
+          <button v-for="item in visibleTabs" :key="item.value" type="button" class="tab-button" :class="{ active: activeTab === item.value }" @click="activeTab = item.value">
+            {{ item.label }}
+          </button>
+        </div>
 
-        <!-- 节点 -->
-        <el-tab-pane label="节点" name="nodes">
-          <el-table :data="pagedNodes" stripe aria-label="节点列表">
-            <el-table-column prop="name" label="节点名称" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="status" label="状态" width="100">
-              <template #default="{row}">
-                <el-tag :type="row.status === 'Ready' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="ip" label="IP" width="140" />
-            <el-table-column prop="cpu" label="CPU" width="80" align="center">
-              <template #default="{row}">{{ row.cpu }} 核</template>
-            </el-table-column>
-            <el-table-column prop="memory" label="内存" width="100">
-              <template #default="{row}">{{ formatMemory(row.memory) }}</template>
-            </el-table-column>
-            <el-table-column prop="kubelet_version" label="kubelet" width="140" />
-            <el-table-column prop="os_image" label="系统" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="container_runtime" label="容器运行时" width="200" show-overflow-tooltip />
-            <el-table-column label="操作" width="80" fixed="right">
-              <template #default="{row}">
-                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 详情`" @click="openNodeDetail(row)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="pagination-wrap">
-            <el-pagination
-              v-model:current-page="nodePage"
-              v-model:page-size="nodePageSize"
-              :page-sizes="[10, 20, 50]"
-              :total="(resources.nodes || []).length"
-              layout="total, sizes, prev, pager, next"
-              small
-            />
-          </div>
-        </el-tab-pane>
-
-        <!-- Pods -->
-        <el-tab-pane label="Pods" name="pods">
-          <div class="filter-bar">
-            <el-select v-model="podNamespace" placeholder="命名空间" clearable style="width:150px" @change="fetchPods">
+        <div v-if="activeTab === 'pods'" class="section-body">
+          <div class="tool-row">
+            <el-select v-model="podNamespace" placeholder="命名空间" clearable class="tool-select" @change="fetchPods">
               <el-option v-for="ns in resources.namespaces || []" :key="ns" :label="ns" :value="ns" />
             </el-select>
-            <el-input v-model="podSearch" placeholder="搜索名称 / 命名空间 / 节点 / 状态…" clearable style="width:280px" />
-            <span class="filter-count">共 {{ filteredPods.length }} 个 Pod</span>
+            <el-input v-model="podSearch" placeholder="搜索 Pod / 状态 / 节点" clearable class="tool-search" />
+            <span class="tool-count">共 {{ filteredPods.length }} 个 Pod</span>
           </div>
-          <el-table :data="pagedPods" stripe empty-text="暂无 Pod 数据" aria-label="Pod 列表">
-            <el-table-column prop="name" label="名称" min-width="260" show-overflow-tooltip />
-            <el-table-column prop="namespace" label="命名空间" width="110" />
-            <el-table-column prop="status" label="状态" width="150">
-              <template #default="{row}">
-                <el-tag :type="podStatusType(row.status)" size="small">{{ row.status }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="reason" label="异常原因" min-width="180" show-overflow-tooltip>
-              <template #default="{row}">
-                <el-tooltip v-if="row.reason || row.message" :content="row.message || row.reason" placement="top">
-                  <el-tag :type="podReasonType(row.reason || row.status)" size="small" effect="plain">
-                    {{ row.reason || '-' }}
-                  </el-tag>
-                </el-tooltip>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="node" label="节点" width="150" show-overflow-tooltip />
-            <el-table-column prop="pod_ip" label="Pod IP" width="130" />
-            <el-table-column label="镜像" min-width="250" show-overflow-tooltip>
-              <template #default="{row}">{{ (row.images || []).join(', ') }}</template>
-            </el-table-column>
-            <el-table-column prop="restarts" label="重启" width="70" align="center">
-              <template #default="{row}">
-                <span :class="{ 'text-danger': row.restarts > 5 }">{{ row.restarts }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="170">
-              <template #default="{row}">{{ formatTime(row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="120" fixed="right">
-              <template #default="{row}">
-                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 日志`" @click="openPodLogs(row)">日志</el-button>
-                <el-button link type="info" size="small" :aria-label="`查看 ${row.name} 事件`" @click="openPodEvents(row)">事件</el-button>
-                <el-button link type="danger" size="small" :aria-label="`删除 ${row.name}`" @click="confirmDeletePod(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+
+          <div class="table-wrapper">
+            <el-table :data="pagedPods" stripe empty-text="暂无 Pod 数据" aria-label="Pod 列表">
+              <el-table-column label="Pod" min-width="260">
+                <template #default="{ row }">
+                  <div class="resource-primary">
+                    <strong>{{ row.name }}</strong>
+                    <span>{{ row.namespace || '-' }} · {{ row.pod_ip || row.node || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="140">
+                <template #default="{ row }">
+                  <el-tag :type="podStatusType(row.status)" size="small">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="原因" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <el-tooltip v-if="row.reason || row.message" :content="row.message || row.reason" placement="top">
+                    <el-tag :type="podReasonType(row.reason || row.status)" size="small" effect="plain">
+                      {{ row.reason || '-' }}
+                    </el-tag>
+                  </el-tooltip>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="node" label="节点" width="150" show-overflow-tooltip />
+              <el-table-column prop="restarts" label="重启" width="80" align="center">
+                <template #default="{ row }">
+                  <span :class="{ 'text-danger': row.restarts > 5 }">{{ row.restarts }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="140" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="openPodLogs(row)">日志</el-button>
+                  <el-button link type="info" size="small" @click="openPodEvents(row)">事件</el-button>
+                  <el-button link type="danger" size="small" @click="confirmDeletePod(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div class="pagination-wrap">
             <el-pagination
               v-model:current-page="podPage"
@@ -190,44 +120,47 @@
               small
             />
           </div>
-        </el-tab-pane>
+        </div>
 
-        <!-- Deployments -->
-        <el-tab-pane label="Deployments" name="deployments">
-          <div class="filter-bar">
-            <el-select v-model="depNamespace" placeholder="命名空间" clearable style="width:150px" @change="fetchDeployments">
+        <div v-else-if="activeTab === 'deployments'" class="section-body">
+          <div class="tool-row">
+            <el-select v-model="depNamespace" placeholder="命名空间" clearable class="tool-select" @change="fetchDeployments">
               <el-option v-for="ns in resources.namespaces || []" :key="ns" :label="ns" :value="ns" />
             </el-select>
-            <el-input v-model="depSearch" placeholder="搜索 Deployment…" clearable style="width:220px" />
-            <span class="filter-count">共 {{ filteredDeployments.length }} 个 Deployment</span>
+            <el-input v-model="depSearch" placeholder="搜索 Deployment" clearable class="tool-search" />
+            <span class="tool-count">共 {{ filteredDeployments.length }} 个 Deployment</span>
           </div>
-          <el-table :data="pagedDeployments" stripe empty-text="暂无 Deployment 数据" aria-label="Deployment 列表">
-            <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="namespace" label="命名空间" width="110" />
-            <el-table-column prop="status" label="状态" width="100">
-              <template #default="{row}">
-                <el-tag :type="depStatusType(row.status)" size="small">{{ row.status }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="镜像" min-width="250" show-overflow-tooltip>
-              <template #default="{row}">{{ (row.images || []).join(', ') }}</template>
-            </el-table-column>
-            <el-table-column label="副本" width="100" align="center">
-              <template #default="{row}">
-                <span :class="{ 'text-warning': row.ready_replicas < row.replicas }">
-                  {{ row.ready_replicas }} / {{ row.replicas }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="170">
-              <template #default="{row}">{{ formatTime(row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="90" fixed="right">
-              <template #default="{row}">
-                <el-button link type="warning" size="small" :aria-label="`重启 ${row.name}`" @click="confirmRestartDeployment(row)">重启</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+
+          <div class="table-wrapper">
+            <el-table :data="pagedDeployments" stripe empty-text="暂无 Deployment 数据" aria-label="Deployment 列表">
+              <el-table-column label="Deployment" min-width="240">
+                <template #default="{ row }">
+                  <div class="resource-primary">
+                    <strong>{{ row.name }}</strong>
+                    <span>{{ row.namespace || '-' }} · {{ (row.images || []).join(', ') || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="depStatusType(row.status)" size="small">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="副本" width="110" align="center">
+                <template #default="{ row }">
+                  <span :class="{ 'text-warning': row.ready_replicas < row.replicas }">{{ row.ready_replicas }} / {{ row.replicas }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="170">
+                <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="warning" size="small" @click="confirmRestartDeployment(row)">重启</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div class="pagination-wrap">
             <el-pagination
               v-model:current-page="depPage"
@@ -238,35 +171,113 @@
               small
             />
           </div>
-        </el-tab-pane>
+        </div>
 
-        <!-- Services -->
-        <el-tab-pane label="Services" name="services">
-          <div class="filter-bar">
-            <el-select v-model="svcNamespace" placeholder="命名空间" clearable style="width:150px" @change="fetchServices">
+        <div v-else-if="activeTab === 'nodes'" class="section-body">
+          <div class="table-wrapper">
+            <el-table :data="pagedNodes" stripe aria-label="节点列表">
+              <el-table-column label="节点" min-width="220">
+                <template #default="{ row }">
+                  <div class="resource-primary">
+                    <strong>{{ row.name }}</strong>
+                    <span>{{ row.ip || '-' }} · {{ row.os_image || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'Ready' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="cpu" label="CPU" width="80" align="center">
+                <template #default="{ row }">{{ row.cpu }} 核</template>
+              </el-table-column>
+              <el-table-column prop="memory" label="内存" width="110">
+                <template #default="{ row }">{{ formatMemory(row.memory) }}</template>
+              </el-table-column>
+              <el-table-column prop="container_runtime" label="容器运行时" min-width="180" show-overflow-tooltip />
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="openNodeDetail(row)">详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div class="pagination-wrap">
+            <el-pagination
+              v-model:current-page="nodePage"
+              v-model:page-size="nodePageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="(resources.nodes || []).length"
+              layout="total, sizes, prev, pager, next"
+              small
+            />
+          </div>
+        </div>
+
+        <div v-else-if="activeTab === 'namespaces'" class="section-body">
+          <div class="table-wrapper">
+            <el-table :data="pagedNamespaces" stripe aria-label="命名空间列表">
+              <el-table-column label="命名空间" min-width="200">
+                <template #default="{ row }">
+                  <div class="resource-primary">
+                    <strong>{{ row.name }}</strong>
+                    <span>Pods {{ row.pods }} · Deployments {{ row.deployments }} · Services {{ row.services }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="abnormal_pods" label="异常 Pods" width="110" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.abnormal_pods > 0 ? 'warning' : 'success'" size="small">{{ row.abnormal_pods }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="openNamespaceDetail(row)">详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div class="pagination-wrap">
+            <el-pagination
+              v-model:current-page="nsPage"
+              v-model:page-size="nsPageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="(resources.namespace_overview || []).length"
+              layout="total, sizes, prev, pager, next"
+              small
+            />
+          </div>
+        </div>
+
+        <div v-else class="section-body">
+          <div class="tool-row">
+            <el-select v-model="svcNamespace" placeholder="命名空间" clearable class="tool-select" @change="fetchServices">
               <el-option v-for="ns in resources.namespaces || []" :key="ns" :label="ns" :value="ns" />
             </el-select>
-            <el-input v-model="svcSearch" placeholder="搜索 Service…" clearable style="width:220px" />
-            <span class="filter-count">共 {{ filteredServices.length }} 个 Service</span>
+            <el-input v-model="svcSearch" placeholder="搜索 Service" clearable class="tool-search" />
+            <span class="tool-count">共 {{ filteredServices.length }} 个 Service</span>
           </div>
-          <el-table :data="pagedServices" stripe empty-text="暂无 Service 数据" aria-label="Service 列表">
-            <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="namespace" label="命名空间" width="110" />
-            <el-table-column prop="service_type" label="类型" width="120">
-              <template #default="{row}"><el-tag size="small">{{ row.service_type }}</el-tag></template>
-            </el-table-column>
-            <el-table-column prop="cluster_ip" label="Cluster IP" width="140" />
-            <el-table-column prop="ports" label="端口" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="selector" label="Selector" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="created_at" label="创建时间" width="170">
-              <template #default="{row}">{{ formatTime(row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="80" fixed="right">
-              <template #default="{row}">
-                <el-button link type="primary" size="small" :aria-label="`查看 ${row.name} 详情`" @click="openServiceDetail(row)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+
+          <div class="table-wrapper">
+            <el-table :data="pagedServices" stripe empty-text="暂无 Service 数据" aria-label="Service 列表">
+              <el-table-column label="Service" min-width="220">
+                <template #default="{ row }">
+                  <div class="resource-primary">
+                    <strong>{{ row.name }}</strong>
+                    <span>{{ row.namespace || '-' }} · {{ row.service_type || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="cluster_ip" label="Cluster IP" width="140" />
+              <el-table-column prop="ports" label="端口" min-width="180" show-overflow-tooltip />
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="openServiceDetail(row)">详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div class="pagination-wrap">
             <el-pagination
               v-model:current-page="svcPage"
@@ -277,11 +288,64 @@
               small
             />
           </div>
-        </el-tab-pane>
-      </el-tabs>
+        </div>
+      </section>
+
+      <aside class="workbench-side">
+        <div class="surface-card side-card">
+          <div class="side-card-head">
+            <h3>当前异常</h3>
+            <span class="side-card-subtitle">只保留最值得先处理的线索</span>
+          </div>
+          <div class="side-list">
+            <div v-for="item in sideHighlights" :key="item.key" class="side-item">
+              <div class="side-item-top">
+                <strong>{{ item.text }}</strong>
+                <el-tag :type="item.key === 'pods' ? 'danger' : 'warning'" size="small">{{ item.count }}</el-tag>
+              </div>
+              <span>{{ sideHint(item.key) }}</span>
+            </div>
+            <div v-if="!sideHighlights.length" class="side-item">
+              <div class="side-item-top">
+                <strong>未发现明显异常</strong>
+              </div>
+              <span>可以继续查看 Pods、Deployments 或命名空间的实时状态。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="surface-card side-card">
+          <div class="side-card-head">
+            <h3>关联视图</h3>
+            <span class="side-card-subtitle">帮助快速决定下一步看哪里</span>
+          </div>
+          <div class="side-list">
+            <div class="side-item">
+              <div class="side-item-top">
+                <strong>Deployment 视图</strong>
+                <el-tag size="small">{{ resourceSummary.deploymentGapCount }} 个异常</el-tag>
+              </div>
+              <span>当 Pod 持续重启或副本不齐时，优先切到 Deployment 视图判断滚动状态。</span>
+            </div>
+            <div class="side-item">
+              <div class="side-item-top">
+                <strong>节点视图</strong>
+                <el-tag size="small">{{ resourceSummary.notReadyNodeCount }} 个未就绪</el-tag>
+              </div>
+              <span>节点异常通常会同时影响调度与资源压力，适合联动排查。</span>
+            </div>
+            <div class="side-item">
+              <div class="side-item-top">
+                <strong>命名空间视图</strong>
+                <el-tag size="small">{{ resourceSummary.hotspotNamespace || '无热区' }}</el-tag>
+              </div>
+              <span>当异常集中在某个业务域时，从命名空间视角更容易看出影响范围。</span>
+            </div>
+          </div>
+        </div>
+      </aside>
     </div>
 
-    <!-- Pod 日志 Dialog -->
     <el-dialog v-model="logsDialogVisible" width="820px">
       <template #header="{ titleId, titleClass }">
         <div class="dialog-header-bar">
@@ -297,11 +361,10 @@
       </div>
     </el-dialog>
 
-    <!-- Pod 事件 Dialog -->
     <el-dialog v-model="eventsDialogVisible" :title="podDialogTitle('事件')" width="900px">
       <el-table :data="pagedPodEvents" stripe v-loading="eventsLoading" empty-text="暂无事件" aria-label="Pod 事件列表">
         <el-table-column prop="type" label="类型" width="90">
-          <template #default="{row}">
+          <template #default="{ row }">
             <el-tag :type="row.type === 'Warning' ? 'warning' : 'info'" size="small">{{ row.type || '-' }}</el-tag>
           </template>
         </el-table-column>
@@ -310,7 +373,7 @@
         <el-table-column prop="count" label="次数" width="70" align="center" />
         <el-table-column prop="source" label="来源" width="120" show-overflow-tooltip />
         <el-table-column prop="last_timestamp" label="最后时间" width="170">
-          <template #default="{row}">{{ formatTime(row.last_timestamp) }}</template>
+          <template #default="{ row }">{{ formatTime(row.last_timestamp) }}</template>
         </el-table-column>
       </el-table>
       <div class="pagination-wrap" v-if="podEvents.length > 10">
@@ -325,9 +388,8 @@
       </div>
     </el-dialog>
 
-    <!-- Service 详情 Dialog -->
     <el-dialog v-model="svcDetailVisible" :title="svcDialogTitle" width="600px">
-      <el-descriptions :column="1" border v-if="selectedService">
+      <el-descriptions v-if="selectedService" :column="1" border>
         <el-descriptions-item label="名称">{{ selectedService.name }}</el-descriptions-item>
         <el-descriptions-item label="命名空间">{{ selectedService.namespace }}</el-descriptions-item>
         <el-descriptions-item label="类型">{{ selectedService.service_type }}</el-descriptions-item>
@@ -338,25 +400,23 @@
       </el-descriptions>
     </el-dialog>
 
-    <!-- 节点详情 Dialog -->
     <el-dialog v-model="nodeDetailVisible" :title="nodeDialogTitle" width="600px">
-      <el-descriptions :column="1" border v-if="selectedNode">
+      <el-descriptions v-if="selectedNode" :column="1" border>
         <el-descriptions-item label="节点名称">{{ selectedNode.name }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="selectedNode.status === 'Ready' ? 'success' : 'danger'" size="small">{{ selectedNode.status }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="IP">{{ selectedNode.ip || '-' }}</el-descriptions-item>
         <el-descriptions-item label="CPU">{{ selectedNode.cpu ? selectedNode.cpu + ' 核' : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="内存">{{ formatMemory(selectedNode.memory) }}</el-descriptions-item>
+        <el-descriptions-item label="内存">{{ formatMemory(selectedNode.memory || '') }}</el-descriptions-item>
         <el-descriptions-item label="kubelet">{{ selectedNode.kubelet_version || '-' }}</el-descriptions-item>
         <el-descriptions-item label="系统">{{ selectedNode.os_image || '-' }}</el-descriptions-item>
         <el-descriptions-item label="容器运行时">{{ selectedNode.container_runtime || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
-    <!-- 命名空间详情 Dialog -->
     <el-dialog v-model="nsDetailVisible" :title="nsDialogTitle" width="500px">
-      <el-descriptions :column="1" border v-if="selectedNamespace">
+      <el-descriptions v-if="selectedNamespace" :column="1" border>
         <el-descriptions-item label="命名空间">{{ selectedNamespace.name }}</el-descriptions-item>
         <el-descriptions-item label="Pods">{{ selectedNamespace.pods }}</el-descriptions-item>
         <el-descriptions-item label="异常 Pods">
@@ -370,13 +430,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
+import { computed, ref, watch, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
-import { getCluster, getClusterResources, getClusterPods, getClusterServices, getClusterDeployments, getPodLogs, getPodEvents, deleteClusterPod, restartClusterDeployment } from '@/api/containers'
+import {
+  deleteClusterPod,
+  getCluster,
+  getClusterDeployments,
+  getClusterPods,
+  getClusterResources,
+  getClusterServices,
+  getPodEvents,
+  getPodLogs,
+  restartClusterDeployment,
+} from '@/api/containers'
+import { buildClusterAnomalies, filterClusterPods, summarizeClusterResources } from '@/utils/k8sCluster'
 
-// ── 类型定义 ──
 interface K8sPod {
   name: string
   namespace: string
@@ -458,8 +528,6 @@ interface PodEvent {
 
 const route = useRoute()
 const router = useRouter()
-
-// ── Repair: 响应式 clusterId，支持路由参数变化 ──
 const clusterId = computed(() => Number(route.params.id))
 
 const cluster = ref<Record<string, any>>({})
@@ -469,8 +537,7 @@ const initialLoading = ref(true)
 const clusterError = ref('')
 const resourcesError = ref('')
 
-// ── URL 同步 activeTab + 分页状态 ──
-const activeTab = ref(route.query.tab as string || 'namespaces')
+const activeTab = ref((route.query.tab as string) || 'pods')
 const nsPage = ref(Number(route.query.nsp) || 1)
 const nsPageSize = ref(Number(route.query.nss) || 20)
 const nodePage = ref(Number(route.query.ndp) || 1)
@@ -502,8 +569,8 @@ watch([nodePage, nodePageSize], syncUrl)
 watch([podPage, podPageSize], syncUrl)
 watch([depPage, depPageSize], syncUrl)
 watch([svcPage, svcPageSize], syncUrl)
-watch(() => route.query.tab, (val) => {
-  if (val && typeof val === 'string') activeTab.value = val
+watch(() => route.query.tab, (value) => {
+  if (value && typeof value === 'string') activeTab.value = value
 })
 
 const selectedPod = ref<K8sPod | null>(null)
@@ -516,22 +583,18 @@ const podEvents = ref<PodEvent[]>([])
 const eventPage = ref(1)
 const eventPageSize = ref(10)
 
-// Service 详情
 const svcDetailVisible = ref(false)
 const selectedService = ref<K8sService | null>(null)
 const svcDialogTitle = computed(() => selectedService.value ? `Service: ${selectedService.value.name}` : 'Service 详情')
 
-// 节点详情
 const nodeDetailVisible = ref(false)
 const selectedNode = ref<K8sNode | null>(null)
 const nodeDialogTitle = computed(() => selectedNode.value ? `节点: ${selectedNode.value.name}` : '节点详情')
 
-// 命名空间详情
 const nsDetailVisible = ref(false)
 const selectedNamespace = ref<K8sNamespace | null>(null)
 const nsDialogTitle = computed(() => selectedNamespace.value ? `命名空间: ${selectedNamespace.value.name}` : '命名空间详情')
 
-// 搜索和筛选
 const podNamespace = ref('')
 const podSearch = ref('')
 const depNamespace = ref('')
@@ -539,59 +602,41 @@ const depSearch = ref('')
 const svcNamespace = ref('')
 const svcSearch = ref('')
 
-// 事件分页数据
+const visibleTabs = [
+  { label: 'Pods', value: 'pods' },
+  { label: 'Deployments', value: 'deployments' },
+  { label: '节点', value: 'nodes' },
+  { label: '命名空间', value: 'namespaces' },
+  { label: 'Services', value: 'services' },
+]
+
 const pagedPodEvents = computed(() => {
   const start = (eventPage.value - 1) * eventPageSize.value
   return podEvents.value.slice(start, start + eventPageSize.value)
 })
 
-// ── 异常摘要 ──
-const anomalyList = computed(() => {
-  const r = resources.value
-  const list: { tab: string; text: string }[] = []
-  const notReady = (r.nodes || []).filter((n) => n.status !== 'Ready')
-  if (notReady.length) list.push({ tab: 'nodes', text: `${notReady.length} 个节点未就绪` })
-  const abnormalPods = (r.pods || []).filter((p) => !['Running', 'Succeeded'].includes(p.status))
-  if (abnormalPods.length) list.push({ tab: 'pods', text: `${abnormalPods.length} 个 Pod 异常` })
-  const incompleteDeps = (r.deployments || []).filter((d) => d.ready_replicas < d.replicas)
-  if (incompleteDeps.length) list.push({ tab: 'deployments', text: `${incompleteDeps.length} 个 Deployment 副本不足` })
-  return list
-})
+const anomalyList = computed(() => buildClusterAnomalies(resources.value))
+const resourceSummary = computed(() => summarizeClusterResources(resources.value))
+const sideHighlights = computed(() => anomalyList.value.slice(0, 3))
 
-// 过滤后的数据（Pod 搜索扩展到 namespace / node / status）
-const filteredPods = computed(() => {
-  let list = resources.value.pods || []
-  if (podSearch.value) {
-    const kw = podSearch.value.toLowerCase()
-    list = list.filter((p) =>
-      p.name.toLowerCase().includes(kw) ||
-      (p.namespace || '').toLowerCase().includes(kw) ||
-      (p.node || '').toLowerCase().includes(kw) ||
-      (p.status || '').toLowerCase().includes(kw)
-    )
-  }
-  return list
-})
-
+const filteredPods = computed(() => filterClusterPods(resources.value.pods || [], podSearch.value))
 const filteredDeployments = computed(() => {
   let list = resources.value.deployments || []
   if (depSearch.value) {
-    const kw = depSearch.value.toLowerCase()
-    list = list.filter((d) => d.name.toLowerCase().includes(kw))
+    const keyword = depSearch.value.toLowerCase()
+    list = list.filter((item) => item.name.toLowerCase().includes(keyword))
   }
   return list
 })
-
 const filteredServices = computed(() => {
   let list = resources.value.services || []
   if (svcSearch.value) {
-    const kw = svcSearch.value.toLowerCase()
-    list = list.filter((s) => s.name.toLowerCase().includes(kw))
+    const keyword = svcSearch.value.toLowerCase()
+    list = list.filter((item) => item.name.toLowerCase().includes(keyword))
   }
   return list
 })
 
-// 分页后的数据
 const pagedNamespaces = computed(() => {
   const list = resources.value.namespace_overview || []
   const start = (nsPage.value - 1) * nsPageSize.value
@@ -615,58 +660,81 @@ const pagedServices = computed(() => {
   return filteredServices.value.slice(start, start + svcPageSize.value)
 })
 
-// 搜索时重置页码
 watch(podSearch, () => { podPage.value = 1 })
 watch(podNamespace, () => { podPage.value = 1 })
 watch(depSearch, () => { depPage.value = 1 })
 watch(depNamespace, () => { depPage.value = 1 })
 watch(svcSearch, () => { svcPage.value = 1 })
 watch(svcNamespace, () => { svcPage.value = 1 })
+watch(eventsDialogVisible, (value) => { if (!value) eventPage.value = 1 })
 
-// 事件 dialog 关闭时重置分页
-watch(eventsDialogVisible, (val) => { if (!val) eventPage.value = 1 })
+const topSummaryCards = computed(() => [
+  {
+    label: '节点',
+    value: resources.value.node_count ?? '-',
+    foot: `未就绪 ${resourceSummary.value.notReadyNodeCount}`,
+  },
+  {
+    label: 'Pods',
+    value: resources.value.pod_count ?? '-',
+    foot: `异常 ${resourceSummary.value.abnormalPodCount}`,
+  },
+  {
+    label: 'Deployments',
+    value: resources.value.deployment_count ?? '-',
+    foot: `副本不足 ${resourceSummary.value.deploymentGapCount}`,
+  },
+  {
+    label: '命名空间',
+    value: resources.value.namespace_count ?? '-',
+    foot: resourceSummary.value.hotspotNamespace ? `重点关注 ${resourceSummary.value.hotspotNamespace}` : '等待资源同步',
+  },
+])
 
-// 统计卡片（可点击跳转对应 Tab）
-const statCards = computed(() => {
-  const r = resources.value
-  return [
-    { label: '节点', value: r.node_count ?? '-', color: '', tab: 'nodes' },
-    { label: '就绪节点', value: r.ready_nodes ?? '-', color: r.ready_nodes === 0 ? 'var(--danger-color)' : r.ready_nodes === r.node_count ? 'var(--success-color)' : 'var(--warning-color)', tab: 'nodes' },
-    { label: 'Pods', value: r.pod_count ?? '-', color: '', tab: 'pods' },
-    { label: 'Deployments', value: r.deployment_count ?? '-', color: '', tab: 'deployments' },
-    { label: 'Services', value: r.service_count ?? '-', color: '', tab: 'services' },
-    { label: '命名空间', value: r.namespace_count ?? '-', color: '', tab: 'namespaces' },
-  ]
-})
+function statusType(status: string) {
+  return status === 'running' ? 'success' : status === 'stopped' ? 'danger' : 'warning'
+}
 
-// Helpers
-function statusType(s: string) { return s === 'running' ? 'success' : s === 'stopped' ? 'danger' : 'warning' }
-function podStatusType(s: string) {
-  if (s === 'Running' || s === 'Succeeded') return 'success'
-  if (['Failed', 'CrashLoopBackOff', 'ImagePullBackOff', 'ErrImagePull', 'CreateContainerConfigError'].includes(s)) return 'danger'
-  if (s === 'Pending' || s === 'NotReady' || s === 'ContainersNotReady') return 'warning'
+function podStatusType(status: string) {
+  if (status === 'Running' || status === 'Succeeded') return 'success'
+  if (['Failed', 'CrashLoopBackOff', 'ImagePullBackOff', 'ErrImagePull', 'CreateContainerConfigError'].includes(status)) return 'danger'
+  if (['Pending', 'NotReady', 'ContainersNotReady'].includes(status)) return 'warning'
   return 'info'
 }
-function podReasonType(s: string) {
-  if (!s) return 'info'
-  if (['CrashLoopBackOff', 'ImagePullBackOff', 'ErrImagePull', 'CreateContainerConfigError', 'Failed'].includes(s)) return 'danger'
-  if (['Pending', 'NotReady', 'ContainersNotReady', 'ContainerCreating'].includes(s)) return 'warning'
+
+function podReasonType(value: string) {
+  if (!value) return 'info'
+  if (['CrashLoopBackOff', 'ImagePullBackOff', 'ErrImagePull', 'CreateContainerConfigError', 'Failed'].includes(value)) return 'danger'
+  if (['Pending', 'NotReady', 'ContainersNotReady', 'ContainerCreating', 'BackOff'].includes(value)) return 'warning'
   return 'info'
 }
-function depStatusType(s: string) { return s === 'running' ? 'success' : s === 'error' ? 'danger' : 'warning' }
 
-function formatMemory(ki: string) {
-  if (!ki) return '-'
-  const num = parseInt(ki)
-  if (ki.endsWith('Ki')) return (num / 1048576).toFixed(1) + ' GB'
-  if (ki.endsWith('Mi')) return (num / 1024).toFixed(1) + ' GB'
-  if (ki.endsWith('Gi')) return num.toFixed(1) + ' GB'
-  return ki
+function depStatusType(status: string) {
+  return status === 'running' ? 'success' : status === 'error' ? 'danger' : 'warning'
 }
 
-function formatTime(ts: string) {
-  if (!ts) return '-'
-  try { return new Date(ts).toLocaleString('zh-CN') } catch { return ts }
+function sideHint(key: string) {
+  if (key === 'pods') return '建议先查看日志和事件，再决定是否删除或等待自愈。'
+  if (key === 'deployments') return '建议检查副本数和滚动状态，必要时执行重启。'
+  return '建议联动节点状态和资源负载继续排查。'
+}
+
+function formatMemory(value: string) {
+  if (!value) return '-'
+  const num = parseInt(value)
+  if (value.endsWith('Ki')) return (num / 1048576).toFixed(1) + ' GB'
+  if (value.endsWith('Mi')) return (num / 1024).toFixed(1) + ' GB'
+  if (value.endsWith('Gi')) return num.toFixed(1) + ' GB'
+  return value
+}
+
+function formatTime(value?: string) {
+  if (!value) return '-'
+  try {
+    return new Date(value).toLocaleString('zh-CN')
+  } catch {
+    return value
+  }
 }
 
 function podDialogTitle(type: string) {
@@ -674,7 +742,6 @@ function podDialogTitle(type: string) {
   return `${selectedPod.value.namespace}/${selectedPod.value.name} ${type}`
 }
 
-// 日志复制 / 下载
 function copyLogs() {
   if (!podLogs.value) return
   navigator.clipboard.writeText(podLogs.value).then(
@@ -687,26 +754,23 @@ function downloadLogs() {
   if (!podLogs.value || !selectedPod.value) return
   const blob = new Blob([podLogs.value], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${selectedPod.value.namespace}_${selectedPod.value.name}.log`
-  a.click()
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${selectedPod.value.namespace}_${selectedPod.value.name}.log`
+  anchor.click()
   URL.revokeObjectURL(url)
 }
 
-// Service 详情
 function openServiceDetail(row: K8sService) {
   selectedService.value = row
   svcDetailVisible.value = true
 }
 
-// 节点详情
 function openNodeDetail(row: K8sNode) {
   selectedNode.value = row
   nodeDetailVisible.value = true
 }
 
-// 命名空间详情
 function openNamespaceDetail(row: K8sNamespace) {
   selectedNamespace.value = row
   nsDetailVisible.value = true
@@ -722,7 +786,9 @@ async function openPodLogs(row: K8sPod) {
     podLogs.value = res.data?.logs || ''
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载日志失败')
-  } finally { logsLoading.value = false }
+  } finally {
+    logsLoading.value = false
+  }
 }
 
 async function openPodEvents(row: K8sPod) {
@@ -736,7 +802,9 @@ async function openPodEvents(row: K8sPod) {
     podEvents.value = res.data || []
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载事件失败')
-  } finally { eventsLoading.value = false }
+  } finally {
+    eventsLoading.value = false
+  }
 }
 
 async function confirmDeletePod(row: K8sPod) {
@@ -769,7 +837,6 @@ async function confirmRestartDeployment(row: K8sDeployment) {
   }
 }
 
-// Fetch
 async function fetchCluster() {
   clusterError.value = ''
   try {
@@ -792,33 +859,39 @@ async function fetchResources() {
     cluster.value.node_count = res.data.node_count ?? cluster.value.node_count
   } catch (e: any) {
     resourcesError.value = e?.response?.data?.detail || '加载失败'
-  } finally { refreshing.value = false; initialLoading.value = false }
+  } finally {
+    refreshing.value = false
+    initialLoading.value = false
+  }
 }
 
 async function fetchPods() {
   try {
     const res: any = await getClusterPods(clusterId.value, { namespace: podNamespace.value })
     resources.value.pods = res.data
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载失败')
+  }
 }
 
 async function fetchDeployments() {
   try {
     const res: any = await getClusterDeployments(clusterId.value, { namespace: depNamespace.value })
     resources.value.deployments = res.data
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载失败')
+  }
 }
 
 async function fetchServices() {
   try {
     const res: any = await getClusterServices(clusterId.value, { namespace: svcNamespace.value })
     resources.value.services = res.data
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载失败')
+  }
 }
 
-// ── clusterId 变化时自动加载 ──
-// 必须检查路由路径：deactivated 组件的 watcher 仍会响应 route.params 变化，
-// 导航到 /monitoring/hosts/9 时会误触发，用错误的 id 请求 containers API。
 watch(clusterId, (id) => {
   if (!id || isNaN(id)) return
   if (!route.path.startsWith('/assets/containers/')) return
@@ -827,7 +900,6 @@ watch(clusterId, (id) => {
   fetchResources()
 }, { immediate: true })
 
-// ── keep-alive: 30 秒自动刷新 ──
 let timer: ReturnType<typeof setInterval> | null = null
 
 onActivated(() => {
@@ -835,22 +907,62 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
-  if (timer) { clearInterval(timer); timer = null }
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 })
 </script>
 
 <style scoped>
-.page-header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.surface-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
 }
 
-.page-header-title {
+.detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.detail-header-copy {
+  min-width: 0;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.detail-title {
   margin: 0;
 }
 
-/* ── 错误横幅 ── */
+.detail-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .error-banner {
   display: flex;
   align-items: center;
@@ -863,88 +975,182 @@ onDeactivated(() => {
 }
 
 .error-banner-text {
-  font-size: 13px;
   color: var(--danger-color);
+  font-size: 13px;
 }
 
-/* ── 异常横幅 ── */
-.anomaly-banner {
+.warning-banner {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 12px 14px;
   margin-bottom: 16px;
-  background: color-mix(in srgb, var(--warning-color) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warning-color) 25%, transparent);
+  background: color-mix(in srgb, var(--warning-color) 10%, white);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 24%, white);
   border-radius: var(--border-radius);
-}
-
-.anomaly-banner-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  color: #8a5a08;
   font-size: 13px;
   font-weight: 600;
-  color: var(--warning-color);
-  white-space: nowrap;
 }
 
-.anomaly-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+.warning-meta {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
-.anomaly-items {
-  display: flex;
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  flex-wrap: wrap;
-}
-
-/* ── 统计卡片 ── */
-.stat-row {
   margin-bottom: 16px;
 }
 
-.stat-card {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 12px 16px;
-  text-align: center;
+.summary-card {
+  padding: 14px 16px;
 }
 
-.stat-card--clickable {
-  cursor: pointer;
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
-}
-
-.stat-card--clickable:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 1px var(--primary-color);
-}
-
-.stat-card--clickable:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
-.stat-label {
-  font-size: 12px;
+.summary-label {
   color: var(--text-muted);
-  margin-bottom: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
 }
 
-.stat-value {
-  font-size: 22px;
-  font-weight: 700;
+.summary-value {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 750;
 }
 
-/* ── 筛选栏 ── */
-.filter-count {
+.summary-foot {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.92fr);
+  gap: 16px;
+}
+
+.workbench-main {
+  overflow: hidden;
+}
+
+.tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-button {
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+.section-body {
+  padding: 14px 18px 16px;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.tool-select {
+  width: 160px;
+}
+
+.tool-search {
+  width: 260px;
+}
+
+.tool-count {
   margin-left: auto;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.resource-primary {
+  display: grid;
+  gap: 4px;
+}
+
+.resource-primary strong {
+  color: var(--text-primary);
+}
+
+.resource-primary span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.workbench-side {
+  display: grid;
+  gap: 16px;
+}
+
+.side-card {
+  padding: 16px;
+}
+
+.side-card-head {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.side-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.side-card-subtitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.side-list {
+  display: grid;
+  gap: 10px;
+}
+
+.side-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.side-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.side-item span {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .pagination-wrap {
@@ -961,7 +1167,6 @@ onDeactivated(() => {
   color: var(--warning-color);
 }
 
-/* ── Dialog ── */
 .dialog-header-bar {
   display: flex;
   align-items: center;
@@ -973,7 +1178,6 @@ onDeactivated(() => {
   gap: 8px;
 }
 
-/* ── 日志终端（色值可通过全局 --log-bg / --log-fg 覆盖） ── */
 .log-box {
   min-height: 320px;
   max-height: 560px;
@@ -995,9 +1199,42 @@ onDeactivated(() => {
   box-shadow: 0 0 0 2px var(--primary-color);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stat-card--clickable {
-    transition: none;
+@media (max-width: 1200px) {
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .detail-header,
+  .warning-banner {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .detail-header,
+  .warning-banner,
+  .tool-row {
+    flex-direction: column;
+  }
+
+  .detail-header-actions,
+  .tool-select,
+  .tool-search,
+  .tool-count {
+    width: 100%;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-count {
+    margin-left: 0;
   }
 }
 </style>

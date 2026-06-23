@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.containers import (
+    cluster_runtime_summary,
     delete_cluster,
     get_cluster,
     list_clusters,
@@ -103,7 +104,13 @@ def api_list_clusters(
     _: User = Depends(api_permission_required("containers.view")),
 ):
     items = list_clusters(db, keyword=keyword)
-    return {"code": 0, "data": [_cluster_dict(c) for c in items]}
+    payload = []
+    for cluster in items:
+      row = _cluster_dict(cluster)
+      row.update(cluster_runtime_summary(db, cluster.id))
+      row["ready_nodes"] = cluster.node_count
+      payload.append(row)
+    return {"code": 0, "data": payload}
 
 
 @router.get("/clusters/{cluster_id}")

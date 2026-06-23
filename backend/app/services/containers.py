@@ -34,6 +34,26 @@ def list_clusters(db: Session, *, keyword: str = "") -> list[ContainerCluster]:
     return list(db.scalars(stmt).all())
 
 
+def cluster_runtime_summary(db: Session, cluster_id: int) -> dict[str, int]:
+    pod_rows = db.execute(
+        select(ContainerPod.status, func.count(ContainerPod.id))
+        .where(ContainerPod.cluster_id == cluster_id)
+        .group_by(ContainerPod.status)
+    ).all()
+    abnormal_pod_count = sum(count for status, count in pod_rows if status not in {"Running", "Succeeded"})
+
+    deployment_rows = db.execute(
+        select(ContainerDeployment.replicas, ContainerDeployment.ready_replicas)
+        .where(ContainerDeployment.cluster_id == cluster_id)
+    ).all()
+    deployment_gap_count = sum(1 for replicas, ready_replicas in deployment_rows if (ready_replicas or 0) < (replicas or 0))
+
+    return {
+        "abnormal_pod_count": abnormal_pod_count,
+        "deployment_gap_count": deployment_gap_count,
+    }
+
+
 def get_cluster(db: Session, cluster_id: int) -> ContainerCluster | None:
     return db.scalar(
         select(ContainerCluster)
