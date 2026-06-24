@@ -34,6 +34,23 @@ def list_clusters(db: Session, *, keyword: str = "") -> list[ContainerCluster]:
     return list(db.scalars(stmt).all())
 
 
+def refresh_cluster_connection_status(db: Session, cluster: ContainerCluster) -> None:
+    if not cluster.token:
+        cluster.status = "stopped"
+        cluster.status_message = "Token is not configured"
+        return
+
+    info = test_connection(cluster.endpoint, cluster.token)
+    if info.get("ok"):
+        cluster.status = "running"
+        cluster.status_message = ""
+        if info.get("version"):
+            cluster.version = info["version"]
+    else:
+        cluster.status = "stopped"
+        cluster.status_message = info.get("error", "Connection failed")
+
+
 def cluster_runtime_summary(db: Session, cluster_id: int) -> dict[str, int]:
     pod_rows = db.execute(
         select(ContainerPod.status, func.count(ContainerPod.id))

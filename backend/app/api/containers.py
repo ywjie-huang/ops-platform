@@ -12,6 +12,7 @@ from app.services.containers import (
     delete_cluster,
     get_cluster,
     list_clusters,
+    refresh_cluster_connection_status,
 )
 from app.services.k8s import (
     delete_pod,
@@ -106,10 +107,12 @@ def api_list_clusters(
     items = list_clusters(db, keyword=keyword)
     payload = []
     for cluster in items:
-      row = _cluster_dict(cluster)
-      row.update(cluster_runtime_summary(db, cluster.id))
-      row["ready_nodes"] = cluster.node_count
-      payload.append(row)
+        refresh_cluster_connection_status(db, cluster)
+        row = _cluster_dict(cluster)
+        row.update(cluster_runtime_summary(db, cluster.id))
+        row["ready_nodes"] = cluster.node_count
+        payload.append(row)
+    db.commit()
     return {"code": 0, "data": payload}
 
 
