@@ -10,6 +10,11 @@ test('asset list keeps SSH as status/configuration, not a direct terminal row ac
   assert.doesNotMatch(assetListView, /monitoring\/hosts\/\$\{row\.id\}\/ssh/)
 })
 
+test('asset list action column header and buttons are centered', () => {
+  assert.match(assetListView, /<el-table-column label="操作" width="150" fixed="right" align="center">/)
+  assert.match(assetListView, /\.action-cell\s*\{[\s\S]*?justify-content: center;/)
+})
+
 test('asset detail promotes monitoring and keeps terminal entry secondary', () => {
   const detailActions = assetDetailView.match(/<div class="detail-actions">[\s\S]*?<\/div>/)?.[0] || ''
 

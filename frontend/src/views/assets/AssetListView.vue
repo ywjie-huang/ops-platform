@@ -165,7 +165,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="150" fixed="right" align="right">
+          <el-table-column label="操作" width="150" fixed="right" align="center">
             <template #default="{ row }">
               <div class="action-cell">
                 <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/${row.id}`)">详情</el-button>
@@ -513,12 +513,19 @@ onMounted(() => {
 
 .heading-actions,
 .filter-left,
-.filter-right,
-.action-cell {
+.filter-right {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .summary-grid {
