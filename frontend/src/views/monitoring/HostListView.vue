@@ -1,37 +1,57 @@
 <template>
   <div class="host-list">
-    <header class="page-header">
-      <h2 class="page-title">主机监控</h2>
+    <header class="page-header workbench-header">
+      <div>
+        <h2 class="page-title">主机监控</h2>
+        <p class="page-subtitle">按风险优先展示主机，支持快速筛查、详情定位与 SSH 进入处理。</p>
+      </div>
       <div class="header-actions">
-        <span v-if="lastRefreshTime" class="last-refresh">上次刷新: {{ lastRefreshTime }}</span>
-        <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 60s 自动刷新数据'" placement="bottom">
+        <span v-if="lastRefreshTime" class="last-refresh">最近刷新 {{ lastRefreshTime }}</span>
+        <span class="refresh-pill">{{ refreshStatusText }}</span>
+        <span class="health-pill" :class="loadError ? 'is-danger' : 'is-success'">
+          {{ dataHealthText }}
+          <template v-if="partialFailureCount"> · {{ partialFailureCount }} 台采集失败</template>
+        </span>
+        <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启后每 15s 自动刷新数据'" placement="bottom">
           <el-button :type="autoRefresh ? 'primary' : 'default'" @click="toggleAutoRefresh">
             <el-icon><Refresh /></el-icon>
             {{ autoRefresh ? '自动刷新中' : '自动刷新' }}
           </el-button>
         </el-tooltip>
+        <el-button :loading="loading" @click="fetchData">
+          <el-icon><Refresh /></el-icon>
+          立即刷新
+        </el-button>
       </div>
     </header>
 
-    <!-- 概览统计 pills -->
-    <div class="stat-pills" role="group" aria-label="主机统计概览">
-      <div class="stat-pill">
-        <span class="pill-value">{{ items.length }}</span>
-        <span class="pill-label">主机总数</span>
+    <section class="risk-summary" aria-label="主机风险摘要">
+      <div v-for="card in overviewCards" :key="card.key" class="summary-card" :class="`tone-${card.tone}`">
+        <span class="summary-label">{{ card.label }}</span>
+        <strong class="summary-value">{{ card.value }}</strong>
       </div>
-      <div class="stat-pill">
-        <span class="pill-value pill-success">{{ onlineCount }}</span>
-        <span class="pill-label">在线</span>
+    </section>
+
+    <section class="priority-strip" aria-label="优先处理主机">
+      <div class="strip-header">
+        <h3>优先处理</h3>
+        <span>当前最值得先看的 {{ Math.min(priorityHosts.length, 5) }} 台主机</span>
       </div>
-      <div class="stat-pill">
-        <span class="pill-value pill-muted">{{ offlineCount }}</span>
-        <span class="pill-label">离线</span>
+      <div class="priority-list">
+        <button
+          v-for="host in priorityHosts"
+          :key="host.id"
+          type="button"
+          class="priority-item"
+          :class="`tone-${host.tone}`"
+          @click="goDetail(host)"
+        >
+          <span class="priority-name">{{ host.name }}</span>
+          <span class="priority-summary">{{ host.headline }}</span>
+          <span class="priority-owner">{{ host.owner || '未分配负责人' }}</span>
+        </button>
       </div>
-      <div class="stat-pill">
-        <span class="pill-value pill-danger">{{ dangerCount }}</span>
-        <span class="pill-label">高负载</span>
-      </div>
-    </div>
+    </section>
 
     <!-- 错误状态 -->
     <div v-if="loadError" class="error-state">
@@ -40,8 +60,8 @@
       <el-button type="primary" @click="fetchData">重新加载</el-button>
     </div>
 
-    <!-- 筛选栏 -->
-    <div class="filter-bar">
+    <!-- 工作列表工具栏 -->
+    <div class="filter-bar worklist-toolbar">
       <el-input
         v-model="keyword"
         placeholder="搜索主机名或 IP"
@@ -52,9 +72,11 @@
       <el-select v-model="statusFilter" placeholder="状态" clearable class="filter-status">
         <el-option label="在线" value="online" />
         <el-option label="离线" value="offline" />
-        <el-option label="高负载" value="danger" />
+        <el-option label="高危" value="danger" />
       </el-select>
+      <el-input v-model="ownerFilter" placeholder="负责人" clearable class="filter-owner" />
       <el-select v-model="sortBy" placeholder="排序" class="filter-sort">
+        <el-option label="风险优先" value="risk" />
         <el-option label="按 CPU 降序" value="cpu_desc" />
         <el-option label="按内存降序" value="mem_desc" />
         <el-option label="按磁盘降序" value="disk_desc" />
@@ -64,116 +86,106 @@
 
     <!-- 表格 -->
     <div class="data-card">
-      <el-table
-        :data="paginatedItems"
-        stripe
-        v-loading="loading"
-        row-class-name="host-row"
-        show-overflow-tooltip
-        @row-click="goDetail"
-      >
-        <el-table-column label="主机" min-width="180" sortable>
-          <template #default="{row}">
-            <div class="host-cell">
-              <span :class="['status-dot', getHostStatus(row).dotClass]" />
-              <div class="host-cell-text">
-                <span class="host-cell-name">{{ row.name }}</span>
-                <span class="host-cell-ip">{{ row.ip_address }}</span>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="状态" min-width="80" sortable align="center">
-          <template #default="{row}">
-            <span :class="['status-tag', getHostStatus(row).tagClass]">{{ getHostStatus(row).text }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="CPU" min-width="130" sortable prop="cpu">
-          <template #default="{row}">
-            <template v-if="row.prometheus_ok">
-              <div class="metric-cell">
-                <div class="metric-bar-track">
-                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.cpu / 100})`, background: metricColor(row.cpu) }" />
-                </div>
-                <span class="metric-value">{{ row.cpu }}%</span>
+      <div class="table-wrapper">
+        <el-table
+          :data="paginatedItems"
+          stripe
+          v-loading="loading"
+          row-class-name="host-row"
+          show-overflow-tooltip
+          @row-click="goDetail"
+        >
+          <el-table-column label="主机" min-width="220">
+            <template #default="{row}">
+              <div class="host-primary">
+                <span class="host-name">{{ row.name }}</span>
+                <span class="host-meta">{{ row.ip_address }} · {{ row.owner || '未分配负责人' }}</span>
               </div>
             </template>
-            <span v-else class="no-data">-</span>
-          </template>
-        </el-table-column>
+          </el-table-column>
 
-        <el-table-column label="内存" min-width="130" sortable prop="memory">
-          <template #default="{row}">
-            <template v-if="row.prometheus_ok">
-              <div class="metric-cell">
-                <div class="metric-bar-track">
-                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.memory / 100})`, background: metricColor(row.memory) }" />
+          <el-table-column label="状态" min-width="100" align="center">
+            <template #default="{row}">
+              <span class="status-chip" :class="`tone-${getHostStateMeta(row).tone}`">
+                {{ getHostStateMeta(row).label }}
+              </span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="CPU" min-width="130" sortable prop="cpu">
+            <template #default="{row}">
+              <template v-if="row.prometheus_ok">
+                <div class="metric-cell">
+                  <div class="metric-bar-track">
+                    <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.cpu / 100})`, background: metricColor(row.cpu) }" />
+                  </div>
+                  <span class="metric-value">{{ row.cpu }}%</span>
                 </div>
-                <span class="metric-value">{{ row.memory }}%</span>
+              </template>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="内存" min-width="130" sortable prop="memory">
+            <template #default="{row}">
+              <template v-if="row.prometheus_ok">
+                <div class="metric-cell">
+                  <div class="metric-bar-track">
+                    <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.memory / 100})`, background: metricColor(row.memory) }" />
+                  </div>
+                  <span class="metric-value">{{ row.memory }}%</span>
+                </div>
+              </template>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="磁盘" min-width="130" sortable prop="disk" class-name="hide-tablet">
+            <template #default="{row}">
+              <template v-if="row.prometheus_ok">
+                <div class="metric-cell">
+                  <div class="metric-bar-track">
+                    <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.disk / 100})`, background: metricColor(row.disk) }" />
+                  </div>
+                  <span class="metric-value">{{ row.disk }}%</span>
+                </div>
+              </template>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column prop="owner" label="负责人" min-width="110" class-name="hide-desktop">
+            <template #default="{row}">
+              <span class="owner-value">{{ row.owner || '未分配' }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="采集状态" min-width="180">
+            <template #default="{row}">
+              <span class="collection-state">{{ getHostStateMeta(row).summary }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="动作" min-width="90" fixed="right" align="center">
+            <template #default="{row}">
+              <div class="row-actions">
+                <el-button size="small" text type="primary" @click.stop="goDetail(row)">详情</el-button>
+                <el-button
+                  size="small"
+                  text
+                  type="primary"
+                  @click.stop="$router.push(`/monitoring/hosts/${row.id}/ssh`)"
+                >SSH</el-button>
               </div>
             </template>
-            <span v-else class="no-data">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="磁盘" min-width="130" sortable prop="disk" class-name="hide-tablet">
-          <template #default="{row}">
-            <template v-if="row.prometheus_ok">
-              <div class="metric-cell">
-                <div class="metric-bar-track">
-                  <div class="metric-bar-fill" :style="{ transform: `scaleX(${row.disk / 100})`, background: metricColor(row.disk) }" />
-                </div>
-                <span class="metric-value">{{ row.disk }}%</span>
-              </div>
-            </template>
-            <span v-else class="no-data">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="入站" min-width="90" sortable prop="network_in" class-name="hide-tablet">
-          <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <span v-else class="network-value">{{ row.network_in }} <small>Mbps</small></span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="出站" min-width="90" sortable prop="network_out" class-name="hide-desktop">
-          <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <span v-else class="network-value">{{ row.network_out }} <small>Mbps</small></span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="负载" min-width="80" sortable prop="load" class-name="hide-desktop">
-          <template #default="{row}">
-            <span v-if="!row.prometheus_ok" class="no-data">-</span>
-            <span v-else>{{ row.load }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="owner" label="负责人" min-width="80" class-name="hide-desktop" />
-
-        <el-table-column label="操作" min-width="90" fixed="right" align="center">
-          <template #default="{row}">
-            <div class="row-actions">
-              <el-button size="small" text type="primary" @click.stop="goDetail(row)">详情</el-button>
-              <el-button
-                size="small"
-                text
-                type="primary"
-                @click.stop="$router.push(`/monitoring/hosts/${row.id}/ssh`)"
-              >SSH</el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <!-- 空状态 -->
       <div v-if="!loading && !loadError && filteredItems.length === 0" class="empty-state">
         <el-empty :description="emptyDescription">
-          <el-button v-if="keyword || statusFilter" type="primary" @click="clearFilters">清除筛选</el-button>
+          <el-button v-if="keyword || statusFilter || ownerFilter" type="primary" @click="clearFilters">清除筛选</el-button>
         </el-empty>
       </div>
     </div>
@@ -199,6 +211,15 @@ import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { getHosts, type HostListItem } from '@/api/monitoring'
 import { Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
+import { createAutoRefreshController } from '@/utils/autoRefresh'
+import {
+  buildHostOverview,
+  buildPriorityHosts,
+  getHostStateMeta,
+  sortHostsByRisk,
+} from '@/utils/hostMonitor'
+
+const AUTO_REFRESH_INTERVAL_MS = 15000
 
 const router = useRouter()
 const loading = ref(false)
@@ -208,25 +229,18 @@ const autoRefresh = ref(false)
 const lastRefreshTime = ref('')
 const keyword = ref('')
 const statusFilter = ref('')
-const sortBy = ref('cpu_desc')
-let refreshTimer: ReturnType<typeof setInterval> | null = null
+const ownerFilter = ref('')
+const sortBy = ref('risk')
+const autoRefreshController = createAutoRefreshController(fetchData, AUTO_REFRESH_INTERVAL_MS)
 
 const currentPage = ref(1)
 const pageSize = ref(20)
 
-const onlineCount = computed(() => items.value.filter(r => r.prometheus_ok).length)
-const offlineCount = computed(() => items.value.filter(r => !r.prometheus_ok).length)
-const dangerCount = computed(() => items.value.filter(r => isHostDanger(r)).length)
-
-function isHostDanger(row: HostListItem) {
-  return row.prometheus_ok && (row.cpu > 90 || row.memory > 90 || row.disk > 90)
-}
-
-function getHostStatus(row: HostListItem) {
-  if (!row.prometheus_ok) return { key: 'offline', text: '离线', dotClass: 'dot-grey', tagClass: 'tag-offline' }
-  if (isHostDanger(row)) return { key: 'danger', text: '告警', dotClass: 'dot-red', tagClass: 'tag-danger' }
-  return { key: 'online', text: '在线', dotClass: 'dot-green', tagClass: 'tag-online' }
-}
+const overviewCards = computed(() => buildHostOverview(items.value))
+const priorityHosts = computed(() => buildPriorityHosts(items.value))
+const refreshStatusText = computed(() => autoRefresh.value ? '自动刷新中' : '手动刷新')
+const dataHealthText = computed(() => loadError.value ? '采集异常' : '数据正常')
+const partialFailureCount = computed(() => items.value.filter((item) => !item.prometheus_ok).length)
 
 const filteredItems = computed(() => {
   let result = [...items.value]
@@ -239,11 +253,16 @@ const filteredItems = computed(() => {
   }
 
   if (statusFilter.value === 'online') {
-    result = result.filter(r => r.prometheus_ok && !isHostDanger(r))
+    result = result.filter(r => r.prometheus_ok && getHostStateMeta(r).key !== 'critical')
   } else if (statusFilter.value === 'offline') {
-    result = result.filter(r => !r.prometheus_ok)
+    result = result.filter(r => getHostStateMeta(r).key === 'offline')
   } else if (statusFilter.value === 'danger') {
-    result = result.filter(r => isHostDanger(r))
+    result = result.filter(r => getHostStateMeta(r).key === 'critical')
+  }
+
+  if (ownerFilter.value) {
+    const owner = ownerFilter.value.toLowerCase()
+    result = result.filter((item) => String(item.owner || '').toLowerCase().includes(owner))
   }
 
   const sorters: Record<string, (a: HostListItem, b: HostListItem) => number> = {
@@ -252,7 +271,11 @@ const filteredItems = computed(() => {
     disk_desc: (a, b) => (b.disk || 0) - (a.disk || 0),
     name: (a, b) => (a.name || '').localeCompare(b.name || ''),
   }
-  result.sort(sorters[sortBy.value] || sorters.cpu_desc)
+  if (sortBy.value === 'risk') {
+    result = sortHostsByRisk(result)
+  } else {
+    result.sort(sorters[sortBy.value] || sorters.cpu_desc)
+  }
 
   return result
 })
@@ -263,11 +286,11 @@ const paginatedItems = computed(() => {
 })
 
 const emptyDescription = computed(() => {
-  if (keyword.value || statusFilter.value) return '没有匹配的主机'
-  return '暂无主机数据'
+  if (keyword.value || statusFilter.value || ownerFilter.value) return '当前筛选条件下没有匹配的主机'
+  return '当前没有可展示的主机监控数据'
 })
 
-watch([keyword, statusFilter, sortBy], () => { currentPage.value = 1 })
+watch([keyword, statusFilter, sortBy, ownerFilter], () => { currentPage.value = 1 })
 
 function metricColor(v: number) {
   return v > 90 ? 'var(--danger-color)' : v > 70 ? 'var(--warning-color)' : 'var(--success-color)'
@@ -280,6 +303,7 @@ function goDetail(row: HostListItem) {
 function clearFilters() {
   keyword.value = ''
   statusFilter.value = ''
+  ownerFilter.value = ''
 }
 
 function formatTime(date: Date) {
@@ -303,24 +327,20 @@ async function fetchData() {
 function toggleAutoRefresh() {
   autoRefresh.value = !autoRefresh.value
   if (autoRefresh.value) {
-    refreshTimer = setInterval(fetchData, 60000)
-  } else if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
+    autoRefreshController.start()
+  } else {
+    autoRefreshController.stop()
   }
 }
 
 function stopAutoRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
+  autoRefreshController.stop()
 }
 
 onActivated(() => {
   fetchData()
   if (autoRefresh.value) {
-    refreshTimer = setInterval(fetchData, 60000)
+    autoRefreshController.start()
   }
 })
 onDeactivated(stopAutoRefresh)
@@ -329,6 +349,8 @@ onDeactivated(stopAutoRefresh)
 <style scoped>
 .host-list {
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -338,48 +360,194 @@ onDeactivated(stopAutoRefresh)
   margin-bottom: 16px;
 }
 
+.workbench-header {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.workbench-header > div:first-child {
+  min-width: 240px;
+}
+
+.page-subtitle {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 680px;
 }
 
 .last-refresh {
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
-/* ── Stat Pills ── */
-.stat-pills {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.stat-pill {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.refresh-pill,
+.health-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
   background: var(--surface-color);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 8px 14px;
+  color: var(--text-secondary);
 }
 
-.pill-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1;
+.health-pill.is-success {
+  color: color-mix(in srgb, var(--success-color) 78%, black);
+  background: color-mix(in srgb, var(--success-color) 9%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--success-color) 22%, var(--border-color));
 }
 
-.pill-success { color: var(--success-color); }
-.pill-muted { color: var(--text-muted); }
-.pill-danger { color: var(--danger-color); }
+.health-pill.is-danger {
+  color: color-mix(in srgb, var(--danger-color) 82%, black);
+  background: color-mix(in srgb, var(--danger-color) 9%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--danger-color) 24%, var(--border-color));
+}
 
-.pill-label {
+.risk-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.summary-card {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 11px 14px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.summary-label {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.summary-value {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.summary-card.tone-danger {
+  border-color: color-mix(in srgb, var(--danger-color) 22%, var(--border-color));
+}
+
+.summary-card.tone-warning {
+  border-color: color-mix(in srgb, var(--warning-color) 24%, var(--border-color));
+}
+
+.summary-card.tone-success {
+  border-color: color-mix(in srgb, var(--success-color) 20%, var(--border-color));
+}
+
+.summary-card.tone-danger .summary-value {
+  color: var(--danger-color);
+}
+
+.summary-card.tone-warning .summary-value {
+  color: color-mix(in srgb, var(--warning-color) 86%, black);
+}
+
+.summary-card.tone-success .summary-value {
+  color: color-mix(in srgb, var(--success-color) 78%, black);
+}
+
+.summary-card.tone-muted .summary-value {
+  color: var(--text-secondary);
+}
+
+.priority-strip {
+  margin-bottom: 12px;
+  padding: 11px 14px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.strip-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.strip-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.strip-header span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.priority-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.priority-item {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-color);
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+.priority-item:hover {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 4%, var(--surface-color));
+}
+
+.priority-item:focus-visible {
+  border-color: var(--primary-color);
+}
+
+.priority-name,
+.host-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.priority-summary,
+.priority-owner,
+.host-meta,
+.collection-state,
+.owner-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.priority-owner {
+  color: var(--text-muted);
 }
 
 /* ── Error State ── */
@@ -413,7 +581,7 @@ onDeactivated(stopAutoRefresh)
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 10px 12px;
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -421,9 +589,25 @@ onDeactivated(stopAutoRefresh)
   flex-wrap: wrap;
 }
 
-.filter-search { width: 240px; }
-.filter-status { width: 120px; }
-.filter-sort { width: 140px; }
+.worklist-toolbar {
+  margin-bottom: 12px;
+}
+
+.filter-search {
+  width: min(320px, 100%);
+}
+
+.filter-status {
+  width: 120px;
+}
+
+.filter-owner {
+  width: 150px;
+}
+
+.filter-sort {
+  width: 150px;
+}
 
 /* ── Data Card ── */
 .data-card {
@@ -431,76 +615,78 @@ onDeactivated(stopAutoRefresh)
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   overflow: hidden;
+  flex: 1 1 auto;
 }
 
-/* ── Host Cell ── */
-.host-cell {
-  display: flex;
+.table-wrapper {
+  overflow-x: auto;
+}
+
+:deep(.table-wrapper .el-table) {
+  min-width: 1080px;
+}
+
+:deep(.data-card .el-table__header th) {
+  background: color-mix(in srgb, var(--surface-color) 60%, var(--bg-color));
+}
+
+:deep(.data-card .el-table__body td) {
+  vertical-align: middle;
+}
+
+.host-primary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.host-name,
+.host-meta,
+.collection-state,
+.owner-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-}
-
-.host-cell-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.host-cell-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.3;
-}
-
-.host-cell-ip {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.3;
-}
-
-/* ── Status Dot ── */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.dot-green {
-  background: var(--success-color);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--success-color) 40%, transparent);
-}
-
-.dot-grey {
-  background: var(--text-muted);
-}
-
-.dot-red {
-  background: var(--danger-color);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--danger-color) 40%, transparent);
-}
-
-/* ── Status Tag ── */
-.status-tag {
+  justify-content: center;
+  min-width: 56px;
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.tag-online {
+.status-chip.tone-success,
+.priority-item.tone-success {
   color: color-mix(in srgb, var(--success-color) 80%, black);
-  background: color-mix(in srgb, var(--success-color) 10%, transparent);
+  background: color-mix(in srgb, var(--success-color) 8%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--success-color) 18%, var(--border-color));
 }
 
-.tag-offline {
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+.status-chip.tone-muted,
+.priority-item.tone-muted {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 8%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--text-muted) 16%, var(--border-color));
 }
 
-.tag-danger {
+.status-chip.tone-danger,
+.priority-item.tone-danger {
   color: color-mix(in srgb, var(--danger-color) 80%, black);
-  background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+  background: color-mix(in srgb, var(--danger-color) 8%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--danger-color) 20%, var(--border-color));
+}
+
+.status-chip.tone-warning,
+.priority-item.tone-warning {
+  color: color-mix(in srgb, var(--warning-color) 72%, black);
+  background: color-mix(in srgb, var(--warning-color) 10%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--warning-color) 22%, var(--border-color));
 }
 
 /* ── Metric Cell ── */
@@ -513,7 +699,7 @@ onDeactivated(stopAutoRefresh)
 .metric-bar-track {
   width: 48px;
   height: 6px;
-  background: var(--border-color);
+  background: color-mix(in srgb, var(--border-color) 80%, var(--bg-color));
   border-radius: 3px;
   overflow: hidden;
   flex-shrink: 0;
@@ -535,28 +721,12 @@ onDeactivated(stopAutoRefresh)
   text-align: right;
 }
 
-/* ── Network Value ── */
-.network-value {
-  font-size: 12px;
-  color: var(--text-primary);
-}
-
-.network-value small {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
 /* ── Row Actions ── */
 .row-actions {
   display: flex;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.host-row:hover .row-actions {
-  opacity: 1;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 /* ── No Data ── */
@@ -567,7 +737,7 @@ onDeactivated(stopAutoRefresh)
 
 /* ── Empty State ── */
 .empty-state {
-  padding: 60px 0;
+  padding: 48px 0;
   text-align: center;
 }
 
@@ -577,6 +747,7 @@ onDeactivated(stopAutoRefresh)
   justify-content: space-between;
   align-items: center;
   margin-top: 12px;
+  padding: 0 12px 12px;
 }
 
 .pagination-total {
@@ -593,10 +764,8 @@ onDeactivated(stopAutoRefresh)
 
 /* ── Reduced Motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .metric-bar-fill {
-    transition: none;
-  }
-  .row-actions {
+  .metric-bar-fill,
+  .priority-item {
     transition: none;
   }
 }
@@ -609,20 +778,64 @@ onDeactivated(stopAutoRefresh)
 }
 
 @media (max-width: 768px) {
-  .stat-pills {
-    flex-wrap: wrap;
+  .page-header {
+    flex-direction: column;
   }
-  .stat-pill {
-    min-width: calc(50% - 4px);
+
+  .risk-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .filter-search { width: 100%; }
-  .filter-status { width: 100%; }
-  .filter-sort { width: 100%; }
-  .row-actions {
-    opacity: 1;
+
+  .header-actions {
+    max-width: none;
+    width: 100%;
+    justify-content: flex-start;
   }
+
+  .strip-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .priority-list {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar {
+    padding: 10px;
+  }
+
+  :deep(.table-wrapper .el-table) {
+    min-width: 920px;
+  }
+
+  .filter-search,
+  .filter-status,
+  .filter-owner,
+  .filter-sort {
+    width: 100%;
+  }
+
   :deep(.hide-desktop) {
     display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .risk-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .pagination-wrap {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
   }
 }
 </style>
