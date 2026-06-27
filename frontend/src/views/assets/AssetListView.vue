@@ -165,12 +165,9 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="190" fixed="right" align="right">
+          <el-table-column label="操作" width="150" fixed="right" align="right">
             <template #default="{ row }">
               <div class="action-cell">
-                <el-button size="small" type="primary" link :disabled="getAssetSshState(row).state === 'missing'" :aria-label="`SSH 连接 ${row.name}`" @click="$router.push(`/monitoring/hosts/${row.id}/ssh`)">
-                  SSH
-                </el-button>
                 <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/${row.id}`)">详情</el-button>
                 <el-popconfirm title="确认删除该资产？" @confirm="handleDelete(row.id)">
                   <template #reference>

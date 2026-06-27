@@ -31,8 +31,8 @@
         <div class="detail-actions">
           <el-button :icon="ArrowLeft" @click="$router.push('/assets/list')">返回列表</el-button>
           <el-button :icon="EditPen" @click="openEdit">编辑</el-button>
-          <el-button type="primary" :icon="Monitor" :disabled="sshState.state === 'missing'" @click="$router.push(`/monitoring/hosts/${assetId}/ssh`)">
-            SSH 连接
+          <el-button type="primary" :icon="Monitor" @click="$router.push(`/monitoring/hosts/${assetId}`)">
+            查看监控
           </el-button>
         </div>
       </div>
@@ -122,10 +122,6 @@
                   <span class="entry-title">监控详情 <el-tag size="small" type="success">入口</el-tag></span>
                   <span class="entry-desc">查看 CPU、内存、磁盘和网络趋势。</span>
                 </button>
-                <button class="entry" type="button" :disabled="sshState.state === 'missing'" @click="$router.push(`/monitoring/hosts/${assetId}/ssh`)">
-                  <span class="entry-title">SSH 终端 <el-tag size="small" :type="sshTagType">连接</el-tag></span>
-                  <span class="entry-desc">使用已配置凭据打开 Web 终端。</span>
-                </button>
                 <button class="entry" type="button" @click="$router.push('/batch-exec')">
                   <span class="entry-title">批量执行 <el-tag size="small">入口</el-tag></span>
                   <span class="entry-desc">将该主机加入命令执行目标。</span>
@@ -151,6 +147,12 @@
                   <div class="info-label">认证方式</div>
                   <div class="info-value">{{ authMethodLabel }}</div>
                 </div>
+              </div>
+              <div class="config-actions">
+                <el-button :icon="EditPen" @click="openEdit">编辑连接配置</el-button>
+                <el-button type="primary" plain :disabled="sshState.state === 'missing'" @click="$router.push(`/monitoring/hosts/${assetId}/ssh`)">
+                  打开 SSH 终端
+                </el-button>
               </div>
             </el-tab-pane>
 
@@ -628,9 +630,17 @@ onActivated(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
+.config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  flex-wrap: wrap;
+}
+
 .entry-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   padding-top: 12px;
 }
@@ -804,6 +814,14 @@ onActivated(() => {
   .info-grid.triple,
   .entry-grid {
     grid-template-columns: 1fr;
+  }
+
+  .config-actions {
+    justify-content: flex-start;
+  }
+
+  .config-actions :deep(.el-button) {
+    flex: 1 1 160px;
   }
 }
 
