@@ -1,9 +1,20 @@
 <template>
-  <el-dialog :model-value="visible" @update:model-value="$emit('update:visible', $event)"
-    :title="`编辑: ${filePath}`" width="80%" top="5vh" destroy-on-close>
+  <el-dialog
+    :model-value="visible"
+    :title="`编辑: ${filePath}`"
+    width="80%"
+    top="5vh"
+    destroy-on-close
+    @update:model-value="$emit('update:visible', $event)"
+  >
     <div v-loading="editLoading">
-      <el-input v-model="editContent" type="textarea" :rows="28" :autosize="false"
-        style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px;" />
+      <el-input
+        v-model="editContent"
+        class="file-editor"
+        type="textarea"
+        :rows="28"
+        :autosize="false"
+      />
     </div>
     <template #footer>
       <el-button @click="$emit('update:visible', false)">取消</el-button>
@@ -62,3 +73,18 @@ async function handleSave() {
   }
 }
 </script>
+
+<style scoped lang="scss">
+.file-editor {
+  :deep(.el-textarea__inner) {
+    min-height: 62vh !important;
+    color: #d7def7;
+    background: #0f1420;
+    border-color: #27304d;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+}
+</style>

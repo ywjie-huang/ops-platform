@@ -1,292 +1,302 @@
 <template>
-  <div class="ssh-page" :class="{ 'file-panel-open': showFilePanel }">
+  <div class="ssh-page" :class="{ 'right-panel-open': workbench.rightPanelOpen }">
     <SSHTerminalToolbar
       :host-name="hostName"
       :host-ip="hostIp"
-      :connected="connected"
-      :font-size="fontSize"
-      :show-file-panel="showFilePanel"
-      @copy="handleCopy"
-      @paste="handlePaste"
-      @clear="handleClear"
-      @change-font-size="changeFontSize"
+      :connected="activePaneMeta.connected"
+      :font-size="activePaneMeta.fontSize"
+      :show-file-panel="workbench.rightPanelOpen"
+      :can-split="canSplit"
+      @copy="activePaneGrid?.copyActivePane()"
+      @paste="activePaneGrid?.pasteActivePane()"
+      @clear="activePaneGrid?.clearActivePane()"
+      @change-font-size="activePaneGrid?.changeActivePaneFontSize($event)"
       @toggle-fullscreen="toggleFullscreen"
+      @split-vertical="handleSplit('vertical')"
+      @split-horizontal="handleSplit('horizontal')"
       @toggle-file-panel="toggleFilePanel"
-      @disconnect="handleDisconnect"
-      @reconnect="showLoginForm = true"
+      @disconnect="activePaneGrid?.disconnectActivePane()"
+      @reconnect="activePaneGrid?.reconnectActivePane()"
     />
 
     <div class="ssh-body">
       <div class="terminal-area">
-        <SSHLoginForm
-          ref="loginFormRef"
-          v-model:visible="showLoginForm"
-          :host-ip="hostIp"
-          :ssh-keys="sshKeys"
-          :connecting="connecting"
-          :connected="connected"
-          @connect="onLoginConnect"
+        <SSHTabBar
+          :tabs="workbench.tabs"
+          :active-tab-id="workbench.activeTabId"
+          @add-tab="handleAddTab"
+          @activate-tab="handleActivateTab"
+          @close-tab="handleCloseTab"
+          @rename-tab="handleRenameTab"
         />
 
-        <div ref="terminalRef" class="terminal-container" />
+        <SSHPaneGrid
+          v-for="tab in workbench.tabs"
+          v-show="tab.id === workbench.activeTabId"
+          :key="tab.id"
+          :ref="(instance) => setPaneGridRef(tab.id, instance)"
+          :class="{ 'is-hidden': tab.id !== workbench.activeTabId }"
+          :tab="tab"
+          :visible="tab.id === workbench.activeTabId"
+          :active-pane-id="tab.id === workbench.activeTabId ? workbench.activePaneId : ''"
+          :asset-id="assetId"
+          :host-ip="hostIp"
+          :ssh-keys="sshKeys"
+          :initial-login-state="initialLoginState"
+          @activate-pane="handleActivatePane(tab.id, $event)"
+          @close-pane="handleClosePane(tab.id, $event)"
+          @pane-status-change="handlePaneStatusChange"
+          @pane-meta-change="handlePaneMetaChange"
+          @pane-key-change="handlePaneKeyChange"
+        />
 
-        <div v-if="connected" class="terminal-statusbar">
-          <span>{{ hostIp }}:{{ loginPort }}</span>
-          <span>{{ loginUsername }}</span>
-          <span>{{ terminalSize }}</span>
-          <span>已连接 {{ connectionTime }}</span>
-        </div>
+        <SSHStatusBar
+          :host-ip="hostIp"
+          :pane="activePaneForStatus"
+          :layout-label="layoutText"
+          :terminal-size="activePaneMeta.terminalSize"
+          :connection-time="activePaneMeta.connectionTime"
+          :login-username="activePaneMeta.loginUsername"
+          :login-port="activePaneMeta.loginPort"
+        />
       </div>
 
-      <SFTPFilePanel
-        v-model:visible="showFilePanel"
-        :connected="connected"
-        :asset-id="Number(route.params.id)"
-        :current-key-id="currentKeyId"
-        @refit-terminal="nextTick(() => fitAddon?.fit())"
+      <SSHRightPanel
+        ref="rightPanelRef"
+        v-model:open="workbench.rightPanelOpen"
+        :active-tab="workbench.rightPanelTab"
+        :connected="activePaneMeta.connected"
+        :asset-id="assetId"
+        :current-key-id="activePaneMeta.currentKeyId"
+        :active-pane="activePane"
+        :active-pane-meta="activePaneMeta"
+        @change-tab="handleRightPanelTabChange"
+        @refit-terminal="handleRefitTerminal"
         @edit-file="openEditDialog"
+        @path-change="handlePathChange"
       />
     </div>
 
     <FileEditDialog
       v-model:visible="editDialogVisible"
       :file-path="editFilePath"
-      :asset-id="Number(route.params.id)"
-      :current-key-id="currentKeyId"
-      @saved="sftpPanelRef?.navigateTo(sftpPanelRef?.currentPath || '/')"
+      :asset-id="assetId"
+      :current-key-id="activePaneMeta.currentKeyId"
+      @saved="rightPanelRef?.navigateTo(rightPanelRef?.currentPath || '/')"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated, onDeactivated, nextTick } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, reactive, ref, type ComponentPublicInstance } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { getAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
-import { Terminal } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
-import 'xterm/css/xterm.css'
-import SSHTerminalToolbar from './ssh/SSHTerminalToolbar.vue'
-import SSHLoginForm from './ssh/SSHLoginForm.vue'
-import SFTPFilePanel from './ssh/SFTPFilePanel.vue'
 import FileEditDialog from './ssh/FileEditDialog.vue'
-import { buildAuthPayload, getInitialLoginState } from './ssh/sshConnection'
+import SSHPaneGrid from './ssh/SSHPaneGrid.vue'
+import type { SSHPaneMeta } from './ssh/SSHPane.vue'
+import SSHTabBar from './ssh/SSHTabBar.vue'
+import SSHRightPanel from './ssh/SSHRightPanel.vue'
+import SSHStatusBar from './ssh/SSHStatusBar.vue'
+import SSHTerminalToolbar from './ssh/SSHTerminalToolbar.vue'
+import { getInitialLoginState, type LoginFormState } from './ssh/sshConnection'
+import type { SSHConnectionStatus, SSHPaneLayout, SSHRightPanelTab } from './ssh/types'
+import {
+  addTab,
+  closePane,
+  createInitialWorkbenchState,
+  removeTab,
+  renameTab,
+  setActivePane,
+  splitActiveTab,
+  updatePaneMeta,
+} from './ssh/useSSHWorkbench'
 
 const route = useRoute()
 
-// ── 子组件 ref ──
-const loginFormRef = ref<InstanceType<typeof SSHLoginForm>>()
-const sftpPanelRef = ref<InstanceType<typeof SFTPFilePanel>>()
+const rightPanelRef = ref<InstanceType<typeof SSHRightPanel>>()
+type SSHPaneGridPublic = InstanceType<typeof SSHPaneGrid>
 
-// ── 终端状态 ──
-const terminalRef = ref<HTMLElement>()
 const hostName = ref('')
 const hostIp = ref('')
-const connected = ref(false)
-const connecting = ref(false)
-const showLoginForm = ref(false)
 const sshKeys = ref<any[]>([])
-const fontSize = ref(14)
-const connectionStartTime = ref<number>(0)
-const connectionTime = ref('')
-const loginPort = ref(22)
-const loginUsername = ref('root')
-
-// ── 文件编辑 ──
 const editDialogVisible = ref(false)
 const editFilePath = ref('')
+const initialLoginState = ref<LoginFormState | null>(null)
+const paneMeta = reactive<Record<string, SSHPaneMeta>>({})
+const workbench = reactive(createInitialWorkbenchState())
+const paneGridRefs = reactive(new Map<string, SSHPaneGridPublic>())
 
-// ── 文件面板 ──
-const showFilePanel = ref(false)
-
-let terminal: Terminal | null = null
-let fitAddon: FitAddon | null = null
-let ws: WebSocket | null = null
-let resizeObserver: ResizeObserver | null = null
-let currentKeyId: number | undefined = undefined
-
-const terminalSize = computed(() => {
-  if (!terminal) return ''
-  return `${terminal.cols}×${terminal.rows}`
+const assetId = computed(() => Number(route.params.id))
+const activeTab = computed(() => workbench.tabs.find((tab) => tab.id === workbench.activeTabId))
+const activePane = computed(() => activeTab.value?.panes.find((item) => item.id === workbench.activePaneId))
+const activePaneForStatus = computed(() => activePane.value ?? workbench.tabs[0].panes[0])
+const activePaneGrid = computed(() => paneGridRefs.get(workbench.activeTabId))
+const canSplit = computed(() => activeTab.value?.layout === 'single')
+const activePaneMeta = computed<SSHPaneMeta>(() => {
+  const pane = activeTab.value?.panes.find((item) => item.id === workbench.activePaneId)
+  return paneMeta[workbench.activePaneId] ?? {
+    connected: false,
+    connecting: false,
+    status: pane?.status ?? 'idle',
+    fontSize: pane?.fontSize ?? 13,
+    currentKeyId: undefined,
+    authMode: pane?.authMode ?? 'asset',
+    connectionSeconds: pane?.connectionSeconds ?? 0,
+    currentPath: pane?.currentPath ?? '/',
+    lastError: pane?.lastError ?? null,
+    loginUsername: initialLoginState.value?.username ?? 'root',
+    loginPort: initialLoginState.value?.port ?? 22,
+    terminalSize: '',
+    connectionTime: '',
+  }
 })
-
-// ── 连接时间计时 ──
-let timeInterval: ReturnType<typeof setInterval> | null = null
-function startTimeCounter() {
-  connectionStartTime.value = Date.now()
-  timeInterval = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - connectionStartTime.value) / 1000)
-    const m = Math.floor(elapsed / 60)
-    const s = elapsed % 60
-    connectionTime.value = m > 0 ? `${m}m ${s}s` : `${s}s`
-  }, 1000)
-}
-function stopTimeCounter() {
-  if (timeInterval) { clearInterval(timeInterval); timeInterval = null }
-  connectionTime.value = ''
-}
-
-// ── 终端初始化 ──
-async function initTerminal() {
-  terminal = new Terminal({
-    cursorBlink: true,
-    fontSize: fontSize.value,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
-    theme: {
-      background: '#1a1b26',
-      foreground: '#c0caf5',
-      cursor: '#c0caf5',
-      cursorAccent: '#1a1b26',
-      selectionBackground: '#33467c',
-      selectionForeground: '#c0caf5',
-      black: '#15161e',
-      red: '#f7768e',
-      green: '#9ece6a',
-      yellow: '#e0af68',
-      blue: '#7aa2f7',
-      magenta: '#bb9af7',
-      cyan: '#7dcfff',
-      white: '#a9b1d6',
-      brightBlack: '#414868',
-      brightRed: '#f7768e',
-      brightGreen: '#9ece6a',
-      brightYellow: '#e0af68',
-      brightBlue: '#7aa2f7',
-      brightMagenta: '#bb9af7',
-      brightCyan: '#7dcfff',
-      brightWhite: '#c0caf5',
-    },
-    allowProposedApi: true,
-  })
-
-  fitAddon = new FitAddon()
-  terminal.loadAddon(fitAddon)
-
-  await nextTick()
-  if (!terminalRef.value) return
-  terminal.open(terminalRef.value)
-  fitAddon.fit()
-
-  terminal.onData((data) => {
-    if (ws?.readyState === WebSocket.OPEN) ws.send(data)
-  })
-
-  terminal.onSelectionChange(() => {
-    const text = terminal?.getSelection()
-    if (text) navigator.clipboard?.writeText(text).catch(() => {})
-  })
-
-  resizeObserver = new ResizeObserver(() => {
-    fitAddon?.fit()
-    if (ws?.readyState === WebSocket.OPEN && terminal) {
-      ws.send(JSON.stringify({ cols: terminal.cols, rows: terminal.rows }))
-    }
-  })
-  resizeObserver.observe(terminalRef.value)
-}
-
-// ── 连接 SSH ──
-function onLoginConnect(formData: { username: string; password: string; port: number; authMode: string }) {
-  loginPort.value = formData.port
-  loginUsername.value = formData.username
-  connectSSH(formData)
-}
-
-function connectSSH(formData: { username: string; password: string; port: number; authMode: string }) {
-  if (!terminal) return
-  connecting.value = true
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const assetId = route.params.id
-  ws = new WebSocket(`${protocol}//${location.host}/api/v1/ws/ssh/${assetId}`)
-
-  ws.onopen = () => {
-    showLoginForm.value = false
-    nextTick(() => fitAddon?.fit())
-    const authData: any = buildAuthPayload(formData)
-    currentKeyId = typeof authData.key_id === 'number' ? authData.key_id : undefined
-    ws!.send(JSON.stringify(authData))
-  }
-
-  ws.onmessage = (event) => {
-    if (terminal) terminal.write(event.data)
-    if (connecting.value) {
-      connected.value = true
-      connecting.value = false
-      startTimeCounter()
-    }
-  }
-
-  ws.onclose = () => {
-    connected.value = false
-    connecting.value = false
-    stopTimeCounter()
-    if (terminal) terminal.write('\r\n\x1b[33m连接已关闭\x1b[0m\r\n')
-  }
-
-  ws.onerror = () => {
-    connected.value = false
-    connecting.value = false
-    stopTimeCounter()
-    if (terminal) terminal.write('\r\n\x1b[31m连接出错\x1b[0m\r\n')
-  }
-}
-
-// ── 工具栏操作 ──
-function handleCopy() {
-  const text = terminal?.getSelection()
-  if (text) {
-    navigator.clipboard?.writeText(text)
-    ElMessage.success('已复制')
-  }
-}
-
-async function handlePaste() {
-  try {
-    const text = await navigator.clipboard?.readText()
-    if (text && ws?.readyState === WebSocket.OPEN) ws.send(text)
-  } catch {
-    ElMessage.warning('请使用 Ctrl+V 粘贴')
-  }
-}
-
-function handleClear() {
-  terminal?.clear()
-}
-
-function changeFontSize(delta: number) {
-  const newSize = fontSize.value + delta
-  if (newSize < 10 || newSize > 24) return
-  fontSize.value = newSize
-  if (terminal) {
-    terminal.options.fontSize = newSize
-    nextTick(() => fitAddon?.fit())
-  }
-}
-
+const layoutText = computed(() => {
+  if (activeTab.value?.layout === 'vertical') return '左右分屏'
+  if (activeTab.value?.layout === 'horizontal') return '上下分屏'
+  return '单终端'
+})
 function toggleFullscreen() {
-  const el = document.querySelector('.ssh-page')
-  if (!el) return
+  const page = document.querySelector('.ssh-page')
+  if (!page) {
+    return
+  }
+
   if (document.fullscreenElement) {
     document.exitFullscreen()
   } else {
-    el.requestFullscreen()
+    page.requestFullscreen()
   }
 }
 
-function handleDisconnect() {
-  ws?.close()
-  ws = null
-  connected.value = false
-  stopTimeCounter()
+function handleAddTab() {
+  addTab(workbench, `Session ${workbench.tabs.length + 1}`)
+}
+
+function setPaneGridRef(
+  tabId: string,
+  instance: Element | ComponentPublicInstance | SSHPaneGridPublic | null,
+) {
+  if (!instance) {
+    paneGridRefs.delete(tabId)
+    return
+  }
+
+  const grid = instance as SSHPaneGridPublic
+  if (typeof grid.getActivePaneMeta === 'function') {
+    paneGridRefs.set(tabId, grid)
+  }
+}
+
+function handleActivateTab(tabId: string) {
+  const targetTab = workbench.tabs.find((tab) => tab.id === tabId)
+  if (!targetTab) {
+    return
+  }
+
+  workbench.activeTabId = targetTab.id
+  workbench.activePaneId = targetTab.panes[0].id
+}
+
+function handleCloseTab(tabId: string) {
+  const targetTab = workbench.tabs.find((tab) => tab.id === tabId)
+  targetTab?.panes.forEach((pane) => {
+    delete paneMeta[pane.id]
+  })
+  paneGridRefs.delete(tabId)
+  removeTab(workbench, tabId)
+}
+
+function handleRenameTab(tabId: string, title: string) {
+  renameTab(workbench, tabId, title)
+}
+
+function handleSplit(layout: Exclude<SSHPaneLayout, 'single'>) {
+  if (!canSplit.value) {
+    return
+  }
+
+  splitActiveTab(workbench, layout)
+  nextTick(() => activePaneGrid.value?.refitActivePane())
+}
+
+function handleActivatePane(tabId: string, paneId: string) {
+  if (workbench.activeTabId !== tabId) {
+    workbench.activeTabId = tabId
+  }
+
+  setActivePane(workbench, paneId)
+}
+
+function handleClosePane(tabId: string, paneId: string) {
+  if (workbench.activeTabId !== tabId) {
+    return
+  }
+
+  closePane(workbench, paneId)
+  delete paneMeta[paneId]
+  nextTick(() => activePaneGrid.value?.refitActivePane())
+}
+
+function handlePaneStatusChange(paneId: string, status: SSHConnectionStatus) {
+  const tab = workbench.tabs.find((item) => item.panes.some((pane) => pane.id === paneId))
+  const pane = tab?.panes.find((item) => item.id === paneId)
+  if (pane) {
+    pane.status = status
+  }
+  if (tab) {
+    tab.status = tab.panes.some((item) => item.status === 'connected')
+      ? 'connected'
+      : tab.panes.some((item) => item.status === 'connecting')
+        ? 'connecting'
+        : status
+  }
+}
+
+function handlePaneMetaChange(paneId: string, meta: SSHPaneMeta) {
+  const paneExists = workbench.tabs.some((tab) => tab.panes.some((pane) => pane.id === paneId))
+  if (!paneExists) {
+    return
+  }
+
+  paneMeta[paneId] = meta
+  updatePaneMeta(workbench, paneId, {
+    authMode: meta.authMode,
+    connectionSeconds: meta.connectionSeconds,
+    currentPath: meta.currentPath,
+    lastError: meta.lastError,
+  })
+}
+
+function handlePaneKeyChange(paneId: string, keyId: number | undefined) {
+  const existing = paneMeta[paneId]
+  if (existing) {
+    existing.currentKeyId = keyId
+  }
+}
+
+function handlePathChange(path: string) {
+  updatePaneMeta(workbench, workbench.activePaneId, { currentPath: path })
+}
+
+function handleRefitTerminal() {
+  nextTick(() => activePaneGrid.value?.refitActivePane())
 }
 
 function toggleFilePanel() {
-  showFilePanel.value = !showFilePanel.value
-  if (showFilePanel.value && connected.value) {
-    sftpPanelRef.value?.navigateTo(sftpPanelRef.value?.currentPath || '/')
+  workbench.rightPanelOpen = !workbench.rightPanelOpen
+  if (workbench.rightPanelOpen && activePaneMeta.value.connected) {
+    nextTick(() => rightPanelRef.value?.navigateTo(rightPanelRef.value?.currentPath || '/'))
   }
-  nextTick(() => fitAddon?.fit())
+
+  handleRefitTerminal()
+}
+
+function handleRightPanelTabChange(tab: SSHRightPanelTab) {
+  workbench.rightPanelTab = tab
+  if (tab === 'files' && workbench.rightPanelOpen && activePaneMeta.value.connected) {
+    nextTick(() => rightPanelRef.value?.navigateTo(rightPanelRef.value?.currentPath || '/'))
+  }
 }
 
 function openEditDialog(path: string) {
@@ -294,48 +304,33 @@ function openEditDialog(path: string) {
   editDialogVisible.value = true
 }
 
-// ── 清理 ──
 function cleanup() {
-  ws?.close()
-  ws = null
-  terminal?.dispose()
-  terminal = null
-  fitAddon = null
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  connected.value = false
-  connecting.value = false
-  showFilePanel.value = false
-  stopTimeCounter()
-  currentKeyId = undefined
+  paneGridRefs.forEach((grid) => grid.disconnectAllPanes())
+  Object.keys(paneMeta).forEach((key) => {
+    delete paneMeta[key]
+  })
 }
 
 onActivated(async () => {
-  const assetId = route.params.id
   try {
     const [assetRes, keysRes]: any[] = await Promise.all([
-      getAsset(Number(assetId)),
+      getAsset(assetId.value),
       getSSHKeys({ page_size: 100 }),
     ])
+
     hostName.value = assetRes.data.name
     hostIp.value = assetRes.data.ip_address
     sshKeys.value = keysRes.data.items || []
-    const initialLoginState = getInitialLoginState(assetRes.data, sshKeys.value)
-    loginUsername.value = initialLoginState.username
-    loginPort.value = initialLoginState.port
-
-    await nextTick()
-    if (loginFormRef.value) {
-      loginFormRef.value.setDefaults(initialLoginState.username, initialLoginState.port)
-      loginFormRef.value.setAuthMode(initialLoginState.authMode)
-      loginFormRef.value.clearPassword()
-    }
+    initialLoginState.value = getInitialLoginState(assetRes.data, sshKeys.value)
   } catch {
-    hostName.value = '未知'
-    hostIp.value = '未知'
+    hostName.value = '未知主机'
+    hostIp.value = '未知地址'
+    initialLoginState.value = {
+      authMode: 'asset',
+      username: 'root',
+      port: 22,
+    }
   }
-  await initTerminal()
-  showLoginForm.value = true
 })
 
 onDeactivated(cleanup)
@@ -343,11 +338,27 @@ onDeactivated(cleanup)
 
 <style lang="scss" scoped>
 .ssh-page {
+  --ssh-bg: #0d111c;
+  --ssh-shell: #121725;
+  --ssh-surface: #171c2c;
+  --ssh-surface-strong: #1d2436;
+  --ssh-border: #303a5c;
+  --ssh-border-soft: #232b45;
+  --ssh-text: #d7def7;
+  --ssh-muted: #7f8aaa;
+  --ssh-accent: #6ea8fe;
+  --ssh-success: #4ade80;
+  --ssh-warning: #f6c177;
+  --ssh-danger: #ff7b93;
+
   display: flex;
   flex-direction: column;
   height: calc(100vh - 56px);
   margin: -20px;
-  background: #1a1b26;
+  padding: 10px;
+  background:
+    linear-gradient(180deg, rgb(19 25 41 / 96%), rgb(11 15 25 / 98%)),
+    var(--ssh-bg);
   border-radius: 0;
   overflow: hidden;
 }
@@ -355,7 +366,9 @@ onDeactivated(cleanup)
 .ssh-body {
   flex: 1;
   display: flex;
+  gap: 10px;
   min-height: 0;
+  padding-top: 10px;
 }
 
 .terminal-area {
@@ -364,25 +377,31 @@ onDeactivated(cleanup)
   flex-direction: column;
   min-width: 0;
   position: relative;
-}
-
-.terminal-container {
-  flex: 1;
-  padding: 8px;
   overflow: hidden;
-  :deep(.xterm) { height: 100%; }
+  background: var(--ssh-shell);
+  border: 1px solid var(--ssh-border-soft);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
 
-.terminal-statusbar {
-  display: flex;
-  gap: 16px;
-  padding: 4px 12px;
-  font-size: 11px;
-  color: #565f89;
-  background: #1f2335;
-  border-top: 1px solid #33467c;
+:deep(.el-loading-mask) {
+  background: rgb(26 27 38 / 70%);
 }
 
-:deep(.el-loading-mask) { background: rgba(26,27,38,0.7); }
-:deep(.el-loading-spinner .circular circle) { stroke: #7aa2f7; }
+:deep(.el-loading-spinner .circular circle) {
+  stroke: #7aa2f7;
+}
+
+@media (max-width: 900px) {
+  .ssh-page {
+    height: calc(100vh - 48px);
+    padding: 7px;
+  }
+
+  .ssh-body {
+    flex-direction: column;
+    gap: 7px;
+    padding-top: 7px;
+  }
+}
 </style>

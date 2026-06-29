@@ -67,3 +67,16 @@ test('includes key id when login mode is ssh key', () => {
     key_id: 3,
   })
 })
+
+test('includes key id for empty-password key auth payload', () => {
+  assert.deepEqual(buildAuthPayload({
+    username: 'ops',
+    password: '',
+    port: 22,
+    authMode: 'key-8',
+  }), {
+    username: 'ops',
+    port: 22,
+    key_id: 8,
+  })
+})
