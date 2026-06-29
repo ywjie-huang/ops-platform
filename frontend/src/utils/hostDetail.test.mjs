@@ -8,6 +8,7 @@ const {
   buildHostRecommendations,
   buildRelationCards,
   buildSteadyDetailGroups,
+  buildTrendChartGeometry,
   buildTrendCards,
   formatHostUptime,
   getHostRiskMeta,
@@ -273,6 +274,35 @@ test('provides stable trend and relation placeholders for phase one', () => {
     { key: 'deploys', label: '最近部署', value: '待接入' },
     { key: 'patrols', label: '巡检记录', value: '待接入' },
   ])
+})
+
+test('builds trend chart geometry with axes, gridlines, and labels', () => {
+  const chart = buildTrendChartGeometry([
+    { timestamp: 1710000000, value: 12.3 },
+    { timestamp: 1710000300, value: 18.8 },
+    { timestamp: 1710000600, value: 24.6 },
+  ], '%')
+
+  assert.equal(chart.viewBox, '0 0 180 72')
+  assert.match(chart.linePoints, /^34,52 /)
+  assert.match(chart.linePoints, /176,8$/)
+  assert.equal(chart.areaPoints.endsWith(' 176,52 34,52'), true)
+  assert.deepEqual(chart.yTicks.map((tick) => tick.label), ['24.6%', '18.5%', '12.3%'])
+  assert.deepEqual(chart.gridLines.map((line) => line.y), chart.yTicks.map((tick) => tick.y))
+  assert.deepEqual(chart.xLabels.map((label) => label.label), ['-60m', 'now'])
+})
+
+test('builds readable trend chart geometry for a flat series', () => {
+  const chart = buildTrendChartGeometry([
+    { timestamp: 1710000000, value: 7 },
+    { timestamp: 1710000300, value: 7 },
+    { timestamp: 1710000600, value: 7 },
+  ])
+
+  assert.equal(chart.linePoints.split(' ').length, 3)
+  assert.equal(chart.yTicks.length, 3)
+  assert.deepEqual([...new Set(chart.yTicks.map((tick) => tick.label))], ['7'])
+  assert.equal(chart.linePoints.includes('NaN'), false)
 })
 
 test('shows disk used capacity in steady detail groups', () => {

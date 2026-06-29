@@ -48,6 +48,25 @@ export type HostRecommendation = {
   tone: Tone
 }
 
+export type HostTrendPointLike = {
+  timestamp: number
+  value: number
+}
+
+export type TrendChartTick = {
+  label: string
+  y: number
+}
+
+export type TrendChartGeometry = {
+  viewBox: string
+  linePoints: string
+  areaPoints: string
+  yTicks: TrendChartTick[]
+  gridLines: { x1: number; x2: number; y: number }[]
+  xLabels: { label: string; x: number; y: number; anchor: 'start' | 'end' }[]
+}
+
 function metricTone(value: number | undefined): Tone {
   if (value == null) return 'muted'
   if (value > 90) return 'danger'
@@ -349,6 +368,50 @@ export function buildTrendCards(_host: HostDetailLike) {
     { key: 'memory', label: '内存趋势', state: '暂无历史趋势', unit: '%', points: [] },
     { key: 'network_in', label: '网络趋势', state: '暂无历史趋势', unit: 'Mbps', points: [] },
   ]
+}
+
+function formatTrendAxisValue(value: number, unit = '') {
+  const rounded = Number.isInteger(value) ? `${value}` : `${Math.round(value * 10) / 10}`
+  return `${rounded}${unit}`
+}
+
+export function buildTrendChartGeometry(points: HostTrendPointLike[], unit = ''): TrendChartGeometry {
+  const width = 180
+  const height = 72
+  const plotLeft = 34
+  const plotRight = 176
+  const plotTop = 8
+  const plotBottom = 52
+  const values = points.map((point) => point.value)
+  const min = values.length ? Math.min(...values) : 0
+  const max = values.length ? Math.max(...values) : 0
+  const isFlat = max === min
+  const range = max - min || 1
+  const step = (plotRight - plotLeft) / (points.length - 1 || 1)
+  const yForValue = (value: number) => (
+    isFlat ? (plotTop + plotBottom) / 2 : plotBottom - ((value - min) / range) * (plotBottom - plotTop)
+  )
+  const linePoints = points.map((point, index) => (
+    `${plotLeft + index * step},${yForValue(point.value)}`
+  )).join(' ')
+  const tickValues = [max, min + (max - min) / 2, min]
+  const flatTickY = [plotTop, (plotTop + plotBottom) / 2, plotBottom]
+  const yTicks = tickValues.map((value, index) => ({
+    label: formatTrendAxisValue(value, unit),
+    y: isFlat ? flatTickY[index] : yForValue(value),
+  }))
+
+  return {
+    viewBox: `0 0 ${width} ${height}`,
+    linePoints,
+    areaPoints: linePoints ? `${linePoints} ${plotRight},${plotBottom} ${plotLeft},${plotBottom}` : '',
+    yTicks,
+    gridLines: yTicks.map((tick) => ({ x1: plotLeft, x2: plotRight, y: tick.y })),
+    xLabels: [
+      { label: '-60m', x: plotLeft, y: 68, anchor: 'start' },
+      { label: 'now', x: plotRight, y: 68, anchor: 'end' },
+    ],
+  }
 }
 
 export function buildRelationCards(_host: HostDetailLike) {

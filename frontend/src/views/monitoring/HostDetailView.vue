@@ -173,12 +173,40 @@
               <svg
                 v-else-if="card.points.length"
                 class="trend-chart"
-                viewBox="0 0 160 56"
+                :viewBox="card.chart.viewBox"
                 role="img"
                 :aria-label="`${card.label} 最近 1 小时趋势`"
               >
-                <polygon :points="trendAreaPoints(card.points)" class="trend-area" />
-                <polyline :points="trendLinePoints(card.points)" class="trend-line" />
+                <line
+                  v-for="line in card.chart.gridLines"
+                  :key="line.y"
+                  :x1="line.x1"
+                  :x2="line.x2"
+                  :y1="line.y"
+                  :y2="line.y"
+                  class="trend-gridline"
+                />
+                <text
+                  v-for="tick in card.chart.yTicks"
+                  :key="tick.label"
+                  x="29"
+                  :y="tick.y"
+                  class="trend-tick-label"
+                >
+                  {{ tick.label }}
+                </text>
+                <polygon :points="card.chart.areaPoints" class="trend-area" />
+                <polyline :points="card.chart.linePoints" class="trend-line" />
+                <text
+                  v-for="label in card.chart.xLabels"
+                  :key="label.label"
+                  :x="label.x"
+                  :y="label.y"
+                  :text-anchor="label.anchor"
+                  class="trend-x-label"
+                >
+                  {{ label.label }}
+                </text>
               </svg>
               <div v-else class="trend-placeholder" aria-hidden="true">
                 <el-icon><DataLine /></el-icon>
@@ -247,8 +275,9 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import { getHostDetail, getHostTrends } from '@/api/monitoring'
-import type { HostDetail, HostTrendData, HostTrendPoint } from '@/api/monitoring'
+import type { HostDetail, HostTrendData } from '@/api/monitoring'
 import {
+  buildTrendChartGeometry,
   buildCollectionState,
   buildCurrentJudgment,
   buildHostMetricCards,
@@ -280,10 +309,12 @@ const trendCards = computed(() => {
     const series = trendMap.get(card.key)
     const points = series?.points || []
     const lastPoint = points[points.length - 1]
+    const unit = series?.unit || card.unit
     return {
       ...card,
       points,
-      unit: series?.unit || card.unit,
+      unit,
+      chart: buildTrendChartGeometry(points, unit),
       state: points.length ? `${lastPoint?.value ?? '-'} ` : card.state,
     }
   })
@@ -302,29 +333,6 @@ function formatTime(date: Date) {
 function metricSegmentCount(percent: number) {
   if (!percent) return 0
   return Math.min(10, Math.max(1, Math.ceil(percent / 10)))
-}
-
-function trendLinePoints(points: HostTrendPoint[]) {
-  if (!points.length) return ''
-  const width = 160
-  const height = 56
-  const padding = 4
-  const values = points.map((point) => point.value)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-  const step = (width - padding * 2) / (points.length - 1 || 1)
-  return points.map((point, index) => {
-    const x = padding + index * step
-    const y = height - padding - ((point.value - min) / range) * (height - padding * 2)
-    return `${x},${y}`
-  }).join(' ')
-}
-
-function trendAreaPoints(points: HostTrendPoint[]) {
-  const linePoints = trendLinePoints(points)
-  if (!linePoints) return ''
-  return `${linePoints} 156,56 4,56`
 }
 
 function goSsh() {
@@ -766,7 +774,7 @@ onActivated(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 56px;
+  height: 72px;
   margin-top: 8px;
   border: 1px dashed var(--border-color);
   border-radius: 6px;
@@ -782,9 +790,30 @@ onActivated(() => {
 .trend-chart {
   display: block;
   width: 100%;
-  height: 56px;
+  height: 72px;
   margin-top: 8px;
   color: var(--primary-color);
+}
+
+.trend-gridline {
+  stroke: var(--border-color);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-tick-label,
+.trend-x-label {
+  fill: var(--text-muted);
+  font-size: 8px;
+  dominant-baseline: middle;
+}
+
+.trend-tick-label {
+  text-anchor: end;
+}
+
+.trend-x-label {
+  dominant-baseline: auto;
 }
 
 .trend-line {
