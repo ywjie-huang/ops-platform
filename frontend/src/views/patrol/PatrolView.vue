@@ -1,321 +1,278 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h2 class="page-title">巡检中心</h2>
-      <el-button type="primary" :loading="running" @click="handleRun">
-        <el-icon><VideoPlay /></el-icon> 立即巡检
-      </el-button>
-    </div>
-
-    <!-- 最近一次巡检概览 -->
-    <div v-if="latestReport" class="data-card report-overview">
-      <div class="report-meta">
-        <h3 class="report-title">{{ latestReport.title }}</h3>
-        <el-tag :type="statusType(latestReport.status)" size="small">{{ statusLabel(latestReport.status) }}</el-tag>
-        <span class="report-time" :title="latestReport.created_at">{{ formatRelativeTime(latestReport.created_at) }}</span>
-        <span class="report-operator">操作人：{{ latestReport.operator || '-' }}</span>
+  <div class="patrol-command">
+    <div class="page-header command-header">
+      <div>
+        <h2 class="page-title">巡检指挥台</h2>
+        <p class="page-subtitle">异常对象优先，按处置路径组织巡检结果。</p>
       </div>
-      <div class="stat-grid">
-        <div class="mini-stat success">
-          <div class="mini-stat-value">{{ latestReport.normal_count }}</div>
-          <div class="mini-stat-label">正常</div>
-        </div>
-        <div class="mini-stat warning">
-          <div class="mini-stat-value">{{ latestReport.warning_count }}</div>
-          <div class="mini-stat-label">警告</div>
-        </div>
-        <div class="mini-stat danger">
-          <div class="mini-stat-value">{{ latestReport.critical_count }}</div>
-          <div class="mini-stat-label">严重</div>
-        </div>
-        <div class="mini-stat info">
-          <div class="mini-stat-value">{{ latestReport.total_checks }}</div>
-          <div class="mini-stat-label">总检查项</div>
-        </div>
+      <div class="header-actions">
+        <el-button @click="$router.push('/patrol/cockpit')">
+          <el-icon><DataAnalysis /></el-icon> 态势大屏
+        </el-button>
+        <el-button @click="$router.push('/patrol/settings')">
+          <el-icon><Setting /></el-icon> 阈值配置
+        </el-button>
+        <el-button type="primary" :loading="running" @click="handleRun">
+          <el-icon><VideoPlay /></el-icon> 立即巡检
+        </el-button>
       </div>
     </div>
 
-    <!-- 报告列表 -->
-    <div class="data-card">
-      <div class="filter-bar">
-        <el-select v-model="statusFilter" placeholder="状态筛选" clearable class="status-filter" @change="fetchReports">
-          <el-option label="全部" value="" />
-          <el-option label="正常" value="normal" />
-          <el-option label="警告" value="warning" />
-          <el-option label="严重" value="critical" />
-        </el-select>
-      </div>
+    <div class="command-grid">
+      <aside class="command-panel run-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v5l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>巡检批次</span>
+          </div>
+          <el-select v-model="statusFilter" clearable placeholder="全部" size="small" class="status-filter" @change="fetchReports">
+            <el-option label="全部" value="" />
+            <el-option label="正常" value="normal" />
+            <el-option label="警告" value="warning" />
+            <el-option label="严重" value="critical" />
+          </el-select>
+        </div>
 
-      <div class="table-wrapper">
-        <el-table
-          :data="reports"
-          stripe
-          v-loading="loading"
-          row-key="id"
-          :row-class-name="() => 'clickable-row'"
-          @row-click="handleRowClick"
-          @keydown.enter="handleRowKeydown"
-        >
-          <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="title" label="报告标题" min-width="200" />
-          <el-table-column prop="status" label="状态" width="80">
-            <template #default="{row}">
-              <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="检查结果" width="200">
-            <template #default="{row}">
-              <span class="result-success">{{ row.normal_count }} 正常</span> ·
-              <span class="result-warning">{{ row.warning_count }} 警告</span> ·
-              <span class="result-danger">{{ row.critical_count }} 严重</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="operator" label="操作人" width="100" />
-          <el-table-column label="巡检时间" width="170">
-            <template #default="{row}">
-              <span :title="row.created_at">{{ formatRelativeTime(row.created_at) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="140" fixed="right">
-            <template #default="{row}">
-              <el-button link type="primary" size="small" @click.stop="handleExport(row)">导出 Excel</el-button>
-              <el-button link type="danger" size="small" @click.stop="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-          <template #empty>
-            <div class="empty-state">
-              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              <p class="empty-text">暂无巡检报告</p>
-              <p class="empty-hint">点击页面顶部「立即巡检」开始第一次巡检</p>
+        <div v-loading="loading" class="run-list">
+          <button
+            v-for="report in reports"
+            :key="report.id"
+            class="run-item"
+            :class="{ active: selectedReport?.id === report.id }"
+            type="button"
+            @click="selectReport(report)"
+          >
+            <span class="run-top">
+              <span class="run-title">
+                <strong>{{ report.title }}</strong>
+                <span>{{ report.operator || '系统任务' }} · {{ relativeTime(report.created_at) }}</span>
+              </span>
+              <span class="status-pill" :class="statusTone(report.status)">{{ getPatrolPriority(report) }}</span>
+            </span>
+            <span class="run-bars" :aria-label="`${report.normal_count} 正常，${report.warning_count} 警告，${report.critical_count} 严重`">
+              <i class="bar-normal" :style="{ flexGrow: Math.max(report.normal_count || 0, 1) }"></i>
+              <i class="bar-warning" :style="{ flexGrow: Math.max(report.warning_count || 0, 1) }"></i>
+              <i class="bar-critical" :style="{ flexGrow: Math.max(report.critical_count || 0, 1) }"></i>
+            </span>
+            <span class="run-foot">
+              <span>{{ report.total_checks }} 项检查</span>
+              <span>{{ (report.warning_count || 0) + (report.critical_count || 0) }} 个异常项</span>
+            </span>
+          </button>
+
+          <div v-if="!loading && !reports.length" class="empty-state">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+            <p class="empty-text">暂无巡检报告</p>
+            <p class="empty-hint">点击「立即巡检」生成第一份报告。</p>
+          </div>
+        </div>
+
+        <div class="pagination-wrap compact">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :page-sizes="[10, 20, 50]"
+            :total="total"
+            small
+            layout="prev, pager, next"
+            @current-change="fetchReports"
+            @size-change="fetchReports"
+          />
+        </div>
+      </aside>
+
+      <section class="command-main">
+        <div class="summary-grid">
+          <article class="summary-card summary-hero">
+            <div>
+              <h3>{{ selectedReport ? '本次巡检结论' : '等待选择巡检批次' }}</h3>
+              <p>{{ selectedReport?.summary || '从左侧选择一份巡检报告，查看异常对象和处置建议。' }}</p>
             </div>
-          </template>
-        </el-table>
-      </div>
+            <span class="status-pill large" :class="statusTone(overview.status)">{{ overview.priorityLabel }}</span>
+          </article>
+          <article class="summary-card metric danger">
+            <span>严重项</span>
+            <strong>{{ overview.critical }}</strong>
+            <small>{{ overview.priority }}</small>
+          </article>
+          <article class="summary-card metric warning">
+            <span>警告项</span>
+            <strong>{{ overview.warning }}</strong>
+            <small>{{ overview.abnormal }} 个异常项</small>
+          </article>
+          <article class="summary-card metric success">
+            <span>健康分</span>
+            <strong>{{ overview.healthScore }}</strong>
+            <small>{{ overview.normal }} / {{ overview.total }} 正常</small>
+          </article>
+        </div>
 
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50]"
-          :total="total"
-          layout="total, sizes, prev, pager, next"
-          @current-change="fetchReports"
-          @size-change="fetchReports"
-        />
-      </div>
+        <div class="object-board">
+          <section v-for="lane in riskLanes" :key="lane.key" class="object-lane">
+            <div class="lane-head">
+              <strong>{{ lane.label }}</strong>
+              <span>{{ lane.objects.length }} 个对象</span>
+            </div>
+            <div class="object-list">
+              <button
+                v-for="object in lane.objects"
+                :key="object.key"
+                class="object-card"
+                :class="{ selected: selectedObject?.key === object.key }"
+                type="button"
+                @click="selectedObjectKey = object.key"
+              >
+                <span class="object-top">
+                  <span class="object-name">
+                    <strong>{{ object.targetName }}</strong>
+                    <span>{{ object.targetIp || object.impact }}</span>
+                  </span>
+                  <span class="status-pill" :class="object.tone">{{ object.priority }}</span>
+                </span>
+                <span class="object-headline">{{ object.headline }}</span>
+                <span class="object-counts">
+                  <span class="count danger">{{ object.critical }} 严重</span>
+                  <span class="count warning">{{ object.warning }} 警告</span>
+                  <span class="count success">{{ object.normal }} 正常</span>
+                </span>
+              </button>
+
+              <div v-if="!lane.objects.length" class="lane-empty">
+                暂无{{ lane.label }}巡检对象
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="command-panel detail-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M2 12h20"/><circle cx="12" cy="12" r="4"/></svg>
+            <span>处置面板</span>
+          </div>
+          <el-button v-if="selectedReport" link type="primary" @click="handleExport(selectedReport)">导出 Excel</el-button>
+        </div>
+
+        <div v-if="selectedObject" class="detail-scroll">
+          <section class="target-card">
+            <div class="target-main">
+              <div>
+                <h3>{{ selectedObject.targetName }}</h3>
+                <p>{{ selectedObject.categoryLabel }} · {{ selectedObject.targetIp || selectedObject.impact }}</p>
+              </div>
+              <span class="status-pill large" :class="selectedObject.tone">{{ selectedObject.priority }}</span>
+            </div>
+            <div class="meta-grid">
+              <div><span>巡检结论</span><strong>{{ selectedObject.critical }} 严重 / {{ selectedObject.warning }} 警告</strong></div>
+              <div><span>检查项</span><strong>{{ selectedObject.total }}</strong></div>
+              <div><span>影响范围</span><strong>{{ selectedObject.impact }}</strong></div>
+              <div><span>报告时间</span><strong>{{ relativeTime(selectedReport?.created_at) }}</strong></div>
+            </div>
+          </section>
+
+          <section>
+            <h4 class="section-title">关键发现</h4>
+            <div class="finding-list">
+              <article v-for="item in selectedObject.items" :key="item.id || `${item.check_name}-${item.value}`" class="finding">
+                <div class="finding-top">
+                  <strong>{{ item.check_name }}</strong>
+                  <span class="status-pill" :class="statusTone(item.status)">{{ statusLabel(item.status) }}</span>
+                </div>
+                <p>{{ item.detail || '暂无详情' }}</p>
+                <dl>
+                  <div><dt>当前值</dt><dd>{{ item.value || '-' }}</dd></div>
+                  <div><dt>阈值</dt><dd>{{ item.threshold || '-' }}</dd></div>
+                </dl>
+              </article>
+            </div>
+          </section>
+
+          <section>
+            <h4 class="section-title">建议动作</h4>
+            <div class="action-list">
+              <button class="action-row" type="button" @click="goHostDetail">
+                <span class="action-icon">
+                  <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                </span>
+                <span><strong>查看对象详情</strong><small>打开主机、集群或资产详情页</small></span>
+              </button>
+              <button class="action-row" type="button" @click="goTerminal">
+                <span class="action-icon">
+                  <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+                </span>
+                <span><strong>打开 Web 终端</strong><small>处理磁盘、负载或进程异常</small></span>
+              </button>
+              <button class="action-row" type="button" @click="goTickets">
+                <span class="action-icon">
+                  <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+                </span>
+                <span><strong>创建/查看工单</strong><small>带上巡检项、阈值与当前值</small></span>
+              </button>
+            </div>
+          </section>
+
+          <div class="detail-actions">
+            <el-button @click="selectedObjectKey = ''">清除选择</el-button>
+            <el-button v-if="selectedReport" type="danger" plain @click="handleDelete(selectedReport)">删除报告</el-button>
+          </div>
+        </div>
+
+        <div v-else class="empty-state detail-empty">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <p class="empty-text">请选择异常对象</p>
+          <p class="empty-hint">从中间的主机、K8s 或资产对象进入处置面板。</p>
+        </div>
+      </aside>
     </div>
-
-    <!-- 报告详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="巡检报告详情" width="min(900px, 90vw)" destroy-on-close :close-on-press-escape="true">
-      <div v-if="detailReport" class="detail-stats">
-        <div class="stat-grid">
-          <div class="mini-stat success">
-            <div class="mini-stat-value">{{ detailReport.normal_count }}</div>
-            <div class="mini-stat-label">正常</div>
-          </div>
-          <div class="mini-stat warning">
-            <div class="mini-stat-value">{{ detailReport.warning_count }}</div>
-            <div class="mini-stat-label">警告</div>
-          </div>
-          <div class="mini-stat danger">
-            <div class="mini-stat-value">{{ detailReport.critical_count }}</div>
-            <div class="mini-stat-label">严重</div>
-          </div>
-          <div class="mini-stat info">
-            <div class="mini-stat-value">{{ detailReport.total_checks }}</div>
-            <div class="mini-stat-label">总检查项</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 按分类分组展示 -->
-      <div v-for="group in groupedItems" :key="group.category" class="detail-group">
-        <h4 class="group-title">
-          <svg v-if="group.category === 'host'" class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <svg v-else-if="group.category === 'k8s'" class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          <svg v-else class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          {{ group.label }}
-        </h4>
-
-        <!-- 主机巡检：卡片折叠布局 -->
-        <template v-if="group.category === 'host'">
-          <div v-for="host in group.hosts" :key="host.name" class="host-card">
-            <div
-              class="host-card-header"
-              role="button"
-              :aria-expanded="expandedHosts.has(host.name)"
-              tabindex="0"
-              @click="toggleHost(host.name)"
-              @keydown.enter.space.prevent="toggleHost(host.name)"
-            >
-              <div class="host-card-left">
-                <svg class="expand-icon" :class="{ expanded: expandedHosts.has(host.name) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                <span class="host-name">{{ host.name }}</span>
-                <span class="host-ip">{{ host.ip }}</span>
-              </div>
-              <div class="host-card-right">
-                <el-tag v-if="host.critical > 0" type="danger" size="small" effect="dark">{{ host.critical }} 严重</el-tag>
-                <el-tag v-if="host.warning > 0" type="warning" size="small">{{ host.warning }} 警告</el-tag>
-                <el-tag v-if="host.normal > 0 && host.critical === 0 && host.warning === 0" type="success" size="small">全部正常</el-tag>
-                <span v-if="host.normal > 0 && (host.critical > 0 || host.warning > 0)" class="host-normal-count">{{ host.normal }} 正常</span>
-              </div>
-            </div>
-            <div class="host-card-body" :class="{ expanded: expandedHosts.has(host.name) }" role="region" :aria-hidden="!expandedHosts.has(host.name)">
-              <div class="table-wrapper">
-                <el-table :data="host.items" stripe size="small">
-                  <el-table-column prop="check_name" label="检查项" width="130" />
-                  <el-table-column prop="status" label="状态" width="80">
-                    <template #default="{row}">
-                      <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="value" label="当前值" min-width="140" />
-                  <el-table-column prop="threshold" label="阈值" min-width="200" show-overflow-tooltip />
-                  <el-table-column prop="detail" label="详情" min-width="200" show-overflow-tooltip />
-                </el-table>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- K8s / 资产：保留表格 -->
-        <div v-else class="table-wrapper">
-          <el-table :data="group.items" stripe size="small">
-            <el-table-column prop="target_name" label="目标" min-width="140" />
-            <el-table-column prop="target_ip" label="IP" width="120" />
-            <el-table-column prop="check_name" label="检查项" width="130" />
-            <el-table-column prop="status" label="状态" width="80">
-              <template #default="{row}">
-                <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="value" label="当前值" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="threshold" label="阈值" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="detail" label="详情" min-width="200" show-overflow-tooltip />
-          </el-table>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button type="primary" @click="handleExport(detailReport)">导出 Excel</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay } from '@element-plus/icons-vue'
-import { runPatrol, getPatrolReports, getPatrolReportDetail, deletePatrolReport, exportPatrolReport } from '@/api/patrol'
+import { DataAnalysis, Setting, VideoPlay } from '@element-plus/icons-vue'
+import { deletePatrolReport, exportPatrolReport, getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
+import { formatRelativeTime } from '@/utils/time'
+import {
+  buildPatrolOverview,
+  buildRiskObjects,
+  getPatrolPriority,
+  groupRiskObjectsByCategory,
+  pickPrimaryRiskObject,
+  statusLabel,
+  statusTone,
+  type PatrolItemLike,
+  type PatrolReportLike,
+} from '@/utils/patrolCommand'
 
+const router = useRouter()
 const running = ref(false)
 const loading = ref(false)
-const reports = ref<any[]>([])
+const reports = ref<PatrolReportLike[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const statusFilter = ref('')
+const selectedReport = ref<PatrolReportLike | null>(null)
+const detailItems = ref<PatrolItemLike[]>([])
+const selectedObjectKey = ref('')
 
-const detailVisible = ref(false)
-const detailReport = ref<any>(null)
-const detailItems = ref<any[]>([])
-const expandedHosts = ref<Set<string>>(new Set())
+const overview = computed(() => buildPatrolOverview(selectedReport.value))
+const riskObjects = computed(() => buildRiskObjects(detailItems.value))
+const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value))
+const selectedObject = computed(() => riskObjects.value.find((item) => item.key === selectedObjectKey.value) || pickPrimaryRiskObject(riskObjects.value))
 
-function toggleHost(name: string) {
-  const s = new Set(expandedHosts.value)
-  if (s.has(name)) s.delete(name)
-  else s.add(name)
-  expandedHosts.value = s
-}
-
-// ── 相对时间格式化 ──
-function formatRelativeTime(dateStr: string): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-
-  if (diffSec < 60) return '刚刚'
-  if (diffMin < 60) return `${diffMin} 分钟前`
-  if (diffHour < 24) return `${diffHour} 小时前`
-  if (diffDay < 7) return `${diffDay} 天前`
-  // 超过 7 天显示完整日期
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  const h = String(date.getHours()).padStart(2, '0')
-  const min = String(date.getMinutes()).padStart(2, '0')
-  return `${y}-${m}-${d} ${h}:${min}`
-}
-
-const latestReport = computed(() => reports.value[0] || null)
-
-const CATEGORY_LABELS: Record<string, string> = {
-  host: '主机巡检（Prometheus）',
-  k8s: 'K8s 集群巡检',
-  asset: '资产状态巡检',
-}
-
-interface HostGroup {
-  name: string
-  ip: string
-  items: any[]
-  normal: number
-  warning: number
-  critical: number
-}
-
-interface GroupItem {
-  category: string
-  label: string
-  items: any[]
-  hosts?: HostGroup[]
-}
-
-const groupedItems = computed<GroupItem[]>(() => {
-  const groups: Record<string, any[]> = {}
-  for (const item of detailItems.value) {
-    const cat = item.category || 'other'
-    if (!groups[cat]) groups[cat] = []
-    groups[cat].push(item)
+watch(riskObjects, (objects) => {
+  if (!objects.length) {
+    selectedObjectKey.value = ''
+    return
   }
-  return Object.entries(groups).map(([cat, items]) => {
-    const base: GroupItem = { category: cat, label: CATEGORY_LABELS[cat] || cat, items }
-    if (cat === 'host') {
-      const hostMap: Record<string, HostGroup> = {}
-      for (const item of items) {
-        const key = item.target_name || 'unknown'
-        if (!hostMap[key]) {
-          hostMap[key] = { name: key, ip: item.target_ip || '', items: [], normal: 0, warning: 0, critical: 0 }
-        }
-        hostMap[key].items.push(item)
-        if (item.status === 'critical') hostMap[key].critical++
-        else if (item.status === 'warning') hostMap[key].warning++
-        else hostMap[key].normal++
-      }
-      const hosts = Object.values(hostMap).sort((a, b) => {
-        if (a.critical !== b.critical) return b.critical - a.critical
-        if (a.warning !== b.warning) return b.warning - a.warning
-        return a.name.localeCompare(b.name)
-      })
-      return { ...base, hosts }
-    }
-    return base
-  })
+  if (!objects.some((item) => item.key === selectedObjectKey.value)) {
+    selectedObjectKey.value = pickPrimaryRiskObject(objects)?.key || objects[0].key
+  }
 })
-
-function statusType(s: string) {
-  return s === 'normal' ? 'success' : s === 'warning' ? 'warning' : s === 'critical' ? 'danger' : 'info'
-}
-
-function statusLabel(s: string) {
-  return s === 'normal' ? '正常' : s === 'warning' ? '警告' : s === 'critical' ? '严重' : s
-}
 
 async function fetchReports() {
   loading.value = true
@@ -323,7 +280,29 @@ async function fetchReports() {
     const res: any = await getPatrolReports({ status: statusFilter.value, page: page.value, page_size: pageSize.value })
     reports.value = res.data.items
     total.value = res.data.total
-  } finally { loading.value = false }
+    if (!selectedReport.value && reports.value.length) {
+      await selectReport(reports.value[0])
+    } else if (selectedReport.value) {
+      const current = reports.value.find((item) => item.id === selectedReport.value?.id)
+      if (current) selectedReport.value = current
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function selectReport(report: PatrolReportLike) {
+  selectedReport.value = report
+  selectedObjectKey.value = ''
+  try {
+    const res: any = await getPatrolReportDetail(report.id as number)
+    selectedReport.value = res.data.report
+    detailItems.value = res.data.items
+    await nextTick()
+  } catch (e: any) {
+    detailItems.value = []
+    ElMessage.error(e?.response?.data?.detail || '加载巡检详情失败')
+  }
 }
 
 async function handleRun() {
@@ -331,25 +310,15 @@ async function handleRun() {
   try {
     const res: any = await runPatrol()
     ElMessage.success(`巡检完成：${res.data.summary}`)
-    fetchReports()
-  } finally { running.value = false }
+    selectedReport.value = null
+    await fetchReports()
+  } finally {
+    running.value = false
+  }
 }
 
-async function handleRowClick(row: any) {
-  try {
-    const res: any = await getPatrolReportDetail(row.id)
-    detailReport.value = res.data.report
-    detailItems.value = res.data.items
-    expandedHosts.value = new Set()
-    detailVisible.value = true
-  } catch (e: any) { ElMessage.error(e?.response?.data?.detail || '加载失败') }
-}
-
-function handleRowKeydown(row: any) {
-  handleRowClick(row)
-}
-
-async function handleExport(row: any) {
+async function handleExport(row: PatrolReportLike | null) {
+  if (!row?.id) return
   try {
     const res: any = await exportPatrolReport(row.id)
     const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -365,7 +334,8 @@ async function handleExport(row: any) {
   }
 }
 
-async function handleDelete(row: any) {
+async function handleDelete(row: PatrolReportLike | null) {
+  if (!row?.id) return
   await ElMessageBox.confirm(`确定删除巡检报告「${row.title}」？此操作不可恢复。`, '删除确认', {
     type: 'warning',
     confirmButtonText: '确认删除',
@@ -373,247 +343,612 @@ async function handleDelete(row: any) {
   })
   await deletePatrolReport(row.id)
   ElMessage.success('删除成功')
-  fetchReports()
+  selectedReport.value = null
+  detailItems.value = []
+  await fetchReports()
 }
 
-// 为可点击行添加 tabindex 以支持键盘导航
-watch(reports, async () => {
-  await nextTick()
-  document.querySelectorAll('.el-table .clickable-row').forEach(row => {
-    row.setAttribute('tabindex', '0')
-    row.setAttribute('role', 'row')
-    row.setAttribute('aria-label', `巡检报告: ${(row as HTMLElement).querySelector('.cell')?.textContent || ''}`)
-  })
-})
+function goHostDetail() {
+  const object = selectedObject.value
+  if (!object) return
+  if (object.category === 'host') router.push('/monitoring/hosts')
+  else if (object.category === 'k8s') router.push('/assets/containers')
+  else router.push('/assets/list')
+}
 
-onMounted(fetchReports)
+function goTerminal() {
+  router.push('/monitoring/hosts')
+}
+
+function goTickets() {
+  router.push('/tickets')
+}
+
+function relativeTime(value?: string) {
+  return value ? formatRelativeTime(value) : '-'
+}
+
+onActivated(fetchReports)
 </script>
 
 <style scoped>
-/* ── 可点击表格行 ── */
-:deep(.clickable-row) {
-  cursor: pointer;
-}
-:deep(.clickable-row td) {
-  outline: none;
-}
-:deep(.clickable-row:focus-visible) {
-  outline: 2px solid var(--primary-color);
-  outline-offset: -2px;
+.patrol-command {
+  min-width: 0;
 }
 
-/* ── 报告概览 ── */
-.report-overview {
-  margin-bottom: 16px;
+.command-header {
+  align-items: flex-start;
 }
-.report-meta {
+
+.page-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.report-title {
-  margin: 0;
-}
-.report-time,
-.report-operator {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* ── 统计网格（替代 el-row/el-col） ── */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-.mini-stat {
-  text-align: center;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-.mini-stat-value {
-  font-size: 28px;
-  font-weight: 700;
-}
-.mini-stat-label {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-.mini-stat.success .mini-stat-value { color: var(--success-color); }
-.mini-stat.warning .mini-stat-value { color: var(--warning-color); }
-.mini-stat.danger .mini-stat-value { color: var(--danger-color); }
-.mini-stat.info .mini-stat-value { color: var(--text-secondary); }
-
-/* ── 检查结果颜色 ── */
-.result-success { color: var(--success-color); }
-.result-warning { color: var(--warning-color); }
-.result-danger { color: var(--danger-color); }
-
-/* ── 筛选器 ── */
-.status-filter {
-  width: 120px;
-}
-
-/* ── 表格包裹（移动端横向滚动） ── */
-.table-wrapper {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* ── 空状态 ── */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 16px;
-  gap: 8px;
-}
-.empty-icon {
-  width: 48px;
-  height: 48px;
-  color: var(--text-muted);
-  opacity: 0.4;
-}
-.empty-text {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.empty-hint {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* ── 分页 ── */
-.pagination-wrap {
-  display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
-}
-
-/* ── 详情弹窗 ── */
-.detail-stats {
-  margin-bottom: 16px;
-}
-.detail-group {
-  margin-bottom: 16px;
-}
-.group-title {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.group-icon {
-  width: 18px;
-  height: 18px;
-  color: var(--text-secondary);
+  flex-wrap: wrap;
 }
 
-/* ── 主机卡片折叠 ── */
-.host-card {
+.command-grid {
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr) 380px;
+  gap: 14px;
+  min-height: calc(100vh - 116px);
+}
+
+.command-panel,
+.summary-card,
+.object-lane {
+  min-width: 0;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  margin-bottom: 8px;
+  border-radius: var(--border-radius);
+  background: var(--surface-color);
+}
+
+.command-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
-.host-card-header {
+
+.panel-head {
+  min-height: 48px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  cursor: pointer;
-  background: var(--bg-color);
-  transition: background 0.15s ease-out;
-}
-.host-card-header:hover {
-  background: var(--border-color);
-}
-.host-card-header:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: -2px;
-}
-.host-card-left {
-  display: flex;
-  align-items: center;
   gap: 10px;
 }
-.expand-icon {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.15s ease-out;
-}
-.expand-icon.expanded {
-  transform: rotate(90deg);
-}
-.host-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-.host-ip {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.host-card-right {
+
+.panel-title {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
 }
-.host-normal-count {
-  color: var(--text-muted);
+
+.panel-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.status-filter {
+  width: 104px;
+}
+
+.run-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.run-item,
+.object-card,
+.action-row {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-primary);
+  text-align: left;
+  transition: border-color 0.16s ease-out, background 0.16s ease-out, transform 0.16s ease-out;
+}
+
+.run-item {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.run-item:hover,
+.object-card:hover {
+  border-color: color-mix(in srgb, var(--primary-color) 36%, var(--border-color));
+}
+
+.run-item.active {
+  border-color: color-mix(in srgb, var(--primary-color) 48%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 7%, #fff);
+}
+
+.run-top,
+.run-foot,
+.object-top,
+.finding-top,
+.target-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.run-title,
+.object-name {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.run-title strong,
+.object-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
 }
 
-/* grid-template-rows 动画 */
-.host-card-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease-out;
+.run-title span,
+.run-foot,
+.object-name span,
+.object-headline,
+.empty-hint {
+  color: var(--text-muted);
+  font-size: 12px;
 }
-.host-card-body > :deep(*) {
+
+.run-bars {
+  height: 7px;
+  display: flex;
+  gap: 3px;
+}
+
+.run-bars i {
+  border-radius: 999px;
+}
+
+.bar-normal { background: var(--success-color); }
+.bar-warning { background: var(--warning-color); }
+.bar-critical { background: var(--danger-color); }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-pill.large {
+  min-height: 26px;
+  padding: 3px 10px;
+}
+
+.status-pill.success,
+.count.success {
+  color: color-mix(in srgb, var(--success-color) 76%, #111);
+  background: color-mix(in srgb, var(--success-color) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--success-color) 24%, var(--border-color));
+}
+
+.status-pill.warning,
+.count.warning {
+  color: #875600;
+  background: color-mix(in srgb, var(--warning-color) 13%, #fff);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 28%, var(--border-color));
+}
+
+.status-pill.danger,
+.count.danger {
+  color: color-mix(in srgb, var(--danger-color) 84%, #111);
+  background: color-mix(in srgb, var(--danger-color) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--danger-color) 28%, var(--border-color));
+}
+
+.status-pill.info {
+  color: var(--text-secondary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+}
+
+.pagination-wrap.compact {
+  padding: 10px;
+  margin: 0;
+  border-top: 1px solid var(--border-color);
+  justify-content: center;
+}
+
+.command-main {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(120px, 0.45fr));
+  gap: 10px;
+}
+
+.summary-card {
+  padding: 14px;
+}
+
+.summary-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-hero h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.summary-hero p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.metric {
+  display: grid;
+  gap: 8px;
+  align-content: space-between;
+}
+
+.metric span,
+.metric small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.metric strong {
+  font-size: 28px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric.danger strong { color: var(--danger-color); }
+.metric.warning strong { color: var(--warning-color); }
+.metric.success strong { color: var(--success-color); }
+
+.object-board {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.object-lane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
-.host-card-body.expanded {
-  grid-template-rows: 1fr;
+
+.lane-head {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-color);
 }
 
-/* ── 减少动画支持 ── */
-@media (prefers-reduced-motion: reduce) {
-  .host-card-header,
-  .expand-icon,
-  .host-card-body {
-    transition: none;
+.lane-head strong {
+  font-size: 13px;
+}
+
+.lane-head span,
+.lane-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.object-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 9px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.object-card {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.object-card.selected {
+  border-color: color-mix(in srgb, var(--danger-color) 42%, var(--border-color));
+  background: color-mix(in srgb, var(--danger-color) 5%, #fff);
+}
+
+.object-counts {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lane-empty {
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.detail-panel {
+  min-height: 0;
+}
+
+.detail-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.target-card,
+.finding,
+.action-row {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.target-card {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.target-main h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.target-main p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.meta-grid div {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+  background: var(--bg-color);
+}
+
+.meta-grid span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.meta-grid strong {
+  font-size: 13px;
+}
+
+.section-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.finding-list,
+.action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.finding {
+  padding: 9px;
+  display: grid;
+  gap: 7px;
+}
+
+.finding p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.finding dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.finding dl div {
+  min-width: 0;
+}
+
+.finding dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.finding dd {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 9px;
+}
+
+.action-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--primary-color);
+  background: var(--primary-bg);
+}
+
+.action-row strong,
+.action-row small {
+  display: block;
+}
+
+.action-row small {
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 32px 14px;
+  text-align: center;
+}
+
+.detail-empty {
+  min-height: 360px;
+}
+
+.empty-icon {
+  width: 46px;
+  height: 46px;
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+.empty-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.empty-hint {
+  margin: 0;
+}
+
+@media (max-width: 1280px) {
+  .command-grid {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+
+  .detail-panel {
+    grid-column: 1 / -1;
+    min-height: 540px;
   }
 }
 
-/* ── 响应式 ── */
+@media (max-width: 980px) {
+  .command-grid,
+  .object-board {
+    grid-template-columns: 1fr;
+  }
+
+  .run-panel {
+    min-height: 420px;
+  }
+
+  .object-lane {
+    min-height: 240px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .summary-hero {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 768px) {
-  .report-meta {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .host-card-header {
+  .command-header,
+  .summary-hero,
+  .target-main {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
   }
-  .host-card-right {
-    width: 100%;
-    flex-wrap: wrap;
+
+  .header-actions {
+    justify-content: flex-start;
   }
-  .pagination-wrap {
-    justify-content: center;
+
+  .summary-grid,
+  .meta-grid,
+  .finding dl {
+    grid-template-columns: 1fr;
   }
 }
 </style>

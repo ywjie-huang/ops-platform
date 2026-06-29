@@ -251,7 +251,13 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'Patrol',
         component: () => import('@/views/patrol/PatrolView.vue'),
-        meta: { title: '巡检报告', icon: 'Finished', permission: 'patrol.view' },
+        meta: { title: '巡检指挥台', icon: 'Finished', permission: 'patrol.view' },
+      },
+      {
+        path: 'cockpit',
+        name: 'PatrolCockpit',
+        component: () => import('@/views/patrol/PatrolCockpitView.vue'),
+        meta: { title: '态势大屏', hidden: true, permission: 'patrol.view', parentTitle: '巡检指挥台', activeMenu: '/patrol' },
       },
       {
         path: 'settings',
