@@ -260,7 +260,7 @@ test('provides stable trend and relation placeholders for phase one', () => {
     { key: 'cpu', label: 'CPU 趋势', state: '暂无历史趋势' },
     { key: 'load', label: 'Load 趋势', state: '暂无历史趋势' },
     { key: 'memory', label: '内存趋势', state: '暂无历史趋势' },
-    { key: 'network', label: '网络趋势', state: '暂无历史趋势' },
+    { key: 'network_in', label: '网络趋势', state: '暂无历史趋势' },
   ])
 
   assert.deepEqual(buildRelationCards(healthyHost).map((card) => ({

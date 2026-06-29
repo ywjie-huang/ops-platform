@@ -344,10 +344,10 @@ export function buildHostRecommendations(host: HostDetailLike): HostRecommendati
 
 export function buildTrendCards(_host: HostDetailLike) {
   return [
-    { key: 'cpu', label: 'CPU 趋势', state: '暂无历史趋势' },
-    { key: 'load', label: 'Load 趋势', state: '暂无历史趋势' },
-    { key: 'memory', label: '内存趋势', state: '暂无历史趋势' },
-    { key: 'network', label: '网络趋势', state: '暂无历史趋势' },
+    { key: 'cpu', label: 'CPU 趋势', state: '暂无历史趋势', unit: '%', points: [] },
+    { key: 'load', label: 'Load 趋势', state: '暂无历史趋势', unit: '', points: [] },
+    { key: 'memory', label: '内存趋势', state: '暂无历史趋势', unit: '%', points: [] },
+    { key: 'network_in', label: '网络趋势', state: '暂无历史趋势', unit: 'Mbps', points: [] },
   ]
 }
 

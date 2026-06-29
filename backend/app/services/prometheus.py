@@ -53,6 +53,48 @@ async def _query_batch(exprs: dict[str, str], prom_url: str = "") -> dict[str, d
     return results
 
 
+async def _query_range_batch(
+    exprs: dict[str, str],
+    prom_url: str,
+    start: int,
+    end: int,
+    step: int,
+) -> dict[str, dict]:
+    """批量并发查询 Prometheus range 数据。"""
+    base_url = prom_url or PROMETHEUS_URL
+    url = f"{base_url}/api/v1/query_range"
+    results: dict[str, dict] = {}
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async def _do(name: str, expr: str):
+            try:
+                resp = await client.get(
+                    url,
+                    params={
+                        "query": expr,
+                        "start": start,
+                        "end": end,
+                        "step": step,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("status") == "success":
+                    results[name] = data.get("data", {})
+                else:
+                    results[name] = {"resultType": "matrix", "result": []}
+            except httpx.TimeoutException:
+                logger.warning("Prometheus range query timeout: %s", name)
+                results[name] = {"resultType": "matrix", "result": []}
+            except Exception as e:
+                logger.warning("Prometheus range query error [%s]: %s", name, e)
+                results[name] = {"resultType": "matrix", "result": []}
+
+        await asyncio.gather(*[_do(n, e) for n, e in exprs.items()])
+
+    return results
+
+
 def _extract_scalar(result: dict) -> float:
     try:
         if result.get("resultType") == "vector" and result.get("result"):
@@ -60,6 +102,31 @@ def _extract_scalar(result: dict) -> float:
     except (IndexError, KeyError, ValueError, TypeError):
         pass
     return 0.0
+
+
+def _extract_series_points(result: dict) -> list[dict[str, float]]:
+    try:
+        if result.get("resultType") != "matrix" or not result.get("result"):
+            return []
+        values = result["result"][0].get("values", [])
+        points = []
+        for timestamp, raw_value in values:
+            points.append({
+                "timestamp": int(float(timestamp)),
+                "value": round(float(raw_value), 1),
+            })
+        return points
+    except (IndexError, KeyError, ValueError, TypeError):
+        return []
+
+
+def _empty_trend_series() -> list[dict[str, Any]]:
+    return [
+        {"key": "cpu", "label": "CPU", "unit": "%", "points": []},
+        {"key": "memory", "label": "内存", "unit": "%", "points": []},
+        {"key": "load", "label": "Load", "unit": "", "points": []},
+        {"key": "network_in", "label": "网络", "unit": "Mbps", "points": []},
+    ]
 
 
 async def discover_instances(prom_url: str = "") -> dict[str, str]:
@@ -235,6 +302,47 @@ async def get_host_metrics(ip: str, name: str = "", db=None) -> dict[str, Any]:
         "tcp_connections": int(val("tcp_connections")),
         "processes": {"running": int(val("processes"))},
         "uptime_hours": seconds_to_hours(val("uptime")),
+    }
+
+
+async def get_host_trends(
+    ip: str,
+    name: str = "",
+    db=None,
+    minutes: int = 60,
+    step_seconds: int = 60,
+) -> dict[str, Any]:
+    """查询单台主机最近一段时间的趋势数据。"""
+    prom_url = get_prometheus_url(db) if db else ""
+    instances = await discover_instances(prom_url)
+    inst = _find_instance(ip, name, instances)
+    if not inst:
+        return {
+            "range_minutes": minutes,
+            "step_seconds": step_seconds,
+            "series": _empty_trend_series(),
+        }
+
+    now = int(time.time())
+    start = now - minutes * 60
+    s = f'instance="{inst}"'
+    exprs = {
+        "cpu": f'100 - (avg by(instance)(rate(node_cpu_seconds_total{{mode="idle",{s}}}[5m])) * 100)',
+        "memory": f'(1 - node_memory_MemAvailable_bytes{{{s}}} / node_memory_MemTotal_bytes{{{s}}}) * 100',
+        "load": f'node_load1{{{s}}}',
+        "network_in": f'rate(node_network_receive_bytes_total{{{s}}}[5m]) * 8 / 1024 / 1024',
+    }
+    results = await _query_range_batch(exprs, prom_url, start, now, step_seconds)
+
+    return {
+        "range_minutes": minutes,
+        "step_seconds": step_seconds,
+        "series": [
+            {"key": "cpu", "label": "CPU", "unit": "%", "points": _extract_series_points(results.get("cpu", {}))},
+            {"key": "memory", "label": "内存", "unit": "%", "points": _extract_series_points(results.get("memory", {}))},
+            {"key": "load", "label": "Load", "unit": "", "points": _extract_series_points(results.get("load", {}))},
+            {"key": "network_in", "label": "网络", "unit": "Mbps", "points": _extract_series_points(results.get("network_in", {}))},
+        ],
     }
 
 

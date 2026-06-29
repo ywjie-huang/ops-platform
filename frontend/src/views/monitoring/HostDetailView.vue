@@ -159,15 +159,28 @@
         <section class="panel">
           <div class="panel-heading compact">
             <h3>指标趋势</h3>
-            <span>最近 1 小时</span>
+            <span>{{ trendMetaText }}</span>
           </div>
           <div class="trend-grid">
             <article v-for="card in trendCards" :key="card.key" class="trend-card">
               <div class="trend-card-head">
                 <strong>{{ card.label }}</strong>
-                <span>{{ card.state }}</span>
+                <span>{{ card.state }}{{ card.unit }}</span>
               </div>
-              <div class="trend-placeholder" aria-hidden="true">
+              <div v-if="trendLoading" class="trend-placeholder" aria-hidden="true">
+                <el-skeleton-item variant="image" class="trend-skeleton" />
+              </div>
+              <svg
+                v-else-if="card.points.length"
+                class="trend-chart"
+                viewBox="0 0 160 56"
+                role="img"
+                :aria-label="`${card.label} 最近 1 小时趋势`"
+              >
+                <polygon :points="trendAreaPoints(card.points)" class="trend-area" />
+                <polyline :points="trendLinePoints(card.points)" class="trend-line" />
+              </svg>
+              <div v-else class="trend-placeholder" aria-hidden="true">
                 <el-icon><DataLine /></el-icon>
               </div>
             </article>
@@ -233,8 +246,8 @@ import {
   Refresh,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { getHostDetail } from '@/api/monitoring'
-import type { HostDetail } from '@/api/monitoring'
+import { getHostDetail, getHostTrends } from '@/api/monitoring'
+import type { HostDetail, HostTrendData, HostTrendPoint } from '@/api/monitoring'
 import {
   buildCollectionState,
   buildCurrentJudgment,
@@ -250,17 +263,37 @@ const route = useRoute()
 const router = useRouter()
 const host = ref<HostDetail | null>(null)
 const loading = ref(false)
+const trendLoading = ref(false)
 const loadError = ref('')
 const lastRefreshTime = ref('')
+const trendData = ref<HostTrendData | null>(null)
 
 const riskMeta = computed(() => host.value ? getHostRiskMeta(host.value) : null)
 const collectionState = computed(() => host.value ? buildCollectionState(host.value) : null)
 const currentJudgment = computed(() => host.value ? buildCurrentJudgment(host.value) : null)
 const metricCards = computed(() => host.value ? buildHostMetricCards(host.value) : [])
 const recommendations = computed(() => host.value ? buildHostRecommendations(host.value) : [])
-const trendCards = computed(() => host.value ? buildTrendCards(host.value) : [])
+const trendCards = computed(() => {
+  if (!host.value) return []
+  const trendMap = new Map((trendData.value?.series || []).map((series) => [series.key, series]))
+  return buildTrendCards(host.value).map((card) => {
+    const series = trendMap.get(card.key)
+    const points = series?.points || []
+    const lastPoint = points[points.length - 1]
+    return {
+      ...card,
+      points,
+      unit: series?.unit || card.unit,
+      state: points.length ? `${lastPoint?.value ?? '-'} ` : card.state,
+    }
+  })
+})
 const relationCards = computed(() => host.value ? buildRelationCards(host.value) : [])
 const steadyDetailGroups = computed(() => host.value ? buildSteadyDetailGroups(host.value) : [])
+const trendMetaText = computed(() => {
+  if (trendLoading.value) return '加载中'
+  return trendData.value?.series?.some((series) => series.points.length) ? '最近 1 小时' : '暂无历史趋势'
+})
 
 function formatTime(date: Date) {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
@@ -269,6 +302,29 @@ function formatTime(date: Date) {
 function metricSegmentCount(percent: number) {
   if (!percent) return 0
   return Math.min(10, Math.max(1, Math.ceil(percent / 10)))
+}
+
+function trendLinePoints(points: HostTrendPoint[]) {
+  if (!points.length) return ''
+  const width = 160
+  const height = 56
+  const padding = 4
+  const values = points.map((point) => point.value)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const step = (width - padding * 2) / (points.length - 1 || 1)
+  return points.map((point, index) => {
+    const x = padding + index * step
+    const y = height - padding - ((point.value - min) / range) * (height - padding * 2)
+    return `${x},${y}`
+  }).join(' ')
+}
+
+function trendAreaPoints(points: HostTrendPoint[]) {
+  const linePoints = trendLinePoints(points)
+  if (!linePoints) return ''
+  return `${linePoints} 156,56 4,56`
 }
 
 function goSsh() {
@@ -335,7 +391,22 @@ async function fetchDetail() {
   }
 }
 
-onActivated(fetchDetail)
+async function fetchTrends() {
+  trendLoading.value = true
+  try {
+    const res: any = await getHostTrends(Number(route.params.id), { minutes: 60, step_seconds: 60 })
+    trendData.value = res.data
+  } catch {
+    trendData.value = null
+  } finally {
+    trendLoading.value = false
+  }
+}
+
+onActivated(() => {
+  fetchDetail()
+  fetchTrends()
+})
 </script>
 
 <style scoped>
@@ -701,6 +772,32 @@ onActivated(fetchDetail)
   border-radius: 6px;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--bg-color) 70%, var(--surface-color));
+}
+
+.trend-skeleton {
+  width: 100%;
+  height: 100%;
+}
+
+.trend-chart {
+  display: block;
+  width: 100%;
+  height: 56px;
+  margin-top: 8px;
+  color: var(--primary-color);
+}
+
+.trend-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-area {
+  fill: currentColor;
+  opacity: 0.1;
 }
 
 .empty-note {

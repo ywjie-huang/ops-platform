@@ -8,6 +8,7 @@ from app.models.user import User
 from app.services.prometheus import (
     check_prometheus_health,
     get_host_metrics,
+    get_host_trends,
     get_targets,
 )
 
@@ -78,6 +79,32 @@ async def api_host_detail(
                 "uptime_hours": 0,
             },
         }
+
+
+@router.get("/hosts/{host_id}/trends")
+async def api_host_trends(
+    host_id: int,
+    minutes: int = 60,
+    step_seconds: int = 60,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("monitoring.view")),
+):
+    """主机指标趋势 — 从 Prometheus query_range 获取历史序列。"""
+    from app.services.assets import get_asset
+    asset = get_asset(db, host_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="主机不存在")
+
+    safe_minutes = min(max(minutes, 15), 360)
+    safe_step = min(max(step_seconds, 30), 300)
+    data = await get_host_trends(
+        asset.ip_address,
+        asset.name,
+        db,
+        minutes=safe_minutes,
+        step_seconds=safe_step,
+    )
+    return {"code": 0, "data": data}
 
 
 @router.get("/prometheus/health")
