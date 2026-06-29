@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const {
@@ -303,6 +304,13 @@ test('builds readable trend chart geometry for a flat series', () => {
   assert.equal(chart.yTicks.length, 3)
   assert.deepEqual([...new Set(chart.yTicks.map((tick) => tick.label))], ['7'])
   assert.equal(chart.linePoints.includes('NaN'), false)
+})
+
+test('keeps host trend cards in a two-column desktop grid', () => {
+  const viewSource = readFileSync(new URL('../views/monitoring/HostDetailView.vue', import.meta.url), 'utf8')
+  const trendGridRule = viewSource.match(/\.trend-grid\s*\{[^}]+\}/)?.[0] ?? ''
+
+  assert.match(trendGridRule, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/)
 })
 
 test('shows disk used capacity in steady detail groups', () => {
