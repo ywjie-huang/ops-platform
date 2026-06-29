@@ -1,211 +1,333 @@
 <template>
   <div class="host-detail">
-    <header class="page-header">
-      <div class="page-header-left">
-        <el-button text class="back-btn" @click="$router.back()">
+    <header v-if="host" class="detail-header">
+      <div class="identity-block">
+        <el-button text class="back-btn" aria-label="返回主机列表" @click="router.back()">
           <el-icon><ArrowLeft /></el-icon>
           <span>返回</span>
         </el-button>
-        <h2 class="page-title">主机详情</h2>
+
+        <div class="identity-main">
+          <div class="title-row">
+            <h2 class="page-title">{{ host.hostname || '未命名主机' }}</h2>
+            <span v-if="riskMeta" class="state-chip" :class="`tone-${riskMeta.tone}`">
+              {{ riskMeta.label }}
+            </span>
+            <span v-if="collectionState" class="state-chip" :class="`tone-${collectionState.tone}`">
+              {{ collectionState.label }}
+            </span>
+          </div>
+          <div class="host-meta" aria-label="主机元信息">
+            <span>{{ host.ip || '-' }}</span>
+            <span>{{ host.owner || '未分配负责人' }}</span>
+            <span>{{ host.status || '-' }}</span>
+            <span>刷新 {{ lastRefreshTime || '-' }}</span>
+          </div>
+        </div>
       </div>
-      <div class="page-header-right">
-        <el-tag v-if="host?.prometheus_ok" type="success" size="small">Prometheus 已连接</el-tag>
-        <el-tag v-else type="danger" size="small">Prometheus 未连接</el-tag>
-        <el-button type="primary" @click="$router.push(`/monitoring/hosts/${route.params.id}/ssh`)">
+
+      <div class="header-actions">
+        <el-button :loading="loading" @click="fetchDetail">
+          <el-icon><Refresh /></el-icon>
+          <span>刷新</span>
+        </el-button>
+        <el-button @click="copyIp">
+          <el-icon><CopyDocument /></el-icon>
+          <span>复制 IP</span>
+        </el-button>
+        <el-button type="primary" @click="goSsh">
           <el-icon><Monitor /></el-icon>
-          <span>SSH 连接</span>
+          <span>SSH</span>
         </el-button>
       </div>
     </header>
 
-    <!-- 错误状态 -->
+    <header v-else-if="loading" class="detail-header skeleton-header" aria-label="主机详情加载中">
+      <div class="identity-block">
+        <el-skeleton-item variant="button" class="skeleton-back" />
+        <div class="identity-main">
+          <el-skeleton-item variant="h3" class="skeleton-title" />
+          <el-skeleton-item variant="text" class="skeleton-meta" />
+        </div>
+      </div>
+      <div class="header-actions">
+        <el-skeleton-item v-for="i in 3" :key="i" variant="button" class="skeleton-action" />
+      </div>
+    </header>
+
     <div v-if="loadError" class="error-state">
       <el-icon :size="48" class="error-icon"><WarningFilled /></el-icon>
       <p class="error-text">{{ loadError }}</p>
       <el-button type="primary" @click="fetchDetail">重新加载</el-button>
     </div>
 
-    <!-- 加载骨架屏 -->
-    <div v-else-if="loading" class="detail-content">
-      <div class="stat-grid">
-        <div v-for="i in 4" :key="i" class="stat-card">
-          <el-skeleton :loading="true" animated>
-            <template #template>
-              <div class="skeleton-gauge">
-                <el-skeleton-item variant="circle" class="skeleton-circle" />
-                <el-skeleton-item variant="text" class="skeleton-label" />
-                <el-skeleton-item variant="text" class="skeleton-sub" />
-              </div>
-            </template>
-          </el-skeleton>
-        </div>
+    <div v-else-if="loading" class="detail-content" aria-label="正在加载主机详情">
+      <div class="hero-grid">
+        <section class="panel judgment-panel">
+          <el-skeleton :rows="6" animated />
+        </section>
+        <aside class="panel action-panel">
+          <el-skeleton :rows="5" animated />
+        </aside>
       </div>
-      <div class="detail-grid">
-        <div v-for="i in 5" :key="i" class="detail-panel">
-          <el-skeleton :loading="true" animated>
-            <template #template>
-              <el-skeleton-item variant="text" class="skeleton-panel-title" />
-              <div v-for="j in 3" :key="j" class="skeleton-row">
-                <el-skeleton-item variant="text" class="skeleton-row-label" />
-                <el-skeleton-item variant="text" class="skeleton-row-value" />
-              </div>
-            </template>
-          </el-skeleton>
-        </div>
+      <div class="diagnostic-grid">
+        <section class="panel">
+          <el-skeleton :rows="8" animated />
+        </section>
+        <aside class="panel">
+          <el-skeleton :rows="8" animated />
+        </aside>
       </div>
     </div>
 
-    <!-- 正常内容 -->
     <div v-else-if="host" class="detail-content">
-      <!-- 指标概览 -->
-      <h3 class="section-heading">指标概览</h3>
-      <div class="stat-grid" role="group" aria-label="主机指标概览">
-        <div v-for="g in gauges" :key="g.label" class="stat-card">
-          <el-progress
-            type="circle"
-            :percentage="g.value"
-            :color="gaugeColor(g.value)"
-            :width="100"
-            :stroke-width="10"
-            :aria-label="`${g.label} 使用率 ${g.value}%`"
-          />
-          <div class="stat-label">{{ g.label }}</div>
-          <div class="stat-sub">{{ g.sub }}</div>
+      <section v-if="collectionState && !host.prometheus_ok" class="collection-warning" role="status">
+        <el-icon><WarningFilled /></el-icon>
+        <div>
+          <strong>{{ collectionState.label }}</strong>
+          <p>{{ collectionState.description }}</p>
         </div>
+      </section>
+
+      <div class="hero-grid">
+        <section class="panel judgment-panel" :class="currentJudgment ? `tone-${currentJudgment.tone}` : ''">
+          <div class="panel-heading">
+            <div>
+              <span class="section-kicker">当前判断</span>
+              <h3>{{ currentJudgment?.title }}</h3>
+            </div>
+            <span v-if="riskMeta" class="priority-pill" :class="`tone-${riskMeta.tone}`">
+              {{ riskMeta.priority }}
+            </span>
+          </div>
+          <p class="judgment-copy">{{ currentJudgment?.description }}</p>
+
+          <div class="metric-grid" role="group" aria-label="主机关键指标">
+            <article v-for="card in metricCards" :key="card.key" class="metric-card" :class="`tone-${card.tone}`">
+              <div class="metric-card-head">
+                <span>{{ card.label }}</span>
+                <strong>{{ card.statusText }}</strong>
+              </div>
+              <div class="metric-value">
+                <span>{{ card.value ?? '-' }}</span>
+                <small>{{ card.unit }}</small>
+              </div>
+              <div
+                class="metric-track"
+                role="meter"
+                :aria-label="`${card.label} ${card.statusText}`"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="Math.round(card.barPercent)"
+              >
+                <span
+                  v-for="segment in 10"
+                  :key="segment"
+                  class="metric-segment"
+                  :class="{ active: segment <= metricSegmentCount(card.barPercent) }"
+                />
+              </div>
+              <p>{{ card.detail }}</p>
+            </article>
+          </div>
+        </section>
+
+        <aside class="panel action-panel">
+          <div class="panel-heading compact">
+            <h3>建议动作</h3>
+          </div>
+          <div class="recommendation-list">
+            <button
+              v-for="(item, index) in recommendations"
+              :key="item.key"
+              type="button"
+              class="recommendation-item"
+              :class="`tone-${item.tone}`"
+              @click="handleRecommendation(item.action)"
+            >
+              <span class="recommendation-index">{{ index + 1 }}</span>
+              <span>
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.description }}</small>
+              </span>
+            </button>
+          </div>
+        </aside>
       </div>
 
-      <!-- 详细数据 -->
-      <h3 class="section-heading">详细信息</h3>
-      <div class="detail-grid">
-        <section class="detail-panel">
-          <h4 class="panel-title">
-            <el-icon><InfoFilled /></el-icon>
-            <span>系统信息</span>
-          </h4>
-          <el-descriptions :column="1" border size="small" aria-label="系统信息">
-            <el-descriptions-item label="主机名">{{ host.hostname }}</el-descriptions-item>
-            <el-descriptions-item label="IP">{{ host.ip }}</el-descriptions-item>
-            <el-descriptions-item label="规格">{{ host.spec || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="系统">{{ host.os_info || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="负责人">{{ host.owner || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="statusTagType(host.status)" size="small" round>{{ host.status }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="运行时间">{{ formatUptime(host.uptime_hours) }}</el-descriptions-item>
-            <el-descriptions-item label="运行进程">{{ host.processes?.running ?? '-' }}</el-descriptions-item>
-          </el-descriptions>
+      <div class="diagnostic-grid">
+        <section class="panel">
+          <div class="panel-heading compact">
+            <h3>指标趋势</h3>
+            <span>最近 1 小时</span>
+          </div>
+          <div class="trend-grid">
+            <article v-for="card in trendCards" :key="card.key" class="trend-card">
+              <div class="trend-card-head">
+                <strong>{{ card.label }}</strong>
+                <span>{{ card.state }}</span>
+              </div>
+              <div class="trend-placeholder" aria-hidden="true">
+                <el-icon><DataLine /></el-icon>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <section class="detail-panel">
-          <h4 class="panel-title">
-            <el-icon><Odometer /></el-icon>
-            <span>CPU</span>
-          </h4>
-          <el-descriptions :column="1" border size="small" aria-label="CPU 详情">
-            <el-descriptions-item label="使用率">
-              <el-progress :percentage="host.cpu?.usage || 0" :color="gaugeColor(host.cpu?.usage || 0)" :stroke-width="12" />
-            </el-descriptions-item>
-            <el-descriptions-item label="核心数">{{ host.cpu?.cores || '-' }} 核</el-descriptions-item>
-            <el-descriptions-item label="系统负载">
-              <div>1m: {{ host.load?.['1m'] ?? '-' }}</div>
-              <div>5m: {{ host.load?.['5m'] ?? '-' }}</div>
-              <div>15m: {{ host.load?.['15m'] ?? '-' }}</div>
-            </el-descriptions-item>
-          </el-descriptions>
-        </section>
+        <aside class="side-stack">
+          <section class="panel">
+            <div class="panel-heading compact">
+              <h3>事件时间线</h3>
+              <span>最近 24h</span>
+            </div>
+            <div class="empty-note">
+              <el-icon><Connection /></el-icon>
+              <span>事件聚合待接入，后续展示告警、部署、巡检和容器变化。</span>
+            </div>
+          </section>
 
-        <section class="detail-panel">
-          <h4 class="panel-title">
-            <el-icon><Coin /></el-icon>
-            <span>内存</span>
-          </h4>
-          <el-descriptions :column="1" border size="small" aria-label="内存详情">
-            <el-descriptions-item label="使用率">
-              <el-progress :percentage="host.memory?.usage || 0" :color="gaugeColor(host.memory?.usage || 0)" :stroke-width="12" />
-            </el-descriptions-item>
-            <el-descriptions-item label="总量">{{ host.memory?.total_gb || '-' }} GB</el-descriptions-item>
-            <el-descriptions-item label="已用">{{ host.memory?.used_gb || '-' }} GB</el-descriptions-item>
-            <el-descriptions-item label="可用">{{ host.memory?.available_gb || '-' }} GB</el-descriptions-item>
-          </el-descriptions>
-        </section>
-
-        <section class="detail-panel">
-          <h4 class="panel-title">
-            <el-icon><Box /></el-icon>
-            <span>磁盘</span>
-          </h4>
-          <el-descriptions :column="1" border size="small" aria-label="磁盘详情">
-            <el-descriptions-item label="使用率">
-              <el-progress :percentage="host.disk?.usage || 0" :color="gaugeColor(host.disk?.usage || 0)" :stroke-width="12" />
-            </el-descriptions-item>
-            <el-descriptions-item label="总量">{{ host.disk?.total_gb || '-' }} GB</el-descriptions-item>
-            <el-descriptions-item label="读速率">{{ host.disk?.read_mb_s || 0 }} MB/s</el-descriptions-item>
-            <el-descriptions-item label="写速率">{{ host.disk?.write_mb_s || 0 }} MB/s</el-descriptions-item>
-          </el-descriptions>
-        </section>
-
-        <section class="detail-panel">
-          <h4 class="panel-title">
-            <el-icon><Connection /></el-icon>
-            <span>网络</span>
-          </h4>
-          <el-descriptions :column="1" border size="small" aria-label="网络详情">
-            <el-descriptions-item label="入站流量">{{ host.network?.in_mbps || 0 }} Mbps</el-descriptions-item>
-            <el-descriptions-item label="出站流量">{{ host.network?.out_mbps || 0 }} Mbps</el-descriptions-item>
-            <el-descriptions-item label="TCP 连接数">{{ host.tcp_connections ?? '-' }}</el-descriptions-item>
-          </el-descriptions>
-        </section>
+          <section class="panel">
+            <div class="panel-heading compact">
+              <h3>关联跳转</h3>
+            </div>
+            <div class="relation-list">
+              <span v-for="card in relationCards" :key="card.key" class="relation-item">
+                <strong>{{ card.label }}</strong>
+                <small>{{ card.value }}</small>
+              </span>
+            </div>
+          </section>
+        </aside>
       </div>
+
+      <section class="steady-section">
+        <div class="panel-heading compact">
+          <h3>稳态详情</h3>
+        </div>
+        <div class="steady-grid">
+          <article v-for="group in steadyDetailGroups" :key="group.key" class="panel detail-panel">
+            <h4>{{ group.title }}</h4>
+            <dl class="kv-list">
+              <template v-for="row in group.rows" :key="row.label">
+                <dt>{{ row.label }}</dt>
+                <dd>{{ row.value }}</dd>
+              </template>
+            </dl>
+          </article>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, ref, onActivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import {
-  Monitor, ArrowLeft, WarningFilled, InfoFilled,
-  Odometer, Coin, Box, Connection,
+  ArrowLeft,
+  Connection,
+  CopyDocument,
+  DataLine,
+  Monitor,
+  Refresh,
+  WarningFilled,
 } from '@element-plus/icons-vue'
 import { getHostDetail } from '@/api/monitoring'
 import type { HostDetail } from '@/api/monitoring'
+import {
+  buildCollectionState,
+  buildCurrentJudgment,
+  buildHostMetricCards,
+  buildHostRecommendations,
+  buildRelationCards,
+  buildSteadyDetailGroups,
+  buildTrendCards,
+  getHostRiskMeta,
+} from '@/utils/hostDetail'
 
 const route = useRoute()
+const router = useRouter()
 const host = ref<HostDetail | null>(null)
 const loading = ref(false)
 const loadError = ref('')
+const lastRefreshTime = ref('')
 
-const gauges = computed(() => {
-  if (!host.value) return []
-  return [
-    { label: 'CPU', value: host.value.cpu?.usage || 0, sub: `${host.value.cpu?.cores || 0} 核` },
-    { label: '内存', value: host.value.memory?.usage || 0, sub: `${host.value.memory?.used_gb || 0}/${host.value.memory?.total_gb || 0} GB` },
-    { label: '磁盘', value: host.value.disk?.usage || 0, sub: `${host.value.disk?.total_gb || 0} GB` },
-    { label: '负载', value: Math.min(Math.round((host.value.load?.['1m'] || 0) * 15), 100), sub: `1m: ${host.value.load?.['1m'] ?? '-'}` },
-  ]
-})
+const riskMeta = computed(() => host.value ? getHostRiskMeta(host.value) : null)
+const collectionState = computed(() => host.value ? buildCollectionState(host.value) : null)
+const currentJudgment = computed(() => host.value ? buildCurrentJudgment(host.value) : null)
+const metricCards = computed(() => host.value ? buildHostMetricCards(host.value) : [])
+const recommendations = computed(() => host.value ? buildHostRecommendations(host.value) : [])
+const trendCards = computed(() => host.value ? buildTrendCards(host.value) : [])
+const relationCards = computed(() => host.value ? buildRelationCards(host.value) : [])
+const steadyDetailGroups = computed(() => host.value ? buildSteadyDetailGroups(host.value) : [])
 
-const gaugeColor = (v: number) => v > 90 ? '#ef4444' : v > 70 ? '#f59e0b' : '#22c55e'
-
-function statusTagType(status: string) {
-  return { '使用中': 'success', '已关机': 'warning', '已删除': 'info' }[status] || 'info'
+function formatTime(date: Date) {
+  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
 }
 
-function formatUptime(hours: number) {
-  if (!hours) return '-'
-  if (hours < 24) return `${hours} 小时`
-  const days = Math.floor(hours / 24)
-  const h = hours % 24
-  return days > 0 ? `${days} 天 ${h} 小时` : `${h} 小时`
+function metricSegmentCount(percent: number) {
+  if (!percent) return 0
+  return Math.min(10, Math.max(1, Math.ceil(percent / 10)))
+}
+
+function goSsh() {
+  router.push(`/monitoring/hosts/${route.params.id}/ssh`)
+}
+
+async function copyIp() {
+  if (!host.value?.ip) return
+  try {
+    await navigator.clipboard.writeText(host.value.ip)
+    ElMessage.success('IP 已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制 IP')
+  }
+}
+
+async function copySummary() {
+  if (!host.value) return
+  const summary = [
+    `主机：${host.value.hostname || '-'}`,
+    `IP：${host.value.ip || '-'}`,
+    `风险：${riskMeta.value?.label || '-'}`,
+    `判断：${currentJudgment.value?.title || '-'}`,
+    `负责人：${host.value.owner || '未分配负责人'}`,
+  ].join('\n')
+
+  try {
+    await navigator.clipboard.writeText(summary)
+    ElMessage.success('排障摘要已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制摘要')
+  }
+}
+
+function handleRecommendation(action: string) {
+  if (action === 'ssh') {
+    goSsh()
+    return
+  }
+  if (action === 'inspect') {
+    ElMessage.info('关联检查项待接入，可先查看下方趋势和事件区域')
+    return
+  }
+  if (action === 'copy') {
+    copySummary()
+  }
 }
 
 async function fetchDetail() {
+  const isInitialLoad = !host.value
   loading.value = true
   loadError.value = ''
-  host.value = null
+  if (isInitialLoad) {
+    host.value = null
+  }
   try {
     const res: any = await getHostDetail(Number(route.params.id))
     host.value = res.data
+    lastRefreshTime.value = formatTime(new Date())
   } catch (e: any) {
     loadError.value = e?.message || '加载主机详情失败，请检查网络或稍后重试'
   } finally {
@@ -221,82 +343,465 @@ onActivated(fetchDetail)
   min-height: 100%;
 }
 
-.page-header {
+.detail-header {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 16px;
 }
 
-.page-header-left,
-.page-header-right {
+.identity-block {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .back-btn {
+  flex-shrink: 0;
   gap: 4px;
 }
 
-/* 分组标题 */
-.section-heading {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
+.identity-main {
+  min-width: 0;
 }
 
-.section-heading:not(:first-of-type) {
-  margin-top: 24px;
-}
-
-/* 加载骨架屏 */
-.skeleton-gauge {
+.title-row,
+.header-actions,
+.metric-card-head,
+.panel-heading {
   display: flex;
-  flex-direction: column;
   align-items: center;
 }
 
-.skeleton-circle {
-  width: 100px;
-  height: 100px;
+.title-row {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.skeleton-label {
-  width: 60px;
-  margin-top: 10px;
+.page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
-.skeleton-sub {
-  width: 80px;
-  margin-top: 4px;
+.host-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.skeleton-panel-title {
-  width: 100px;
-  height: 18px;
-  margin-bottom: 12px;
+.header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.skeleton-row {
+.header-actions :deep(.el-button) {
+  min-width: 0;
+}
+
+.state-chip,
+.priority-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tone-success {
+  --tone-color: var(--success-color);
+  --tone-bg: color-mix(in srgb, var(--success-color) 8%, var(--surface-color));
+  --tone-border: color-mix(in srgb, var(--success-color) 22%, var(--border-color));
+  --tone-text: color-mix(in srgb, var(--success-color) 76%, black);
+}
+
+.tone-warning {
+  --tone-color: var(--warning-color);
+  --tone-bg: color-mix(in srgb, var(--warning-color) 10%, var(--surface-color));
+  --tone-border: color-mix(in srgb, var(--warning-color) 24%, var(--border-color));
+  --tone-text: color-mix(in srgb, var(--warning-color) 72%, black);
+}
+
+.tone-danger {
+  --tone-color: var(--danger-color);
+  --tone-bg: color-mix(in srgb, var(--danger-color) 8%, var(--surface-color));
+  --tone-border: color-mix(in srgb, var(--danger-color) 22%, var(--border-color));
+  --tone-text: color-mix(in srgb, var(--danger-color) 80%, black);
+}
+
+.tone-muted {
+  --tone-color: var(--text-muted);
+  --tone-bg: color-mix(in srgb, var(--text-muted) 8%, var(--surface-color));
+  --tone-border: color-mix(in srgb, var(--text-muted) 18%, var(--border-color));
+  --tone-text: var(--text-secondary);
+}
+
+.state-chip,
+.priority-pill,
+.metric-card,
+.recommendation-item {
+  border-color: var(--tone-border, var(--border-color));
+  background: var(--tone-bg, var(--surface-color));
+  color: var(--tone-text, var(--text-secondary));
+}
+
+.detail-content {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-grid,
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+}
+
+.panel,
+.collection-warning {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.panel {
+  padding: 14px;
+}
+
+.collection-warning {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  color: color-mix(in srgb, var(--danger-color) 82%, black);
+  background: color-mix(in srgb, var(--danger-color) 7%, var(--surface-color));
+  border-color: color-mix(in srgb, var(--danger-color) 20%, var(--border-color));
+}
+
+.collection-warning p {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.judgment-panel {
+  border-color: var(--tone-border, var(--border-color));
+}
+
+.panel-heading {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.panel-heading.compact {
+  align-items: baseline;
+}
+
+.panel-heading h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.panel-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.section-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.judgment-copy {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--tone-border, var(--border-color));
+  border-radius: var(--border-radius);
+}
+
+.metric-card-head {
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.metric-card-head strong {
+  color: var(--tone-text, var(--text-secondary));
+  font-weight: 700;
+}
+
+.metric-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: 6px;
+  color: var(--text-primary);
+}
+
+.metric-value span {
+  font-size: 24px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.metric-value small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.metric-track {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 2px;
+  height: 5px;
+  margin-top: 8px;
+}
+
+.metric-segment {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-color) 72%, var(--bg-color));
+}
+
+.metric-segment.active {
+  background: var(--tone-color, var(--primary-color));
+}
+
+.metric-card p {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-list,
+.side-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-item {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  font: inherit;
+  border: 1px solid var(--tone-border, var(--border-color));
+  border-radius: 7px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+.recommendation-item:hover {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 5%, var(--surface-color));
+}
+
+.recommendation-item:active {
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--surface-color));
+}
+
+.recommendation-index {
+  font-weight: 750;
+}
+
+.recommendation-item strong,
+.recommendation-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-item strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.recommendation-item small {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trend-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+}
+
+.trend-card-head {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.trend-card-head strong,
+.trend-card-head span {
+  overflow-wrap: anywhere;
+}
+
+.trend-card-head span {
+  color: var(--text-muted);
+}
+
+.trend-placeholder {
+  display: flex;
   align-items: center;
-  padding: 8px 0;
+  justify-content: center;
+  height: 56px;
+  margin-top: 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-color) 70%, var(--surface-color));
 }
 
-.skeleton-row-label {
-  width: 60px;
+.empty-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.skeleton-row-value {
-  width: 120px;
+.empty-note span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-/* 错误状态 */
+.relation-list {
+  display: grid;
+  gap: 7px;
+}
+
+.relation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.relation-item strong {
+  min-width: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.relation-item small {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.steady-section {
+  display: grid;
+  gap: 10px;
+}
+
+.steady-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-panel h4 {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.kv-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.kv-list dt {
+  color: var(--text-muted);
+}
+
+.kv-list dd {
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.skeleton-header {
+  align-items: center;
+}
+
+.skeleton-back {
+  width: 68px;
+}
+
+.skeleton-title {
+  width: min(280px, 58vw);
+}
+
+.skeleton-meta {
+  width: min(420px, 72vw);
+  margin-top: 8px;
+}
+
+.skeleton-action {
+  width: 82px;
+}
+
 .error-state {
   display: flex;
   flex-direction: column;
@@ -307,101 +812,72 @@ onActivated(fetchDetail)
 }
 
 .error-icon {
-  color: var(--danger-color);
   margin-bottom: 16px;
+  color: var(--danger-color);
 }
 
 .error-text {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin-bottom: 20px;
   max-width: 400px;
-}
-
-/* 指标卡片网格 */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
   margin-bottom: 20px;
-}
-
-.stat-card {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  transition: box-shadow 0.2s ease-out;
-}
-
-.stat-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-}
-
-.stat-label {
-  font-size: 14px;
-  font-weight: 700;
-  margin-top: 10px;
-}
-
-.stat-sub {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-/* 详情面板网格 */
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.detail-panel {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 16px 20px;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: var(--text-primary);
-}
-
-.panel-title .el-icon {
-  font-size: 16px;
   color: var(--text-secondary);
+  font-size: 14px;
 }
 
-/* 键盘焦点指示器 */
 :focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .stat-card {
+  .recommendation-item {
     transition: none;
   }
 }
 
-/* 响应式 */
-@media (max-width: 1100px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .detail-grid { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 1180px) {
+  .hero-grid,
+  .diagnostic-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 600px) {
-  .stat-grid { grid-template-columns: 1fr; }
-  .detail-grid { grid-template-columns: 1fr; }
+@media (max-width: 860px) {
+  .detail-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .metric-grid,
+  .trend-grid,
+  .steady-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .identity-block {
+    width: 100%;
+  }
+
+  .metric-grid,
+  .trend-grid,
+  .steady-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-actions :deep(.el-button) {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+
+  .recommendation-item {
+    min-height: 44px;
+    padding: 10px;
+  }
 }
 </style>
