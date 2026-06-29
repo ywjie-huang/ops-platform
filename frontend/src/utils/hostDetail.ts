@@ -376,10 +376,10 @@ function formatTrendAxisValue(value: number, unit = '') {
 }
 
 export function buildTrendChartGeometry(points: HostTrendPointLike[], unit = ''): TrendChartGeometry {
-  const width = 180
+  const width = 260
   const height = 72
-  const plotLeft = 34
-  const plotRight = 176
+  const plotLeft = 28
+  const plotRight = 258
   const plotTop = 8
   const plotBottom = 52
   const values = points.map((point) => point.value)
@@ -408,7 +408,7 @@ export function buildTrendChartGeometry(points: HostTrendPointLike[], unit = '')
     yTicks,
     gridLines: yTicks.map((tick) => ({ x1: plotLeft, x2: plotRight, y: tick.y })),
     xLabels: [
-      { label: '-60m', x: plotLeft, y: 68, anchor: 'start' },
+      { label: '-24h', x: plotLeft, y: 68, anchor: 'start' },
       { label: 'now', x: plotRight, y: 68, anchor: 'end' },
     ],
   }

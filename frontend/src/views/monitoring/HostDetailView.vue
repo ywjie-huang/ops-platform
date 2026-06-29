@@ -175,7 +175,7 @@
                 class="trend-chart"
                 :viewBox="card.chart.viewBox"
                 role="img"
-                :aria-label="`${card.label} 最近 1 小时趋势`"
+                :aria-label="`${card.label} 最近 24 小时趋势`"
               >
                 <line
                   v-for="line in card.chart.gridLines"
@@ -189,7 +189,7 @@
                 <text
                   v-for="tick in card.chart.yTicks"
                   :key="tick.label"
-                  x="29"
+                  x="23"
                   :y="tick.y"
                   class="trend-tick-label"
                 >
@@ -323,7 +323,7 @@ const relationCards = computed(() => host.value ? buildRelationCards(host.value)
 const steadyDetailGroups = computed(() => host.value ? buildSteadyDetailGroups(host.value) : [])
 const trendMetaText = computed(() => {
   if (trendLoading.value) return '加载中'
-  return trendData.value?.series?.some((series) => series.points.length) ? '最近 1 小时' : '暂无历史趋势'
+  return trendData.value?.series?.some((series) => series.points.length) ? '最近 24 小时' : '暂无历史趋势'
 })
 
 function formatTime(date: Date) {
@@ -402,7 +402,7 @@ async function fetchDetail() {
 async function fetchTrends() {
   trendLoading.value = true
   try {
-    const res: any = await getHostTrends(Number(route.params.id), { minutes: 60, step_seconds: 60 })
+    const res: any = await getHostTrends(Number(route.params.id), { minutes: 1440, step_seconds: 300 })
     trendData.value = res.data
   } catch {
     trendData.value = null
@@ -743,7 +743,7 @@ onActivated(() => {
 
 .trend-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 

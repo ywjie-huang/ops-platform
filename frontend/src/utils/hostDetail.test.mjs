@@ -283,13 +283,13 @@ test('builds trend chart geometry with axes, gridlines, and labels', () => {
     { timestamp: 1710000600, value: 24.6 },
   ], '%')
 
-  assert.equal(chart.viewBox, '0 0 180 72')
-  assert.match(chart.linePoints, /^34,52 /)
-  assert.match(chart.linePoints, /176,8$/)
-  assert.equal(chart.areaPoints.endsWith(' 176,52 34,52'), true)
+  assert.equal(chart.viewBox, '0 0 260 72')
+  assert.match(chart.linePoints, /^28,52 /)
+  assert.match(chart.linePoints, /258,8$/)
+  assert.equal(chart.areaPoints.endsWith(' 258,52 28,52'), true)
   assert.deepEqual(chart.yTicks.map((tick) => tick.label), ['24.6%', '18.5%', '12.3%'])
   assert.deepEqual(chart.gridLines.map((line) => line.y), chart.yTicks.map((tick) => tick.y))
-  assert.deepEqual(chart.xLabels.map((label) => label.label), ['-60m', 'now'])
+  assert.deepEqual(chart.xLabels.map((label) => label.label), ['-24h', 'now'])
 })
 
 test('builds readable trend chart geometry for a flat series', () => {
