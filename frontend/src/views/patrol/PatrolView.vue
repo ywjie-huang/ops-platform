@@ -115,7 +115,7 @@
             </div>
             <div class="object-list">
               <button
-                v-for="object in lane.objects"
+                v-for="object in lane.page.items"
                 :key="object.key"
                 class="object-card"
                 :class="{ selected: selectedObject?.key === object.key }"
@@ -140,6 +140,27 @@
               <div v-if="!lane.objects.length" class="lane-empty">
                 暂无{{ lane.label }}巡检对象
               </div>
+            </div>
+            <div v-if="lane.page.totalPages > 1" class="lane-pagination">
+              <button
+                type="button"
+                class="page-btn"
+                :disabled="lane.page.page <= 1"
+                :aria-label="`${lane.label}上一页`"
+                @click="setLanePage(lane.key, lane.page.page - 1)"
+              >
+                <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <span>{{ lane.page.page }} / {{ lane.page.totalPages }}</span>
+              <button
+                type="button"
+                class="page-btn"
+                :disabled="lane.page.page >= lane.page.totalPages"
+                :aria-label="`${lane.label}下一页`"
+                @click="setLanePage(lane.key, lane.page.page + 1)"
+              >
+                <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
             </div>
           </section>
         </div>
@@ -240,6 +261,7 @@ import {
   buildRiskObjects,
   getPatrolPriority,
   groupRiskObjectsByCategory,
+  paginateRiskObjects,
   pickPrimaryRiskObject,
   statusLabel,
   statusTone,
@@ -258,10 +280,14 @@ const statusFilter = ref('')
 const selectedReport = ref<PatrolReportLike | null>(null)
 const detailItems = ref<PatrolItemLike[]>([])
 const selectedObjectKey = ref('')
+const lanePages = ref<Record<string, number>>({ host: 1, k8s: 1, asset: 1 })
 
 const overview = computed(() => buildPatrolOverview(selectedReport.value))
 const riskObjects = computed(() => buildRiskObjects(detailItems.value))
-const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value))
+const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value).map((lane) => ({
+  ...lane,
+  page: paginateRiskObjects(lane.objects, lanePages.value[lane.key] || 1),
+})))
 const selectedObject = computed(() => riskObjects.value.find((item) => item.key === selectedObjectKey.value) || pickPrimaryRiskObject(riskObjects.value))
 
 watch(riskObjects, (objects) => {
@@ -272,6 +298,20 @@ watch(riskObjects, (objects) => {
   if (!objects.some((item) => item.key === selectedObjectKey.value)) {
     selectedObjectKey.value = pickPrimaryRiskObject(objects)?.key || objects[0].key
   }
+})
+
+watch(riskLanes, (lanes) => {
+  const nextPages = { ...lanePages.value }
+  let changed = false
+
+  for (const lane of lanes) {
+    if (nextPages[lane.key] !== lane.page.page) {
+      nextPages[lane.key] = lane.page.page
+      changed = true
+    }
+  }
+
+  if (changed) lanePages.value = nextPages
 })
 
 async function fetchReports() {
@@ -294,6 +334,7 @@ async function fetchReports() {
 async function selectReport(report: PatrolReportLike) {
   selectedReport.value = report
   selectedObjectKey.value = ''
+  lanePages.value = { host: 1, k8s: 1, asset: 1 }
   try {
     const res: any = await getPatrolReportDetail(report.id as number)
     selectedReport.value = res.data.report
@@ -362,6 +403,10 @@ function goTerminal() {
 
 function goTickets() {
   router.push('/tickets')
+}
+
+function setLanePage(key: string, value: number) {
+  lanePages.value = { ...lanePages.value, [key]: value }
 }
 
 function relativeTime(value?: string) {
@@ -656,7 +701,7 @@ onActivated(fetchReports)
 .object-lane {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
 
@@ -720,6 +765,43 @@ onActivated(fetchReports)
 .lane-empty {
   padding: 24px 8px;
   text-align: center;
+}
+
+.lane-pagination {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  background: var(--surface-color);
+}
+
+.page-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: #fff;
+  transition: border-color 0.16s ease-out, color 0.16s ease-out, background 0.16s ease-out;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 36%, var(--border-color));
+  background: var(--primary-bg);
+}
+
+.page-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .detail-panel {

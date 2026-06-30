@@ -5,6 +5,7 @@ const {
   buildPatrolOverview,
   buildRiskObjects,
   getPatrolPriority,
+  paginateRiskObjects,
   statusLabel,
   statusTone,
 } = await import('./patrolCommand.ts')
@@ -97,4 +98,33 @@ test('groups patrol items into risk objects ordered by severity and category', (
       headline: '证书有效期 120 天',
     },
   ])
+})
+
+test('paginates risk objects with five records per page and clamps invalid pages', () => {
+  const objects = Array.from({ length: 12 }, (_, index) => ({
+    key: `host::node-${index + 1}`,
+    targetName: `node-${index + 1}`,
+  }))
+
+  assert.deepEqual(paginateRiskObjects(objects, 1).items.map((item) => item.targetName), [
+    'node-1',
+    'node-2',
+    'node-3',
+    'node-4',
+    'node-5',
+  ])
+
+  assert.deepEqual(paginateRiskObjects(objects, 3), {
+    items: [
+      { key: 'host::node-11', targetName: 'node-11' },
+      { key: 'host::node-12', targetName: 'node-12' },
+    ],
+    page: 3,
+    pageSize: 5,
+    total: 12,
+    totalPages: 3,
+  })
+
+  assert.equal(paginateRiskObjects(objects, 99).page, 3)
+  assert.equal(paginateRiskObjects(objects, -1).page, 1)
 })
