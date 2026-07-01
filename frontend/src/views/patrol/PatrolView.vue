@@ -67,17 +67,26 @@
           </div>
         </div>
 
-        <div class="pagination-wrap compact">
-          <el-pagination
-            v-model:current-page="page"
-            v-model:page-size="pageSize"
-            :page-sizes="[10, 20, 50]"
-            :total="total"
-            small
-            layout="prev, pager, next"
-            @current-change="fetchReports"
-            @size-change="fetchReports"
-          />
+        <div class="lane-pagination report-pagination">
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="reportPager.page <= 1 || loading"
+            aria-label="巡检批次上一页"
+            @click="setReportPage(reportPager.page - 1)"
+          >
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span> {{ reportPager.page }} / {{ reportPager.totalPages }} </span>
+          <button
+            type="button"
+            class="page-btn"
+            :disabled="reportPager.page >= reportPager.totalPages || loading"
+            aria-label="巡检批次下一页"
+            @click="setReportPage(reportPager.page + 1)"
+          >
+            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
         </div>
       </aside>
 
@@ -141,7 +150,7 @@
                 暂无{{ lane.label }}巡检对象
               </div>
             </div>
-            <div v-if="lane.page.totalPages > 1" class="lane-pagination">
+            <div class="lane-pagination">
               <button
                 type="button"
                 class="page-btn"
@@ -257,6 +266,7 @@ import { DataAnalysis, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { deletePatrolReport, exportPatrolReport, getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
 import { formatRelativeTime } from '@/utils/time'
 import {
+  buildPager,
   buildPatrolOverview,
   buildRiskObjects,
   getPatrolPriority,
@@ -284,6 +294,7 @@ const lanePages = ref<Record<string, number>>({ host: 1, k8s: 1, asset: 1 })
 
 const overview = computed(() => buildPatrolOverview(selectedReport.value))
 const riskObjects = computed(() => buildRiskObjects(detailItems.value))
+const reportPager = computed(() => buildPager(total.value, page.value, pageSize.value))
 const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value).map((lane) => ({
   ...lane,
   page: paginateRiskObjects(lane.objects, lanePages.value[lane.key] || 1),
@@ -407,6 +418,13 @@ function goTickets() {
 
 function setLanePage(key: string, value: number) {
   lanePages.value = { ...lanePages.value, [key]: value }
+}
+
+async function setReportPage(value: number) {
+  const nextPage = buildPager(total.value, value, pageSize.value).page
+  if (nextPage === page.value) return
+  page.value = nextPage
+  await fetchReports()
 }
 
 function relativeTime(value?: string) {
@@ -626,13 +644,6 @@ onActivated(fetchReports)
   border: 1px solid var(--border-color);
 }
 
-.pagination-wrap.compact {
-  padding: 10px;
-  margin: 0;
-  border-top: 1px solid var(--border-color);
-  justify-content: center;
-}
-
 .command-main {
   min-width: 0;
   display: grid;
@@ -778,6 +789,10 @@ onActivated(fetchReports)
   color: var(--text-muted);
   font-size: 12px;
   background: var(--surface-color);
+}
+
+.report-pagination {
+  flex: 0 0 auto;
 }
 
 .page-btn {

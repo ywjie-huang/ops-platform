@@ -65,6 +65,13 @@ export interface RiskObjectPage<T = RiskObject> {
   totalPages: number
 }
 
+export interface PagerMeta {
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
 const CATEGORY_ORDER: Record<string, number> = {
   host: 1,
   k8s: 2,
@@ -194,17 +201,25 @@ export function groupRiskObjectsByCategory(objects: RiskObject[] = []) {
 }
 
 export function paginateRiskObjects<T>(objects: T[] = [], page = 1, pageSize = 5): RiskObjectPage<T> {
-  const total = objects.length
-  const normalizedPageSize = Math.max(1, pageSize)
-  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize))
-  const currentPage = Math.min(Math.max(1, page), totalPages)
-  const start = (currentPage - 1) * normalizedPageSize
+  const pager = buildPager(objects.length, page, pageSize)
+  const start = (pager.page - 1) * pager.pageSize
 
   return {
-    items: objects.slice(start, start + normalizedPageSize),
+    items: objects.slice(start, start + pager.pageSize),
+    ...pager,
+  }
+}
+
+export function buildPager(total = 0, page = 1, pageSize = 5): PagerMeta {
+  const normalizedTotal = Math.max(0, total)
+  const normalizedPageSize = Math.max(1, pageSize)
+  const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedPageSize))
+  const currentPage = Math.min(Math.max(1, page), totalPages)
+
+  return {
     page: currentPage,
     pageSize: normalizedPageSize,
-    total,
+    total: normalizedTotal,
     totalPages,
   }
 }

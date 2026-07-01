@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 const {
+  buildPager,
   buildPatrolOverview,
   buildRiskObjects,
   getPatrolPriority,
@@ -127,4 +128,23 @@ test('paginates risk objects with five records per page and clamps invalid pages
 
   assert.equal(paginateRiskObjects(objects, 99).page, 3)
   assert.equal(paginateRiskObjects(objects, -1).page, 1)
+})
+
+test('builds pager metadata for server-paginated lists and clamps invalid pages', () => {
+  assert.deepEqual(buildPager(12, 2, 5), {
+    page: 2,
+    pageSize: 5,
+    total: 12,
+    totalPages: 3,
+  })
+
+  assert.deepEqual(buildPager(0, 0, 5), {
+    page: 1,
+    pageSize: 5,
+    total: 0,
+    totalPages: 1,
+  })
+
+  assert.equal(buildPager(12, 99, 5).page, 3)
+  assert.equal(buildPager(12, -1, 5).page, 1)
 })
