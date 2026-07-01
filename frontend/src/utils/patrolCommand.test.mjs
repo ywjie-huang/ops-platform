@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 const {
+  buildObjectCounts,
+  buildCockpitRouteLocation,
   buildPager,
   buildPatrolOverview,
   buildRiskObjects,
@@ -99,6 +101,32 @@ test('groups patrol items into risk objects ordered by severity and category', (
       headline: '证书有效期 120 天',
     },
   ])
+})
+
+test('builds compact count badges that only keep non-zero states', () => {
+  assert.deepEqual(buildObjectCounts({ critical: 0, warning: 1, normal: 0 }), [
+    { tone: 'warning', value: 1, label: '警告' },
+  ])
+
+  assert.deepEqual(buildObjectCounts({ critical: 2, warning: 0, normal: 4 }), [
+    { tone: 'danger', value: 2, label: '严重' },
+    { tone: 'success', value: 4, label: '正常' },
+  ])
+
+  assert.deepEqual(buildObjectCounts({ critical: 0, warning: 0, normal: 0 }), [
+    { tone: 'success', value: 0, label: '正常' },
+  ])
+})
+
+test('builds cockpit route location with selected report id when available', () => {
+  assert.deepEqual(buildCockpitRouteLocation({ id: 42, title: '巡检报告 A' }), {
+    path: '/patrol/cockpit',
+    query: { reportId: '42' },
+  })
+
+  assert.deepEqual(buildCockpitRouteLocation(null), {
+    path: '/patrol/cockpit',
+  })
 })
 
 test('paginates risk objects with five records per page and clamps invalid pages', () => {

@@ -192,6 +192,7 @@
 
 <script setup lang="ts">
 import { computed, onActivated, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, VideoPlay } from '@element-plus/icons-vue'
 import { getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
@@ -205,6 +206,7 @@ import {
   type PatrolReportLike,
 } from '@/utils/patrolCommand'
 
+const route = useRoute()
 const loading = ref(false)
 const running = ref(false)
 const reports = ref<PatrolReportLike[]>([])
@@ -217,13 +219,28 @@ const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value))
 const priorityObjects = computed(() => riskObjects.value.filter((item) => item.status !== 'normal').slice(0, 8))
 const topologyObjects = computed(() => (priorityObjects.value.length ? priorityObjects.value : riskObjects.value).slice(0, 5))
 
+function getRequestedReportId() {
+  const raw = route.query.reportId
+  const value = Array.isArray(raw) ? raw[0] : raw
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 async function fetchCockpit() {
   loading.value = true
   try {
     const res: any = await getPatrolReports({ page: 1, page_size: 7 })
     reports.value = res.data.items || []
-    latestReport.value = reports.value[0] || null
-    if (latestReport.value?.id) {
+    const requestedReportId = getRequestedReportId()
+    latestReport.value = (requestedReportId != null
+      ? reports.value.find((item) => item.id === requestedReportId)
+      : null) || reports.value[0] || null
+
+    if (requestedReportId != null && latestReport.value?.id !== requestedReportId) {
+      const detail: any = await getPatrolReportDetail(requestedReportId)
+      latestReport.value = detail.data.report
+      detailItems.value = detail.data.items
+    } else if (latestReport.value?.id) {
       const detail: any = await getPatrolReportDetail(latestReport.value.id)
       latestReport.value = detail.data.report
       detailItems.value = detail.data.items

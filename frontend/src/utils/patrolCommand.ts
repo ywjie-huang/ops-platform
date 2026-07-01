@@ -57,6 +57,12 @@ export interface RiskObject {
   items: PatrolItemLike[]
 }
 
+export interface RiskObjectCountBadge {
+  tone: Exclude<PatrolTone, 'info'>
+  value: number
+  label: string
+}
+
 export interface RiskObjectPage<T = RiskObject> {
   items: T[]
   page: number
@@ -70,6 +76,11 @@ export interface PagerMeta {
   pageSize: number
   total: number
   totalPages: number
+}
+
+export interface PatrolRouteLocation {
+  path: string
+  query?: Record<string, string>
 }
 
 const CATEGORY_ORDER: Record<string, number> = {
@@ -100,6 +111,28 @@ export function statusTone(status: PatrolStatus = ''): PatrolTone {
 
 export function categoryLabel(category: PatrolCategory = '') {
   return CATEGORY_LABELS[category] || category || '其他'
+}
+
+export function buildObjectCounts(counts: Pick<RiskObject, 'critical' | 'warning' | 'normal'>): RiskObjectCountBadge[] {
+  const badges = [
+    { tone: 'danger', value: counts.critical, label: '严重' },
+    { tone: 'warning', value: counts.warning, label: '警告' },
+    { tone: 'success', value: counts.normal, label: '正常' },
+  ] satisfies RiskObjectCountBadge[]
+
+  const visibleBadges = badges.filter((item) => item.value > 0)
+  return visibleBadges.length ? visibleBadges : [{ tone: 'success', value: 0, label: '正常' }]
+}
+
+export function buildCockpitRouteLocation(report?: PatrolReportLike | null): PatrolRouteLocation {
+  if (report?.id != null) {
+    return {
+      path: '/patrol/cockpit',
+      query: { reportId: String(report.id) },
+    }
+  }
+
+  return { path: '/patrol/cockpit' }
 }
 
 export function getPatrolPriority(report?: PatrolReportLike | null) {

@@ -6,7 +6,7 @@
         <p class="page-subtitle">异常对象优先，按处置路径组织巡检结果。</p>
       </div>
       <div class="header-actions">
-        <el-button @click="$router.push('/patrol/cockpit')">
+        <el-button @click="goCockpit">
           <el-icon><DataAnalysis /></el-icon> 态势大屏
         </el-button>
         <el-button @click="$router.push('/patrol/settings')">
@@ -140,9 +140,14 @@
                 </span>
                 <span class="object-headline">{{ object.headline }}</span>
                 <span class="object-counts">
-                  <span class="count danger">{{ object.critical }} 严重</span>
-                  <span class="count warning">{{ object.warning }} 警告</span>
-                  <span class="count success">{{ object.normal }} 正常</span>
+                  <span
+                    v-for="badge in buildObjectCounts(object)"
+                    :key="`${object.key}-${badge.tone}`"
+                    class="count"
+                    :class="badge.tone"
+                  >
+                    {{ badge.value }} {{ badge.label }}
+                  </span>
                 </span>
               </button>
 
@@ -266,6 +271,8 @@ import { DataAnalysis, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { deletePatrolReport, exportPatrolReport, getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
 import { formatRelativeTime } from '@/utils/time'
 import {
+  buildCockpitRouteLocation,
+  buildObjectCounts,
   buildPager,
   buildPatrolOverview,
   buildRiskObjects,
@@ -414,6 +421,10 @@ function goTerminal() {
 
 function goTickets() {
   router.push('/tickets')
+}
+
+function goCockpit() {
+  router.push(buildCockpitRouteLocation(selectedReport.value))
 }
 
 function setLanePage(key: string, value: number) {
