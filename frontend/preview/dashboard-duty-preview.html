@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>仪表盘值班态首页预览</title>
+  <style>
+    :root {
+      --primary-color: #5e6ad2;
+      --primary-hover: #4f5bc4;
+      --primary-bg: rgba(94, 106, 210, 0.08);
+      --success-color: #22c55e;
+      --success-bg: rgba(34, 197, 94, 0.1);
+      --warning-color: #f5a623;
+      --warning-bg: rgba(245, 166, 35, 0.12);
+      --danger-color: #e5484d;
+      --danger-bg: rgba(229, 72, 77, 0.1);
+      --info-color: #2f7cf6;
+      --info-bg: rgba(47, 124, 246, 0.1);
+      --bg-color: #f6f7fb;
+      --surface-color: #ffffff;
+      --surface-muted: #f3f5f9;
+      --border-color: #e6eaf2;
+      --border-strong: #d9deea;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --text-muted: #8a94a6;
+      --sidebar-bg: #f8f9fc;
+      --radius: 8px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.06);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-7: 32px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      width: 100%;
+      overflow-x: hidden;
+      background: var(--bg-color);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      line-height: 1.5;
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 216px minmax(0, 1fr);
+      max-width: 100%;
+    }
+
+    .sidebar {
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border-color);
+      padding: var(--space-5) var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: 0 var(--space-3);
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--primary-color);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand-name {
+      font-size: 0.9375rem;
+      font-weight: 700;
+    }
+
+    .nav-group {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .nav-label {
+      padding: 0 var(--space-3);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .nav-item.active {
+      background: var(--surface-color);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-color);
+    }
+
+    .nav-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.75;
+    }
+
+    .main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 52px;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-6);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      min-width: 0;
+    }
+
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      min-width: 0;
+    }
+
+    .breadcrumbs strong {
+      color: var(--text-primary);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .topbar-tools {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      flex-shrink: 0;
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .content {
+      padding: var(--space-6);
+      display: grid;
+      gap: var(--space-6);
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: var(--space-4);
+    }
+
+    .eyebrow {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: var(--space-2);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      line-height: 1.15;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .page-subtitle {
+      margin-top: var(--space-2);
+      max-width: 58ch;
+      font-size: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .shift-meta {
+      display: grid;
+      justify-items: end;
+      gap: 2px;
+      text-align: right;
+    }
+
+    .shift-meta strong {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .shift-meta span {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .risk-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-4);
+    }
+
+    .metric {
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+      min-height: 132px;
+      display: grid;
+      gap: var(--space-3);
+      align-content: start;
+      min-width: 0;
+    }
+
+    .metric-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .metric-label {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .metric-tone {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+
+    .metric-value {
+      font-size: 1.875rem;
+      line-height: 1;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      letter-spacing: 0;
+    }
+
+    .metric-hint {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .metric-tag {
+      width: fit-content;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .tone-danger { background: var(--danger-bg); color: var(--danger-color); }
+    .tone-warning { background: var(--warning-bg); color: var(--warning-color); }
+    .tone-success { background: var(--success-bg); color: var(--success-color); }
+    .tone-info { background: var(--info-bg); color: var(--info-color); }
+
+    .dot-danger { background: var(--danger-color); }
+    .dot-warning { background: var(--warning-color); }
+    .dot-success { background: var(--success-color); }
+    .dot-info { background: var(--info-color); }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+      gap: var(--space-4);
+      align-items: start;
+    }
+
+    .stack {
+      display: grid;
+      gap: var(--space-4);
+    }
+
+    .panel {
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .panel-note {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    .segmented {
+      display: inline-flex;
+      gap: 2px;
+      padding: 2px;
+      border-radius: 8px;
+      background: var(--surface-muted);
+    }
+
+    .segmented button {
+      border: 0;
+      background: transparent;
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: var(--surface-color);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .focus-list {
+      display: grid;
+    }
+
+    .focus-item {
+      padding: 18px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: var(--space-4);
+      align-items: start;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .focus-item:first-child {
+      border-top: 0;
+    }
+
+    .focus-badge {
+      min-width: 64px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .focus-main {
+      min-width: 0;
+    }
+
+    .focus-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .focus-meta {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .focus-desc {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      max-width: 64ch;
+    }
+
+    .focus-actions {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-top: 10px;
+    }
+
+    .btn {
+      min-height: 36px;
+      border-radius: 8px;
+      padding: 0 12px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface-color);
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: var(--primary-color);
+      color: #fff;
+      border-color: var(--primary-color);
+    }
+
+    .btn.subtle {
+      background: var(--surface-muted);
+      border-color: transparent;
+      color: var(--text-secondary);
+    }
+
+    .eta {
+      text-align: right;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      min-width: 88px;
+    }
+
+    .eta strong {
+      display: block;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      margin-bottom: 2px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: var(--space-4);
+    }
+
+    .shortcut-list,
+    .activity-list,
+    .asset-list {
+      display: grid;
+    }
+
+    .shortcut {
+      padding: 16px 18px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: var(--space-3);
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .shortcut:first-child,
+    .activity-item:first-child,
+    .asset-row:first-child {
+      border-top: 0;
+    }
+
+    .shortcut-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+
+    .shortcut-name {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .shortcut-desc {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .shortcut-state {
+      text-align: right;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .shortcut-state strong {
+      display: block;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .trend-wrap {
+      padding: 16px 18px 18px;
+    }
+
+    .trend-legend {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    .trend-legend strong {
+      color: var(--danger-color);
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .trend-axis {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 10px;
+      font-family: var(--font-mono);
+    }
+
+    .duty-card {
+      padding: 18px;
+      display: grid;
+      gap: var(--space-4);
+    }
+
+    .duty-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: var(--space-4);
+    }
+
+    .duty-title {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .duty-copy {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      max-width: 34ch;
+    }
+
+    .clock {
+      text-align: right;
+      font-family: var(--font-mono);
+    }
+
+    .clock strong {
+      display: block;
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+
+    .clock span {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .duty-facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+
+    .fact {
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--surface-muted);
+    }
+
+    .fact-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .fact-value {
+      font-size: 0.9375rem;
+      font-weight: 700;
+    }
+
+    .activity-item,
+    .asset-row {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border-color);
+      display: grid;
+      gap: 2px;
+    }
+
+    .activity-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .activity-text {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .activity-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .activity-chip {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .asset-row {
+      grid-template-columns: 84px minmax(0, 1fr) 32px;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .asset-name {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .asset-bar {
+      height: 8px;
+      background: var(--surface-muted);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .asset-fill {
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .asset-value {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      text-align: right;
+      font-family: var(--font-mono);
+    }
+
+    .footer-note {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    @media (max-width: 1180px) {
+      .risk-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .main-grid,
+      .mini-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .page-head {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      .shift-meta {
+        justify-items: start;
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 640px) {
+      :root {
+        --space-6: 18px;
+      }
+
+      .content,
+      .topbar {
+        padding-left: var(--space-4);
+        padding-right: var(--space-4);
+      }
+
+      .topbar {
+        align-items: flex-start;
+        height: auto;
+        min-height: 52px;
+        gap: var(--space-2);
+        padding-top: 12px;
+        padding-bottom: 12px;
+        flex-direction: column;
+      }
+
+      .topbar-tools {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .breadcrumbs {
+        width: 100%;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        line-height: 1.2;
+      }
+
+      .page-subtitle {
+        font-size: 0.9375rem;
+      }
+
+      .risk-strip,
+      .duty-facts {
+        grid-template-columns: 1fr;
+      }
+
+      .focus-item,
+      .shortcut {
+        grid-template-columns: 1fr;
+      }
+
+      .eta,
+      .shortcut-state {
+        text-align: left;
+        min-width: 0;
+      }
+
+      .panel-head {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      .segmented {
+        width: 100%;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">OP</div>
+        <div class="brand-name">运维管理平台</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">总览</div>
+        <div class="nav-item active"><span class="nav-dot"></span> 仪表盘</div>
+        <div class="nav-item"><span class="nav-dot"></span> 报表中心</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">基础设施</div>
+        <div class="nav-item"><span class="nav-dot"></span> 主机管理</div>
+        <div class="nav-item"><span class="nav-dot"></span> 监控告警</div>
+        <div class="nav-item"><span class="nav-dot"></span> Docker / K8s</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">协作</div>
+        <div class="nav-item"><span class="nav-dot"></span> 工单中心</div>
+        <div class="nav-item"><span class="nav-dot"></span> 批量执行</div>
+        <div class="nav-item"><span class="nav-dot"></span> 巡检任务</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="breadcrumbs">
+          <span>首页</span>
+          <span>/</span>
+          <strong>值班态首页预览</strong>
+        </div>
+        <div class="topbar-tools">
+          <span>班次 A</span>
+          <span>告警 7</span>
+          <div class="avatar">管</div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="page-head">
+          <div>
+            <div class="eyebrow">Dashboard Preview / Duty First</div>
+            <h1>先看异常，再看影响，再进入处理</h1>
+            <div class="page-subtitle">这个原型把首页从“汇总页”调整为“值班态页面”。第一屏优先回答现在有什么问题、影响到哪里、值班人员该先点哪里。</div>
+          </div>
+          <div class="shift-meta">
+            <strong>当前值班：李晨 / 平台组</strong>
+            <span>2026-07-02 15:28 UTC+8</span>
+            <span>交接还有 02:32:17</span>
+          </div>
+        </section>
+
+        <section class="risk-strip">
+          <article class="metric">
+            <div class="metric-top">
+              <div class="metric-label">待确认告警</div>
+              <div class="metric-tone dot-danger"></div>
+            </div>
+            <div class="metric-value">07</div>
+            <div class="metric-hint">其中 2 条为数据库高优先级告警，1 条持续超过 18 分钟。</div>
+            <div class="metric-tag tone-danger">需要优先处理</div>
+          </article>
+          <article class="metric">
+            <div class="metric-top">
+              <div class="metric-label">离线主机</div>
+              <div class="metric-tone dot-warning"></div>
+            </div>
+            <div class="metric-value">03</div>
+            <div class="metric-hint">1 台核心节点，2 台边缘节点。最近 10 分钟内状态变化。</div>
+            <div class="metric-tag tone-warning">影响服务范围</div>
+          </article>
+          <article class="metric">
+            <div class="metric-top">
+              <div class="metric-label">处理中工单</div>
+              <div class="metric-tone dot-info"></div>
+            </div>
+            <div class="metric-value">05</div>
+            <div class="metric-hint">2 个等待审批，1 个超过 SLA 30 分钟。</div>
+            <div class="metric-tag tone-info">协作中</div>
+          </article>
+          <article class="metric">
+            <div class="metric-top">
+              <div class="metric-label">今日巡检异常</div>
+              <div class="metric-tone dot-success"></div>
+            </div>
+            <div class="metric-value">02</div>
+            <div class="metric-hint">均已定位到主机，暂未扩散，自动巡检成功率 96%。</div>
+            <div class="metric-tag tone-success">可控范围</div>
+          </article>
+        </section>
+
+        <section class="main-grid">
+          <div class="stack">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">今日关注</div>
+                  <div class="panel-note">把首页的黄金区域让给最需要先处理的对象，而不是最近发生过的所有事情。</div>
+                </div>
+                <div class="segmented" role="tablist" aria-label="Focus filter">
+                  <button class="active" type="button">全部</button>
+                  <button type="button">高优先</button>
+                  <button type="button">主机</button>
+                  <button type="button">工单</button>
+                </div>
+              </div>
+              <div class="focus-list">
+                <div class="focus-item">
+                  <div class="focus-badge tone-danger">P1 告警</div>
+                  <div class="focus-main">
+                    <div class="focus-title">db-primary-01 连接耗尽，影响订单写入</div>
+                    <div class="focus-meta">来源：Prometheus / mysql-exporter · 影响应用：支付、订单 · 最近 18 分钟持续告警</div>
+                    <div class="focus-desc">当前连接使用率 97%，从 15:10 开始连续三次触发阈值。建议先进入告警详情确认实例负载，再直达 SSH 终端排查慢查询与连接池。</div>
+                    <div class="focus-actions">
+                      <button class="btn primary" type="button">查看告警详情</button>
+                      <button class="btn" type="button">进入 SSH 终端</button>
+                      <button class="btn subtle" type="button">打开相关工单</button>
+                    </div>
+                  </div>
+                  <div class="eta">
+                    <strong>15:10</strong>
+                    已持续 18m
+                  </div>
+                </div>
+                <div class="focus-item">
+                  <div class="focus-badge tone-warning">主机离线</div>
+                  <div class="focus-main">
+                    <div class="focus-title">node-prod-07 从巡检视角与监控视角同时离线</div>
+                    <div class="focus-meta">所属分组：华东生产集群 · 最后心跳：15:19 · 最近变更：10 分钟前部署窗口结束</div>
+                    <div class="focus-desc">这类“主机离线 + 近期有变更”的组合应该在首页被明确提升，不需要用户先去资产页或者活动流里自己拼接线索。</div>
+                    <div class="focus-actions">
+                      <button class="btn primary" type="button">查看主机详情</button>
+                      <button class="btn" type="button">检查容器状态</button>
+                    </div>
+                  </div>
+                  <div class="eta">
+                    <strong>15:19</strong>
+                    最近变更
+                  </div>
+                </div>
+                <div class="focus-item">
+                  <div class="focus-badge tone-info">超时工单</div>
+                  <div class="focus-main">
+                    <div class="focus-title">工单 #2048 仍在等待数据库组审批</div>
+                    <div class="focus-meta">优先级：高 · 当前阶段：审批中 · 关联事项：生产发布 / schema 变更</div>
+                    <div class="focus-desc">工单不只是数量统计，更应该把“阻塞正在发生”的项抬上来。首页要能帮助值班人员发现跨团队卡点，而不只是看见工单总数。</div>
+                    <div class="focus-actions">
+                      <button class="btn primary" type="button">进入工单</button>
+                      <button class="btn subtle" type="button">催办审批</button>
+                    </div>
+                  </div>
+                  <div class="eta">
+                    <strong>28m</strong>
+                    超过 SLA
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <div class="mini-grid">
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">处置入口</div>
+                    <div class="panel-note">入口本身带状态，不再只是静态跳转。</div>
+                  </div>
+                </div>
+                <div class="shortcut-list">
+                  <div class="shortcut">
+                    <div class="shortcut-icon tone-info">SSH</div>
+                    <div>
+                      <div class="shortcut-name">SSH 终端</div>
+                      <div class="shortcut-desc">最近最常访问的 3 台主机可直接进入，适合排障第一跳。</div>
+                    </div>
+                    <div class="shortcut-state"><strong>03</strong> 热点主机</div>
+                  </div>
+                  <div class="shortcut">
+                    <div class="shortcut-icon tone-warning">批</div>
+                    <div>
+                      <div class="shortcut-name">批量执行</div>
+                      <div class="shortcut-desc">2 组命令模板已准备好，可用于批量检查节点状态。</div>
+                    </div>
+                    <div class="shortcut-state"><strong>02</strong> 常用模板</div>
+                  </div>
+                  <div class="shortcut">
+                    <div class="shortcut-icon tone-success">巡</div>
+                    <div>
+                      <div class="shortcut-name">巡检任务</div>
+                      <div class="shortcut-desc">下一轮自动巡检将在 32 分钟后执行。</div>
+                    </div>
+                    <div class="shortcut-state"><strong>96%</strong> 成功率</div>
+                  </div>
+                  <div class="shortcut">
+                    <div class="shortcut-icon tone-danger">单</div>
+                    <div>
+                      <div class="shortcut-name">工单中心</div>
+                      <div class="shortcut-desc">待跟进 5 单，其中 1 单已超时，适合作为首页右手动作区。</div>
+                    </div>
+                    <div class="shortcut-state"><strong>01</strong> 超时单</div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">告警趋势</div>
+                    <div class="panel-note">趋势保留，但退到辅助判断层，不抢主任务视线。</div>
+                  </div>
+                </div>
+                <div class="trend-wrap">
+                  <div class="trend-legend">
+                    <span>近 7 天告警总量</span>
+                    <strong>43</strong>
+                  </div>
+                  <svg width="100%" height="126" viewBox="0 0 420 126" preserveAspectRatio="none" aria-label="alert trend">
+                    <defs>
+                      <linearGradient id="alertArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#e5484d" stop-opacity="0.22"></stop>
+                        <stop offset="100%" stop-color="#e5484d" stop-opacity="0.02"></stop>
+                      </linearGradient>
+                    </defs>
+                    <line x1="0" y1="102" x2="420" y2="102" stroke="#e6eaf2" stroke-width="1"></line>
+                    <line x1="0" y1="70" x2="420" y2="70" stroke="#edf0f6" stroke-width="1"></line>
+                    <line x1="0" y1="38" x2="420" y2="38" stroke="#edf0f6" stroke-width="1"></line>
+                    <polygon points="0,74 70,80 140,58 210,86 280,46 350,28 420,54 420,126 0,126" fill="url(#alertArea)"></polygon>
+                    <polyline points="0,74 70,80 140,58 210,86 280,46 350,28 420,54" fill="none" stroke="#e5484d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                    <circle cx="0" cy="74" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="70" cy="80" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="140" cy="58" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="210" cy="86" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="280" cy="46" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="350" cy="28" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                    <circle cx="420" cy="54" r="4" fill="#fff" stroke="#e5484d" stroke-width="2"></circle>
+                  </svg>
+                  <div class="trend-axis">
+                    <span>06-26</span>
+                    <span>06-27</span>
+                    <span>06-28</span>
+                    <span>06-29</span>
+                    <span>06-30</span>
+                    <span>07-01</span>
+                    <span>07-02</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="stack">
+            <article class="panel">
+              <div class="duty-card">
+                <div class="duty-top">
+                  <div>
+                    <div class="duty-title">值班视角摘要</div>
+                    <div class="duty-copy">这里替代原来的大欢迎区，用更少的话告诉值班人当前节奏、值班角色和总体风险态势。</div>
+                  </div>
+                  <div class="clock">
+                    <strong id="clock">15:28</strong>
+                    <span>实时更新时间</span>
+                  </div>
+                </div>
+                <div class="duty-facts">
+                  <div class="fact">
+                    <div class="fact-label">当前态势</div>
+                    <div class="fact-value">生产环境偏紧张</div>
+                  </div>
+                  <div class="fact">
+                    <div class="fact-label">影响业务</div>
+                    <div class="fact-value">支付 / 订单 / 网关</div>
+                  </div>
+                  <div class="fact">
+                    <div class="fact-label">最近变更窗口</div>
+                    <div class="fact-value">15:00 已结束</div>
+                  </div>
+                  <div class="fact">
+                    <div class="fact-label">建议动作</div>
+                    <div class="fact-value">先查数据库与离线节点</div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">资产结构</div>
+                  <div class="panel-note">降级到辅助信息层，用于背景认知而不是第一优先级判断。</div>
+                </div>
+              </div>
+              <div class="asset-list">
+                <div class="asset-row">
+                  <div class="asset-name">云主机</div>
+                  <div class="asset-bar"><div class="asset-fill" style="width: 100%; background: #5e6ad2;"></div></div>
+                  <div class="asset-value">84</div>
+                </div>
+                <div class="asset-row">
+                  <div class="asset-name">数据库</div>
+                  <div class="asset-bar"><div class="asset-fill" style="width: 58%; background: #7c3aed;"></div></div>
+                  <div class="asset-value">49</div>
+                </div>
+                <div class="asset-row">
+                  <div class="asset-name">网络设备</div>
+                  <div class="asset-bar"><div class="asset-fill" style="width: 42%; background: #2f7cf6;"></div></div>
+                  <div class="asset-value">35</div>
+                </div>
+                <div class="asset-row">
+                  <div class="asset-name">中间件</div>
+                  <div class="asset-bar"><div class="asset-fill" style="width: 30%; background: #22c55e;"></div></div>
+                  <div class="asset-value">25</div>
+                </div>
+                <div class="asset-row">
+                  <div class="asset-name">其他</div>
+                  <div class="asset-bar"><div class="asset-fill" style="width: 16%; background: #f5a623;"></div></div>
+                  <div class="asset-value">13</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">最近活动</div>
+                  <div class="panel-note">保留，但降低权重，不让它压过当前风险对象。</div>
+                </div>
+              </div>
+              <div class="activity-list">
+                <div class="activity-item">
+                  <div class="activity-top">
+                    <div class="activity-text">数据库告警已自动关联到主机 `db-primary-01`</div>
+                    <div class="activity-chip tone-danger">告警</div>
+                  </div>
+                  <div class="activity-meta">15:23 · system · alert_event</div>
+                </div>
+                <div class="activity-item">
+                  <div class="activity-top">
+                    <div class="activity-text">工单 #2048 更新为“等待审批”</div>
+                    <div class="activity-chip tone-warning">工单</div>
+                  </div>
+                  <div class="activity-meta">15:17 · 张明 · ticket</div>
+                </div>
+                <div class="activity-item">
+                  <div class="activity-top">
+                    <div class="activity-text">巡检任务 `daily-core-check` 已完成，发现 2 项异常</div>
+                    <div class="activity-chip tone-success">巡检</div>
+                  </div>
+                  <div class="activity-meta">14:58 · system · patrol</div>
+                </div>
+                <div class="activity-item">
+                  <div class="activity-top">
+                    <div class="activity-text">发布窗口关闭，记录关联到 node-prod-07</div>
+                    <div class="activity-chip tone-info">变更</div>
+                  </div>
+                  <div class="activity-meta">14:49 · 李晨 · deploy</div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <div class="footer-note">这是一个独立预览页，重点展示信息架构和层级调整，不接入真实数据。</div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const clock = document.getElementById('clock')
+    function updateClock() {
+      const now = new Date()
+      clock.textContent = now.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    }
+    updateClock()
+    setInterval(updateClock, 30000)
+
+    document.querySelectorAll('.segmented').forEach((group) => {
+      group.addEventListener('click', (event) => {
+        const button = event.target.closest('button')
+        if (!button) return
+        group.querySelectorAll('button').forEach((item) => item.classList.remove('active'))
+        button.classList.add('active')
+      })
+    })
+  </script>
+</body>
+</html>
