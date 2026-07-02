@@ -16,11 +16,14 @@ test('dashboard view consumes summary alert and ticket data for focus content', 
   assert.match(dashboardView, /const summary = ref<DashboardSummaryLike>\(\{\}\)/)
   assert.match(dashboardView, /buildDashboardFocusItems/)
   assert.match(dashboardView, /const focusItems = computed\(\(\) => buildDashboardFocusItems\(summary\.value\)\)/)
+  assert.match(dashboardView, /filteredFocusItems/)
 })
 
-test('dashboard view keeps the preview-inspired split layout with duty summary and recent activity in the side stack', () => {
-  assert.match(dashboardView, /dashboard-side dashboard-side--summary/)
-  assert.match(dashboardView, /class="panel panel--duty"/)
-  assert.match(dashboardView, /class="panel panel--activity"/)
-  assert.match(dashboardView, /class="dashboard-subgrid"/)
+test('dashboard view now uses the preview layout vocabulary directly', () => {
+  assert.match(dashboardView, /class="risk-strip"/)
+  assert.match(dashboardView, /class="main-grid"/)
+  assert.match(dashboardView, /class="mini-grid"/)
+  assert.match(dashboardView, /class="segmented"/)
+  assert.match(dashboardView, /class="duty-card"/)
+  assert.match(dashboardView, /class="asset-list"/)
 })

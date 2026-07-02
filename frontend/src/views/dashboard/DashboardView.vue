@@ -1,82 +1,93 @@
 <template>
   <div v-loading="loading" class="dashboard">
     <section class="page-head">
-      <div class="page-copy">
-        <p class="page-kicker">值班态首页</p>
+      <div>
+        <div class="eyebrow">Dashboard Preview / Duty First</div>
         <h1>先看异常，再看影响，再进入处理</h1>
-        <p class="page-summary">
-          首页优先展示待处理告警、阻塞工单和最近资产异常，把真正需要先点开的对象抬到第一屏。
-        </p>
+        <div class="page-subtitle">
+          这个首页直接按预览稿的逻辑展开：第一屏优先回答现在有什么问题、影响到哪里、值班人员该先点哪里。
+        </div>
       </div>
-      <div class="page-meta">
+      <div class="shift-meta">
         <strong>当前值班：{{ authStore.fullName || '管理员' }}</strong>
-        <span>{{ currentDateTime }}</span>
-        <small>{{ currentDateLabel }}</small>
+        <span>{{ currentDateLabel }} · {{ currentDateTime }}</span>
       </div>
     </section>
 
-    <section class="metric-strip" aria-label="当前风险指标">
-      <article v-for="card in metricCards" :key="card.key" class="metric-card" :class="`metric-card--${card.tone}`">
-        <div class="metric-card__head">
-          <span class="metric-card__label">{{ card.label }}</span>
-          <span class="metric-card__dot"></span>
+    <section class="risk-strip" aria-label="当前风险指标">
+      <article v-for="card in metricCards" :key="card.key" class="metric">
+        <div class="metric-top">
+          <div class="metric-label">{{ card.label }}</div>
+          <div class="metric-tone" :class="toneDotClass(card.tone)"></div>
         </div>
-        <div class="metric-card__value-row">
-          <strong class="metric-card__value">{{ card.value }}</strong>
-          <span class="metric-card__delta" :class="`metric-card__delta--${card.deltaType}`">{{ card.delta }}</span>
-        </div>
-        <p class="metric-card__hint">{{ card.hint }}</p>
-        <Sparkline :data="card.series" :color="card.lineColor" :width="132" :height="28" />
+        <div class="metric-value">{{ card.value }}</div>
+        <div class="metric-hint">{{ card.hint }}</div>
+        <div class="metric-tag" :class="toneTagClass(card.tone)">{{ metricTag(card) }}</div>
       </article>
     </section>
 
-    <div class="dashboard-layout">
-      <div class="dashboard-main">
-        <section class="panel panel--focus">
-          <div class="panel__head">
+    <section class="main-grid">
+      <div class="stack">
+        <article class="panel">
+          <div class="panel-head">
             <div>
-              <h2 class="panel__title">今日关注</h2>
-              <p class="panel__hint">比起“最近发生过什么”，这里更强调“值班人应该先打开什么”。</p>
+              <div class="panel-title">今日关注</div>
+              <div class="panel-note">把首页黄金区域留给最需要先处理的对象，而不是最近发生过的所有事情。</div>
+            </div>
+            <div class="segmented" role="tablist" aria-label="Focus filter">
+              <button
+                v-for="filter in focusFilters"
+                :key="filter.key"
+                type="button"
+                :class="{ active: activeFocusFilter === filter.key }"
+                @click="activeFocusFilter = filter.key"
+              >
+                {{ filter.label }}
+              </button>
             </div>
           </div>
 
-          <div v-if="focusItems.length" class="focus-list">
-            <article v-for="item in focusItems" :key="item.key" class="focus-item">
-              <div class="focus-item__badge" :class="`focus-item__badge--${item.tone}`">{{ item.badge }}</div>
-              <div class="focus-item__body">
-                <div class="focus-item__title-row">
-                  <h3 class="focus-item__title">{{ item.title }}</h3>
-                  <span class="focus-item__tag" :class="`focus-item__tag--${item.tone}`">{{ item.summaryTag }}</span>
-                </div>
-                <p class="focus-item__meta">{{ item.meta }}</p>
-                <p class="focus-item__detail">{{ item.detail }}</p>
-                <div class="focus-item__actions">
-                  <button type="button" class="action-button action-button--primary" @click="navigate(item.primaryActionPath)">
+          <div v-if="filteredFocusItems.length" class="focus-list">
+            <article v-for="item in filteredFocusItems" :key="item.key" class="focus-item">
+              <div class="focus-badge" :class="toneTagClass(item.tone)">{{ item.badge }}</div>
+              <div class="focus-main">
+                <div class="focus-title">{{ item.title }}</div>
+                <div class="focus-meta">{{ item.meta }}</div>
+                <div class="focus-desc">{{ item.detail }}</div>
+                <div class="focus-actions">
+                  <button type="button" class="btn primary" @click="navigate(item.primaryActionPath)">
                     {{ item.primaryActionLabel }}
                   </button>
                   <button
                     v-if="item.secondaryActionLabel && item.secondaryActionPath"
                     type="button"
-                    class="action-button"
+                    class="btn"
                     @click="navigate(item.secondaryActionPath)"
                   >
                     {{ item.secondaryActionLabel }}
                   </button>
+                  <button v-else type="button" class="btn subtle" @click="navigate('/tickets')">
+                    继续跟进
+                  </button>
                 </div>
+              </div>
+              <div class="eta">
+                <strong>{{ focusEta(item).headline }}</strong>
+                {{ focusEta(item).detail }}
               </div>
             </article>
           </div>
           <div v-else class="empty-state">
             <p>当前没有需要优先处理的对象，新的告警、工单或资产异常会优先显示在这里。</p>
           </div>
-        </section>
+        </article>
 
-        <div class="dashboard-subgrid">
-          <section class="panel">
-            <div class="panel__head">
+        <div class="mini-grid">
+          <article class="panel">
+            <div class="panel-head">
               <div>
-                <h2 class="panel__title">处置入口</h2>
-                <p class="panel__hint">入口本身带状态，不再只是静态跳转。</p>
+                <div class="panel-title">处置入口</div>
+                <div class="panel-note">入口本身带状态，不再只是静态跳转。</div>
               </div>
             </div>
             <div class="shortcut-list">
@@ -84,134 +95,132 @@
                 v-for="item in shortcutItems"
                 :key="item.key"
                 type="button"
-                class="shortcut-item"
+                class="shortcut"
                 @click="navigate(item.path)"
               >
-                <div class="shortcut-item__icon" :class="`shortcut-item__icon--${item.tone}`">
-                  <el-icon>
-                    <component :is="shortcutIcons[item.key]" />
-                  </el-icon>
+                <div class="shortcut-icon" :class="toneTagClass(item.tone)">
+                  {{ shortcutAbbr[item.key] }}
                 </div>
-                <div class="shortcut-item__body">
-                  <span class="shortcut-item__label">{{ item.label }}</span>
-                  <span class="shortcut-item__desc">{{ item.description }}</span>
+                <div>
+                  <div class="shortcut-name">{{ item.label }}</div>
+                  <div class="shortcut-desc">{{ item.description }}</div>
                 </div>
-                <div class="shortcut-item__meta">
+                <div class="shortcut-state">
                   <strong>{{ item.value }}</strong>
-                  <span>{{ item.valueLabel }}</span>
+                  {{ item.valueLabel }}
                 </div>
               </button>
             </div>
-          </section>
+          </article>
 
-          <section class="panel panel--trend">
-            <div class="panel__head">
+          <article class="panel">
+            <div class="panel-head">
               <div>
-                <h2 class="panel__title">告警趋势</h2>
-                <p class="panel__hint">趋势保留在辅助判断层，不抢主任务视线。</p>
+                <div class="panel-title">告警趋势</div>
+                <div class="panel-note">趋势保留，但退到辅助判断层，不抢主任务视线。</div>
               </div>
-              <span class="panel__meta">近 7 天 · {{ alertTrendTotal }} 次</span>
             </div>
-            <div class="trend-panel">
+            <div class="trend-wrap">
+              <div class="trend-legend">
+                <span>近 7 天告警总量</span>
+                <strong>{{ alertTrendTotal }}</strong>
+              </div>
               <AlertTrendChart :dates="alertTrend.dates" :counts="alertTrend.counts" />
+              <div class="trend-axis">
+                <span v-for="date in alertTrend.dates" :key="date">{{ date }}</span>
+              </div>
             </div>
-          </section>
+          </article>
         </div>
       </div>
 
-      <aside class="dashboard-side dashboard-side--summary">
-        <section class="panel panel--duty">
+      <div class="stack">
+        <article class="panel">
           <div class="duty-card">
-            <div class="duty-card__head">
+            <div class="duty-top">
               <div>
-                <h2 class="panel__title">值班视角摘要</h2>
-                <p class="panel__hint">把当前班次最需要的背景认知压缩在这里，先帮助判断，再进入处理。</p>
+                <div class="duty-title">值班视角摘要</div>
+                <div class="duty-copy">这里替代原来的欢迎区，用更少的话告诉值班人当前节奏、值班角色和整体风险态势。</div>
               </div>
-              <div class="duty-card__clock">
+              <div class="clock">
                 <strong>{{ currentDateTime }}</strong>
-                <span>实时值班时间</span>
+                <span>实时更新时间</span>
               </div>
             </div>
-            <div class="duty-card__facts">
-              <div v-for="fact in dutyFacts" :key="fact.label" class="summary-fact" :class="`summary-fact--${fact.tone}`">
-                <span class="summary-fact__label">{{ fact.label }}</span>
-                <strong class="summary-fact__value">{{ fact.value }}</strong>
-                <p class="summary-fact__hint">{{ fact.hint }}</p>
+            <div class="duty-facts">
+              <div v-for="fact in dutyFacts" :key="fact.label" class="fact">
+                <div class="fact-label">{{ fact.label }}</div>
+                <div class="fact-value">{{ fact.value }}</div>
               </div>
             </div>
           </div>
-        </section>
+        </article>
 
-          <section class="panel">
-          <div class="panel__head">
+        <article class="panel">
+          <div class="panel-head">
             <div>
-              <h2 class="panel__title">资产结构</h2>
-              <p class="panel__hint">作为背景认知保留，不再占首页主视觉。</p>
+              <div class="panel-title">资产结构</div>
+              <div class="panel-note">降级到辅助信息层，用于背景认知而不是第一优先级判断。</div>
             </div>
           </div>
-          <div v-if="typeRows.length" class="type-list">
-            <div v-for="item in typeRows" :key="item.key" class="type-row">
-              <span class="type-row__label">{{ item.label }}</span>
-              <progress class="type-row__progress" :class="`type-row__progress--${item.tone}`" :value="item.value" :max="item.max"></progress>
-              <strong class="type-row__value">{{ item.value }}</strong>
+          <div v-if="typeRows.length" class="asset-list">
+            <div v-for="item in typeRows" :key="item.key" class="asset-row">
+              <div class="asset-name">{{ item.label }}</div>
+              <div class="asset-bar">
+                <div class="asset-fill" :class="typeFillClass(item.tone)" :style="{ width: typeFillWidth(item) }"></div>
+              </div>
+              <div class="asset-value">{{ item.value }}</div>
             </div>
           </div>
           <div v-else class="empty-state empty-state--compact">
             <p>暂无资产类型分布</p>
           </div>
-        </section>
+        </article>
 
-        <section class="panel panel--activity">
-          <div class="panel__head panel__head--compact">
+        <article class="panel">
+          <div class="panel-head">
             <div>
-              <h2 class="panel__title">最近活动</h2>
-              <p class="panel__hint">保留活动流，但降低权重，不让它压过当前风险对象。</p>
+              <div class="panel-title">最近活动</div>
+              <div class="panel-note">保留，但降低权重，不让它压过当前风险对象。</div>
             </div>
-            <div class="filter-pills" role="tablist" aria-label="活动筛选">
+          </div>
+          <div class="activity-list">
+            <div class="segmented segmented--activity" role="tablist" aria-label="活动筛选">
               <button
                 v-for="filter in activityFilters"
                 :key="filter.key"
                 type="button"
-                class="filter-pills__button"
-                :class="{ 'is-active': activeFilter === filter.key }"
+                :class="{ active: activeFilter === filter.key }"
                 @click="handleFilterChange(filter.key)"
               >
                 {{ filter.label }}
               </button>
             </div>
-          </div>
-          <div v-if="formattedActivities.length" class="activity-list">
-            <div v-for="item in formattedActivities" :key="`${item.time}-${item.description}`" class="activity-item">
-              <div class="activity-item__dot" :class="`activity-item__dot--${item.type}`"></div>
-              <div class="activity-item__body">
-                <div class="activity-item__title-row">
-                  <p class="activity-item__text">{{ item.description }}</p>
-                  <span class="activity-item__tag" :class="`activity-item__tag--${item.type}`">{{ item.type_label }}</span>
+            <template v-if="formattedActivities.length">
+              <div v-for="item in formattedActivities" :key="`${item.time}-${item.description}`" class="activity-item">
+                <div class="activity-top">
+                  <div class="activity-text">{{ item.description }}</div>
+                  <div class="activity-chip" :class="activityToneClass(item.type)">{{ item.type_label }}</div>
                 </div>
-                <p class="activity-item__meta">
-                  {{ item.displayTime }}
-                  <span v-if="item.username"> · {{ item.username }}</span>
-                </p>
+                <div class="activity-meta">{{ item.displayTime }}<span v-if="item.username"> · {{ item.username }}</span></div>
               </div>
+            </template>
+            <div v-else class="empty-state empty-state--compact">
+              <p>暂无活动记录</p>
             </div>
           </div>
-          <div v-else class="empty-state empty-state--compact">
-            <p>暂无活动记录</p>
-          </div>
-        </section>
-      </aside>
-    </div>
+        </article>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Connection, Document, Monitor, Setting } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { getActivities, getAlertTrend, getDashboardStats, getDashboardSummary, getSparkline } from '@/api/dashboard'
 import AlertTrendChart from '@/components/AlertTrendChart.vue'
-import Sparkline from '@/components/Sparkline.vue'
 import { useAuthStore } from '@/stores/modules/auth'
 import {
   buildDashboardFocusItems,
@@ -243,16 +252,19 @@ const alertTrend = ref<{ dates: string[]; counts: number[] }>({ dates: [], count
 const summary = ref<DashboardSummaryLike>({})
 const loading = ref(false)
 const activeFilter = ref('all')
+const activeFocusFilter = ref('all')
 const now = ref(new Date())
 
 let clockTimer: ReturnType<typeof setInterval> | undefined
 
-const shortcutIcons: Record<DashboardShortcutKey, unknown> = {
-  ssh: Connection,
-  batch: Setting,
-  patrol: Monitor,
-  tickets: Document,
-}
+const shortcutAbbr: Record<DashboardShortcutKey, string> = { ssh: 'SSH', batch: '批', patrol: '巡', tickets: '单' }
+
+const focusFilters = [
+  { key: 'all', label: '全部' },
+  { key: 'danger', label: '高优先' },
+  { key: 'warning', label: '工单' },
+  { key: 'info', label: '资产' },
+] as const
 
 const activityFilters = [
   { key: 'all', label: '全部' },
@@ -273,6 +285,10 @@ const currentDateLabel = computed(() => {
 
 const metricCards = computed(() => buildDashboardMetricCards(stats.value, sparkline.value))
 const focusItems = computed(() => buildDashboardFocusItems(summary.value))
+const filteredFocusItems = computed(() => {
+  if (activeFocusFilter.value === 'all') return focusItems.value
+  return focusItems.value.filter((item) => item.tone === activeFocusFilter.value)
+})
 const shortcutItems = computed(() => buildDashboardShortcutItems(stats.value))
 const typeRows = computed(() => buildDashboardTypeRows(summary.value))
 const dutyFacts = computed(() => summaryFacts.value.slice(0, 4))
@@ -310,6 +326,60 @@ const formattedActivities = computed(() => {
 })
 
 const alertTrendTotal = computed(() => alertTrend.value.counts.reduce((sum, count) => sum + count, 0))
+
+function toneTagClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'muted') {
+  return {
+    danger: 'tone-danger',
+    warning: 'tone-warning',
+    success: 'tone-success',
+    info: 'tone-info',
+    muted: 'tone-muted',
+  }[tone]
+}
+
+function toneDotClass(tone: 'danger' | 'warning' | 'success' | 'info') {
+  return {
+    danger: 'dot-danger',
+    warning: 'dot-warning',
+    success: 'dot-success',
+    info: 'dot-info',
+  }[tone]
+}
+
+function metricTag(card: (typeof metricCards.value)[number]) {
+  if (card.tone === 'danger') return '需要优先处理'
+  if (card.tone === 'warning') return '影响服务范围'
+  if (card.tone === 'success') return '可控范围'
+  return '协作中'
+}
+
+function focusEta(item: (typeof focusItems.value)[number]) {
+  const match = item.meta.match(/(\d{2}:\d{2})/)
+  if (item.tone === 'danger') return { headline: match?.[1] || '立即', detail: '优先排查' }
+  if (item.tone === 'warning') return { headline: match?.[1] || '跟进', detail: '最近变更' }
+  if (item.tone === 'info') return { headline: match?.[1] || '协同', detail: '继续推进' }
+  if (item.tone === 'success') return { headline: match?.[1] || '稳定', detail: '保持观察' }
+  return { headline: match?.[1] || '处理中', detail: item.summaryTag }
+}
+
+function activityToneClass(type: DashboardActivity['type']) {
+  return {
+    alert: 'tone-danger',
+    ticket: 'tone-warning',
+    asset: 'tone-info',
+    patrol: 'tone-success',
+    user: 'tone-muted',
+    system: 'tone-muted',
+  }[type]
+}
+
+function typeFillClass(tone: (typeof typeRows.value)[number]['tone']) {
+  return `asset-fill--${tone}`
+}
+
+function typeFillWidth(item: (typeof typeRows.value)[number]) {
+  return `${Math.max(8, Math.round((item.value / item.max) * 100))}%`
+}
 
 function startClock() {
   stopClock()
@@ -391,696 +461,509 @@ onDeactivated(() => {
 <style lang="scss" scoped>
 .dashboard {
   width: 100%;
-  padding-right: 16px;
+  padding: 24px 16px 24px 0;
 }
 
 .page-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: end;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
-.page-copy {
-  padding-top: 4px;
-  min-width: 0;
-}
-
-.page-kicker {
-  margin: 0 0 8px;
+.eyebrow {
   font-size: 12px;
   color: var(--text-muted);
-  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 h1 {
   margin: 0;
-  font-size: 32px;
-  line-height: 1.12;
+  font-size: 28px;
+  line-height: 1.15;
   letter-spacing: 0;
   color: var(--text-primary);
-  text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
-.page-summary {
+.page-subtitle {
   margin: 12px 0 0;
   max-width: 58ch;
   color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 16px;
+  line-height: 1.6;
 }
 
-.panel,
-.metric-card {
+.shift-meta {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.shift-meta strong {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.shift-meta span {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.risk-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.metric,
+.panel {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
 }
 
-.page-meta {
+.metric {
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
-  min-width: 188px;
+  gap: 12px;
+  min-height: 132px;
 }
 
-.page-meta strong {
-  font-size: 15px;
-  line-height: 1.3;
-  color: var(--text-primary);
+.metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
-.page-meta span {
+.metric-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.metric-tone {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.metric-value {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
   font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.metric-hint {
+  font-size: 14px;
+  color: var(--text-secondary);
+  min-height: 44px;
+}
+
+.metric-tag,
+.focus-badge,
+.activity-chip {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tone-danger {
+  background: rgba(229, 72, 77, 0.1);
+  color: #e5484d;
+}
+
+.tone-warning {
+  background: rgba(245, 166, 35, 0.12);
+  color: #f5a623;
+}
+
+.tone-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.tone-info {
+  background: rgba(47, 124, 246, 0.1);
+  color: #2f7cf6;
+}
+
+.tone-muted {
+  background: #f3f5f9;
+  color: var(--text-secondary);
+}
+
+.dot-danger { background: #e5484d; }
+.dot-warning { background: #f5a623; }
+.dot-success { background: #22c55e; }
+.dot-info { background: #2f7cf6; }
+
+.main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.panel-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.panel-title,
+.duty-title {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.page-meta small {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.duty-card__head {
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.panel__title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.panel__hint {
-  margin: 4px 0 0;
+.panel-note,
+.duty-copy {
   font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.duty-card {
-  padding: 18px;
-  display: grid;
-  gap: 14px;
-}
-
-.duty-card__clock {
-  text-align: right;
-}
-
-.duty-card__clock strong {
-  display: block;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 24px;
-  line-height: 1;
-  color: var(--text-primary);
-}
-
-.duty-card__clock span {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
   color: var(--text-muted);
-}
-
-.duty-card__facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.summary-fact {
-  padding: 12px;
-  border-radius: 8px;
-  background: #f7f8fc;
-}
-
-.summary-fact__label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.summary-fact__value {
-  display: block;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.summary-fact__hint {
-  margin: 0;
-  font-size: 12px;
   line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.summary-fact--danger {
-  background: rgba(229, 72, 77, 0.08);
-}
-
-.summary-fact--warning {
-  background: rgba(245, 166, 35, 0.1);
-}
-
-.summary-fact--success {
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.summary-fact--info {
-  background: rgba(94, 106, 210, 0.08);
-}
-
-.metric-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.metric-card {
-  padding: 16px;
-  min-height: 154px;
-  display: grid;
-  gap: 10px;
-}
-
-.metric-card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.metric-card__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.metric-card__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.metric-card__value-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.metric-card__value {
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 32px;
-  line-height: 1;
-  font-weight: 800;
-  color: var(--text-primary);
-}
-
-.metric-card__delta {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-}
-
-.metric-card__delta--up {
-  color: #16a34a;
-  background: rgba(34, 197, 94, 0.12);
-}
-
-.metric-card__delta--down {
-  color: #e5484d;
-  background: rgba(229, 72, 77, 0.12);
-}
-
-.metric-card__delta--flat {
-  color: var(--text-muted);
-  background: #f5f5f5;
-}
-
-.metric-card__hint {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-}
-
-.metric-card--danger {
-  color: #e5484d;
-}
-
-.metric-card--warning {
-  color: #f5a623;
-}
-
-.metric-card--success {
-  color: #22c55e;
-}
-
-.metric-card--info {
-  color: #5e6ad2;
-}
-
-.dashboard-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.dashboard-main,
-.dashboard-side {
-  display: grid;
-  gap: 16px;
-}
-
-.dashboard-subgrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-  gap: 16px;
-}
-
-.panel__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px 18px;
-  border-bottom: 1px solid #eef1f6;
-}
-
-.panel__head--compact {
-  align-items: center;
-}
-
-.panel--trend .trend-panel {
-  padding-top: 16px;
-}
-
-.panel__meta {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
 
 .focus-list,
 .shortcut-list,
 .activity-list,
-.type-list {
+.asset-list {
   display: grid;
 }
 
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: #f3f5f9;
+}
+
+.segmented button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--surface-color);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.segmented--activity {
+  margin: 10px 18px 0;
+  width: fit-content;
+}
+
 .focus-item,
-.shortcut-item,
+.shortcut,
 .activity-item,
-.type-row {
-  border-top: 1px solid #eef1f6;
+.asset-row {
+  border-top: 1px solid var(--border-color);
 }
 
 .focus-item:first-child,
-.shortcut-item:first-child,
+.shortcut:first-child,
 .activity-item:first-child,
-.type-row:first-child {
+.asset-row:first-child {
   border-top: 0;
 }
 
 .focus-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
   padding: 18px;
+  align-items: start;
 }
 
-.focus-item__badge,
-.focus-item__tag,
-.activity-item__tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.focus-item__badge {
-  padding: 4px 10px;
-  height: fit-content;
-}
-
-.focus-item__body {
+.focus-main {
   min-width: 0;
 }
 
-.focus-item__title-row,
-.activity-item__title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.focus-item__title {
-  margin: 0;
+.focus-title {
   font-size: 16px;
   font-weight: 700;
-  line-height: 1.4;
-  color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
-.focus-item__tag {
-  padding: 3px 8px;
-  flex: 0 0 auto;
-}
-
-.focus-item__meta,
-.focus-item__detail {
-  margin: 8px 0 0;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.focus-item__meta {
+.focus-meta {
+  font-size: 14px;
   color: var(--text-secondary);
+  margin-bottom: 6px;
 }
 
-.focus-item__detail {
+.focus-desc {
+  font-size: 14px;
   color: var(--text-secondary);
+  line-height: 1.6;
   max-width: 64ch;
 }
 
-.focus-item__actions {
-  display: flex;
+.focus-actions {
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 
-.action-button {
+.btn {
   min-height: 36px;
   padding: 0 12px;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid #d9deea;
   background: var(--surface-color);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
-.action-button:hover,
-.shortcut-item:hover,
-.filter-pills__button:hover {
-  border-color: var(--primary-color);
-}
-
-.action-button--primary {
-  border-color: var(--primary-color);
+.btn.primary {
   background: var(--primary-color);
   color: #fff;
+  border-color: var(--primary-color);
 }
 
-.shortcut-item {
-  width: 100%;
+.btn.subtle {
+  background: #f3f5f9;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.eta {
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 88px;
+}
+
+.eta strong {
+  display: block;
+  font-size: 15px;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  margin-bottom: 2px;
+}
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 16px;
+}
+
+.shortcut {
   padding: 16px 18px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
-  background: transparent;
-  text-align: left;
+  align-items: center;
   cursor: pointer;
 }
 
-.shortcut-item__icon {
+.shortcut-icon {
   width: 34px;
   height: 34px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-}
-
-.shortcut-item__body {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.shortcut-item__label {
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-primary);
 }
 
-.shortcut-item__desc {
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--text-secondary);
+.shortcut-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 2px;
 }
 
-.shortcut-item__meta {
-  text-align: right;
-}
-
-.shortcut-item__meta strong {
-  display: block;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 18px;
-  line-height: 1;
-  color: var(--text-primary);
-}
-
-.shortcut-item__meta span {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.shortcut-item__icon--info {
-  color: #5e6ad2;
-  background: rgba(94, 106, 210, 0.1);
-}
-
-.shortcut-item__icon--warning {
-  color: #f5a623;
-  background: rgba(245, 166, 35, 0.12);
-}
-
-.shortcut-item__icon--success {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.1);
-}
-
-.shortcut-item__icon--danger {
-  color: #e5484d;
-  background: rgba(229, 72, 77, 0.1);
-}
-
-.filter-pills {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: #f6f7fb;
-}
-
-.filter-pills__button {
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.filter-pills__button.is-active {
-  background: var(--surface-color);
-  color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-}
-
-.activity-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px 18px;
-}
-
-.activity-item__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
-}
-
-.activity-item__body {
-  min-width: 0;
-}
-
-.activity-item__text {
-  margin: 0;
+.shortcut-desc {
   font-size: 13px;
-  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.shortcut-state {
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.shortcut-state strong {
+  display: block;
+  font-size: 15px;
   color: var(--text-primary);
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.trend-wrap {
+  padding: 16px 18px 18px;
+}
+
+.trend-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.trend-legend strong {
+  color: #e5484d;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.trend-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.duty-card {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.duty-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.clock {
+  text-align: right;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.clock strong {
+  display: block;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.clock span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.duty-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fact {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f3f5f9;
+}
+
+.fact-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.fact-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.activity-item,
+.asset-row {
+  padding: 14px 18px;
+  display: grid;
+  gap: 2px;
+}
+
+.activity-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.activity-text {
+  font-size: 14px;
   font-weight: 600;
 }
 
-.activity-item__meta {
-  margin: 6px 0 0;
+.activity-meta {
   font-size: 12px;
   color: var(--text-muted);
   font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
 
-.activity-item__tag {
-  padding: 3px 8px;
-  flex: 0 0 auto;
-}
-
-.activity-item__dot--alert {
-  background: #e5484d;
-}
-
-.activity-item__dot--ticket {
-  background: #f5a623;
-}
-
-.activity-item__dot--asset {
-  background: #5e6ad2;
-}
-
-.activity-item__dot--patrol {
-  background: #22c55e;
-}
-
-.activity-item__dot--user,
-.activity-item__dot--system {
-  background: #7b8190;
-}
-
-.focus-item__badge--danger,
-.focus-item__tag--danger,
-.activity-item__tag--alert {
-  color: #e5484d;
-  background: rgba(229, 72, 77, 0.1);
-}
-
-.focus-item__badge--warning,
-.focus-item__tag--warning,
-.activity-item__tag--ticket {
-  color: #f5a623;
-  background: rgba(245, 166, 35, 0.12);
-}
-
-.focus-item__badge--success,
-.focus-item__tag--success,
-.activity-item__tag--patrol {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.1);
-}
-
-.focus-item__badge--info,
-.focus-item__tag--info,
-.activity-item__tag--asset {
-  color: #5e6ad2;
-  background: rgba(94, 106, 210, 0.1);
-}
-
-.focus-item__badge--muted,
-.focus-item__tag--muted,
-.activity-item__tag--user,
-.activity-item__tag--system {
-  color: var(--text-secondary);
-  background: #f2f4f8;
-}
-
-.trend-panel {
-  padding: 12px 18px 18px;
-}
-
-.type-row {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 32px;
-  gap: 10px;
+.asset-row {
+  grid-template-columns: 84px minmax(0, 1fr) 32px;
   align-items: center;
-  padding: 12px 18px;
+  gap: 12px;
 }
 
-.type-row__label {
-  font-size: 12px;
+.asset-name {
+  font-size: 13px;
   color: var(--text-secondary);
+  text-align: right;
   font-weight: 600;
-  text-align: right;
 }
 
-.type-row__value {
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  text-align: right;
-}
-
-.type-row__progress {
-  width: 100%;
+.asset-bar {
   height: 8px;
-  appearance: none;
-  border: 0;
-}
-
-.type-row__progress::-webkit-progress-bar {
-  background: #edf0f5;
+  background: #f3f5f9;
   border-radius: 999px;
+  overflow: hidden;
 }
 
-.type-row__progress::-webkit-progress-value {
-  border-radius: 999px;
+.asset-fill {
+  height: 100%;
+  border-radius: inherit;
 }
 
-.type-row__progress::-moz-progress-bar {
-  border-radius: 999px;
-}
+.asset-fill--blue { background: #5e6ad2; }
+.asset-fill--violet { background: #7c3aed; }
+.asset-fill--cyan { background: #2f7cf6; }
+.asset-fill--amber { background: #f5a623; }
+.asset-fill--slate { background: #94a3b8; }
 
-.type-row__progress--blue::-webkit-progress-value,
-.type-row__progress--blue::-moz-progress-bar {
-  background: #3b82f6;
-}
-
-.type-row__progress--violet::-webkit-progress-value,
-.type-row__progress--violet::-moz-progress-bar {
-  background: #8b5cf6;
-}
-
-.type-row__progress--cyan::-webkit-progress-value,
-.type-row__progress--cyan::-moz-progress-bar {
-  background: #06b6d4;
-}
-
-.type-row__progress--amber::-webkit-progress-value,
-.type-row__progress--amber::-moz-progress-bar {
-  background: #f59e0b;
-}
-
-.type-row__progress--slate::-webkit-progress-value,
-.type-row__progress--slate::-moz-progress-bar {
-  background: #94a3b8;
+.asset-value {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
 
 .empty-state {
@@ -1100,82 +983,78 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .action-button,
-  .shortcut-item,
-  .filter-pills__button {
+  .btn,
+  .shortcut,
+  .segmented button {
     transition: none;
   }
 }
 
-@media (max-width: 1040px) {
-  .metric-strip {
+@media (max-width: 1180px) {
+  .risk-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main-grid,
+  .mini-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 960px) {
-  .dashboard-layout,
-  .dashboard-subgrid,
-  .duty-card__facts {
-    grid-template-columns: 1fr;
+@media (max-width: 860px) {
+  .page-head {
+    align-items: start;
+    flex-direction: column;
   }
 
-  .page-head {
-    align-items: flex-start;
-    flex-direction: column;
+  .shift-meta {
+    justify-items: start;
+    text-align: left;
   }
 }
 
 @media (max-width: 640px) {
   .dashboard {
+    padding-left: 0;
     padding-right: 0;
   }
 
-      h1 {
-        font-size: 28px;
-      }
+  h1 {
+    font-size: 24px;
+    line-height: 1.2;
+  }
 
-      .metric-strip {
-        grid-template-columns: 1fr;
-      }
+  .page-subtitle {
+    font-size: 15px;
+  }
 
-      .panel__head,
-      .panel__head--compact,
-      .duty-card__head,
-      .focus-item,
-      .shortcut-item,
-      .type-row,
-      .focus-item__title-row,
-      .activity-item__title-row {
+  .risk-strip,
+  .duty-card__facts {
     grid-template-columns: 1fr;
+  }
+
+  .focus-item,
+  .shortcut {
+    grid-template-columns: 1fr;
+  }
+
+  .eta,
+  .shortcut-state {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .panel-head {
+    align-items: start;
     flex-direction: column;
-    align-items: stretch;
   }
 
-      .page-meta,
-      .duty-card__clock,
-      .shortcut-item__meta,
-      .type-row__label,
-      .type-row__value {
-        text-align: left;
-        align-items: flex-start;
-      }
-
-  .shortcut-item {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .shortcut-item__meta {
-    grid-column: 1 / -1;
-  }
-
-  .type-row {
-    grid-template-columns: 1fr;
-  }
-
-  .filter-pills {
+  .segmented,
+  .segmented--activity {
     width: 100%;
     overflow-x: auto;
+    margin-left: 0;
+    margin-right: 0;
   }
 }
 </style>
