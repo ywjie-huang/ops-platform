@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>运维管理平台登录预览</title>
+  <style>
+    :root {
+      --bg: #050806;
+      --bg-elevated: #08110d;
+      --surface: #0d1713;
+      --surface-strong: #111d18;
+      --surface-muted: #101812;
+      --border: #1c3028;
+      --border-strong: #2f5a49;
+      --text-primary: #f2fff8;
+      --text-secondary: #a9c4b8;
+      --text-muted: #6f8b7d;
+      --primary: #55d891;
+      --primary-strong: #7df0b5;
+      --primary-dark: #163d2b;
+      --info: #47c7ff;
+      --warning: #f5a623;
+      --danger: #e5484d;
+      --shadow-tight: 0 2px 8px rgba(0, 0, 0, 0.24);
+      --radius: 8px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    body {
+      min-height: 100vh;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .login-shell {
+      position: relative;
+      min-height: 100vh;
+      isolation: isolate;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(85, 216, 145, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(85, 216, 145, 0.045) 1px, transparent 1px),
+        linear-gradient(115deg, #050806 0%, #07100d 48%, #0a1411 100%);
+      background-size: 44px 44px, 44px 44px, auto;
+    }
+
+    .login-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      background:
+        linear-gradient(90deg, rgba(71, 199, 255, 0.08), transparent 28%, transparent 72%, rgba(85, 216, 145, 0.08)),
+        linear-gradient(180deg, transparent 0%, rgba(5, 8, 6, 0.72) 100%);
+      pointer-events: none;
+    }
+
+    .login-shell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background:
+        repeating-linear-gradient(
+          180deg,
+          rgba(242, 255, 248, 0.025) 0,
+          rgba(242, 255, 248, 0.025) 1px,
+          transparent 1px,
+          transparent 4px
+        );
+      opacity: 0.36;
+      pointer-events: none;
+    }
+
+    .shell-grid {
+      min-height: 100vh;
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 32px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 36px;
+      align-items: center;
+    }
+
+    .ops-stage {
+      min-width: 0;
+      display: grid;
+      gap: 20px;
+      align-content: center;
+    }
+
+    .status-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      width: min(760px, 100%);
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(8, 17, 13, 0.84);
+      box-shadow: var(--shadow-tight);
+    }
+
+    .status-left,
+    .status-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow: 0 0 0 4px rgba(85, 216, 145, 0.12);
+      animation: dotPulse 1.8s ease-out infinite;
+      flex: 0 0 auto;
+    }
+
+    .status-label {
+      color: var(--text-secondary);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .status-code {
+      padding: 3px 8px;
+      border: 1px solid rgba(71, 199, 255, 0.32);
+      border-radius: 999px;
+      color: #bceeff;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: rgba(71, 199, 255, 0.08);
+      white-space: nowrap;
+    }
+
+    .brand-block {
+      max-width: 760px;
+    }
+
+    .brand-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--primary-strong);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      background: #10291e;
+      border: 1px solid rgba(85, 216, 145, 0.38);
+      color: var(--primary-strong);
+    }
+
+    .brand-title {
+      margin: 0;
+      max-width: 680px;
+      color: var(--text-primary);
+      font-size: 48px;
+      line-height: 1.12;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .brand-copy {
+      max-width: 620px;
+      margin: 16px 0 0;
+      color: var(--text-secondary);
+      font-size: 16px;
+    }
+
+    .ops-board {
+      position: relative;
+      width: min(850px, 100%);
+      min-height: 410px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(13, 23, 19, 0.96), rgba(7, 14, 11, 0.94)),
+        linear-gradient(rgba(85, 216, 145, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(85, 216, 145, 0.05) 1px, transparent 1px);
+      background-size: auto, 28px 28px, 28px 28px;
+      overflow: hidden;
+      box-shadow: var(--shadow-tight);
+    }
+
+    .ops-board-header {
+      height: 48px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(17, 29, 24, 0.82);
+    }
+
+    .board-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .board-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tool-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--text-muted);
+    }
+
+    .tool-dot.is-green {
+      background: var(--primary);
+    }
+
+    .tool-dot.is-blue {
+      background: var(--info);
+    }
+
+    .tool-dot.is-amber {
+      background: var(--warning);
+    }
+
+    .topology-wrap {
+      position: absolute;
+      inset: 48px 0 96px;
+    }
+
+    .topology {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .topology-line {
+      fill: none;
+      stroke: rgba(85, 216, 145, 0.46);
+      stroke-width: 1.4;
+      stroke-dasharray: 7 8;
+      animation: lineFlow 6s linear infinite;
+    }
+
+    .topology-line.is-blue {
+      stroke: rgba(71, 199, 255, 0.48);
+      animation-duration: 7.5s;
+    }
+
+    .topology-line.is-warning {
+      stroke: rgba(245, 166, 35, 0.48);
+      animation-duration: 8.5s;
+    }
+
+    .node {
+      position: absolute;
+      min-width: 126px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: rgba(9, 18, 14, 0.95);
+      box-shadow: var(--shadow-tight);
+    }
+
+    .node::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      border: 1px solid rgba(85, 216, 145, 0.18);
+      pointer-events: none;
+    }
+
+    .node-core {
+      top: 48%;
+      left: 48%;
+      transform: translate(-50%, -50%);
+      min-width: 164px;
+      border-color: rgba(85, 216, 145, 0.62);
+    }
+
+    .node-prometheus {
+      top: 16%;
+      left: 13%;
+    }
+
+    .node-alert {
+      top: 16%;
+      right: 10%;
+      border-color: rgba(245, 166, 35, 0.5);
+    }
+
+    .node-k8s {
+      bottom: 8%;
+      left: 18%;
+      border-color: rgba(71, 199, 255, 0.48);
+    }
+
+    .node-docker {
+      bottom: 8%;
+      right: 14%;
+    }
+
+    .node-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .node-meta {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .node-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--primary-strong);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .node-badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .node-badge.is-warning {
+      color: var(--warning);
+    }
+
+    .metrics-rail {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 16px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid rgba(47, 90, 73, 0.72);
+      border-radius: var(--radius);
+      background: rgba(13, 23, 19, 0.88);
+    }
+
+    .metric-label {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .metric-value {
+      margin-top: 4px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .metric-value.is-warning {
+      color: #ffd78d;
+    }
+
+    .metric-value.is-info {
+      color: #a7e8ff;
+    }
+
+    .ops-footer {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      width: min(850px, 100%);
+    }
+
+    .event-feed,
+    .capability-list {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(8, 17, 13, 0.84);
+      overflow: hidden;
+      box-shadow: var(--shadow-tight);
+    }
+
+    .panel-head {
+      height: 40px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .feed-lines {
+      height: 118px;
+      padding: 10px 14px;
+      display: grid;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .feed-line {
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .feed-line span:nth-child(2) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .feed-ok {
+      color: var(--primary-strong);
+    }
+
+    .feed-warn {
+      color: #ffd78d;
+    }
+
+    .capabilities {
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .capability {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .capability-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: var(--primary-strong);
+      background: rgba(85, 216, 145, 0.1);
+      border: 1px solid rgba(85, 216, 145, 0.24);
+    }
+
+    .login-panel {
+      width: 100%;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: #0d1713;
+      box-shadow: var(--shadow-tight);
+      overflow: hidden;
+    }
+
+    .login-panel-top {
+      min-height: 118px;
+      padding: 22px 24px;
+      display: grid;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background:
+        linear-gradient(90deg, rgba(85, 216, 145, 0.12), transparent 68%),
+        #101c17;
+    }
+
+    .login-secure {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--primary-strong);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .login-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: 26px;
+      line-height: 1.2;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .login-copy {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .login-form {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field-label {
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .control {
+      position: relative;
+    }
+
+    .control-icon {
+      position: absolute;
+      top: 50%;
+      left: 12px;
+      width: 18px;
+      height: 18px;
+      color: var(--text-muted);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .input {
+      width: 100%;
+      height: 44px;
+      padding: 0 12px 0 40px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-muted);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 180ms ease-out, background 180ms ease-out, box-shadow 180ms ease-out;
+    }
+
+    .input::placeholder {
+      color: #81998d;
+    }
+
+    .input:hover {
+      border-color: #315d4b;
+      background: var(--surface-strong);
+    }
+
+    .input:focus-visible {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(85, 216, 145, 0.16);
+      background: var(--surface-strong);
+    }
+
+    .captcha-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 112px;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .captcha-image {
+      height: 44px;
+      border: 1px solid rgba(71, 199, 255, 0.36);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(90deg, rgba(71, 199, 255, 0.08), rgba(85, 216, 145, 0.08)),
+        #e9f7f2;
+      color: #0d7163;
+      font-family: var(--font-mono);
+      font-size: 21px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 180ms ease-out, transform 180ms ease-out;
+    }
+
+    .captcha-image:hover,
+    .captcha-image:focus-visible {
+      border-color: var(--info);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .login-button {
+      width: 100%;
+      height: 46px;
+      border: 1px solid rgba(125, 240, 181, 0.58);
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: #052216;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 180ms ease-out, transform 180ms ease-out, box-shadow 180ms ease-out;
+    }
+
+    .login-button:hover {
+      background: var(--primary-strong);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(85, 216, 145, 0.18);
+    }
+
+    .login-button:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(85, 216, 145, 0.22);
+    }
+
+    .login-button:active {
+      transform: translateY(0);
+    }
+
+    .session-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 2px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .session-row strong {
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    .login-panel-bottom {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid var(--border);
+      background: rgba(8, 17, 13, 0.72);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .health-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--primary-strong);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+
+    .health-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+
+    .icon svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    @keyframes lineFlow {
+      to {
+        stroke-dashoffset: -90;
+      }
+    }
+
+    @keyframes dotPulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(85, 216, 145, 0.28);
+      }
+
+      70% {
+        box-shadow: 0 0 0 8px rgba(85, 216, 145, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(85, 216, 145, 0);
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .shell-grid {
+        grid-template-columns: minmax(0, 1fr) 390px;
+        gap: 24px;
+        padding: 24px;
+      }
+
+      .brand-title {
+        font-size: 40px;
+      }
+
+      .ops-board {
+        min-height: 390px;
+      }
+
+      .metrics-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 940px) {
+      .shell-grid {
+        min-height: auto;
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+
+      .login-panel {
+        max-width: 520px;
+        margin: 0 auto 24px;
+      }
+
+      .ops-stage {
+        order: 2;
+      }
+
+      .brand-title {
+        font-size: 34px;
+      }
+
+      .ops-footer {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-height: 820px) and (min-width: 941px) {
+      .shell-grid {
+        padding-top: 20px;
+        padding-bottom: 20px;
+        gap: 28px;
+      }
+
+      .ops-stage {
+        gap: 16px;
+      }
+
+      .brand-title {
+        font-size: 40px;
+      }
+
+      .brand-copy {
+        margin-top: 10px;
+      }
+
+      .ops-board {
+        min-height: 386px;
+      }
+
+      .ops-footer {
+        display: none;
+      }
+
+      .login-panel-top {
+        min-height: 104px;
+        padding-top: 18px;
+        padding-bottom: 18px;
+      }
+
+      .login-form {
+        gap: 13px;
+        padding-top: 20px;
+        padding-bottom: 20px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell-grid {
+        padding: 16px;
+        gap: 18px;
+      }
+
+      .status-strip {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .brand-title {
+        font-size: 30px;
+      }
+
+      .brand-copy {
+        font-size: 15px;
+      }
+
+      .ops-board {
+        min-height: 560px;
+      }
+
+      .topology-wrap {
+        inset: 48px 0 160px;
+      }
+
+      .node {
+        min-width: 118px;
+      }
+
+      .node-core {
+        top: 45%;
+        left: 50%;
+      }
+
+      .node-prometheus {
+        top: 9%;
+        left: 8%;
+      }
+
+      .node-alert {
+        top: 9%;
+        right: 6%;
+      }
+
+      .node-k8s {
+        bottom: 8%;
+        left: 8%;
+      }
+
+      .node-docker {
+        bottom: 8%;
+        right: 6%;
+      }
+
+      .metrics-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .capabilities {
+        grid-template-columns: 1fr;
+      }
+
+      .captcha-row {
+        grid-template-columns: 1fr;
+      }
+
+      .captcha-image {
+        width: 112px;
+      }
+
+      .login-panel-top,
+      .login-form,
+      .login-panel-bottom {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+      }
+
+      .topology-line {
+        stroke-dasharray: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="login-shell">
+    <div class="shell-grid">
+      <section class="ops-stage" aria-labelledby="brand-title">
+        <div class="status-strip" aria-label="系统入口状态">
+          <div class="status-left">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span class="status-label">生产环境入口</span>
+            <span class="status-code">CN-SH / UTC+8</span>
+          </div>
+          <div class="status-right">
+            <span class="status-label">Auth Gateway</span>
+            <span class="status-code">HEALTHY</span>
+          </div>
+        </div>
+
+        <div class="brand-block">
+          <div class="brand-kicker">
+            <span class="brand-mark" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24"><path d="M4 5h16v10H4z"></path><path d="M8 19h8"></path><path d="M12 15v4"></path></svg>
+              </span>
+            </span>
+            OPS COMMAND CENTER
+          </div>
+          <h1 class="brand-title" id="brand-title">运维管理平台</h1>
+          <p class="brand-copy">统一接入主机监控、告警响应、容器发现、批量执行、巡检任务与应用发布，让值班人员从登录开始进入同一张态势图。</p>
+        </div>
+
+        <div class="ops-board" aria-label="运维态势预览">
+          <div class="ops-board-header">
+            <div class="board-title">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="m5 5 14 14"></path><path d="m19 5-14 14"></path></svg>
+              </span>
+              实时运维拓扑
+            </div>
+            <div class="board-tools" aria-hidden="true">
+              <span class="tool-dot is-green"></span>
+              <span class="tool-dot is-blue"></span>
+              <span class="tool-dot is-amber"></span>
+            </div>
+          </div>
+
+          <div class="topology-wrap">
+            <svg class="topology" viewBox="0 0 850 360" preserveAspectRatio="none" aria-hidden="true">
+              <path class="topology-line" d="M172 86 C260 70 315 130 410 150"></path>
+              <path class="topology-line is-warning" d="M676 90 C598 76 520 126 430 150"></path>
+              <path class="topology-line is-blue" d="M220 275 C285 230 340 205 420 164"></path>
+              <path class="topology-line" d="M655 276 C590 230 520 202 430 164"></path>
+              <path class="topology-line is-blue" d="M425 164 C425 205 425 232 425 282"></path>
+            </svg>
+
+            <div class="node node-core">
+              <div class="node-title">
+                Ops Core
+                <span class="node-badge">ACTIVE</span>
+              </div>
+              <div class="node-meta">api/v1 · rbac · audit</div>
+            </div>
+
+            <div class="node node-prometheus">
+              <div class="node-title">
+                Prometheus
+                <span class="node-badge">24ms</span>
+              </div>
+              <div class="node-meta">host metrics · node_exporter</div>
+            </div>
+
+            <div class="node node-alert">
+              <div class="node-title">
+                Alertmanager
+                <span class="node-badge is-warning">6</span>
+              </div>
+              <div class="node-meta">webhook · rules cache</div>
+            </div>
+
+            <div class="node node-k8s">
+              <div class="node-title">
+                K8s Cluster
+                <span class="node-badge">SYNC</span>
+              </div>
+              <div class="node-meta">pods · services · ingress</div>
+            </div>
+
+            <div class="node node-docker">
+              <div class="node-title">
+                Docker Agent
+                <span class="node-badge">PULL</span>
+              </div>
+              <div class="node-meta">start · stop · restart</div>
+            </div>
+          </div>
+
+          <div class="metrics-rail" aria-label="关键运行指标">
+            <div class="metric">
+              <div class="metric-label">在线资产</div>
+              <div class="metric-value">128</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">活跃告警</div>
+              <div class="metric-value is-warning">06</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">容器实例</div>
+              <div class="metric-value is-info">342</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">巡检通过率</div>
+              <div class="metric-value">98%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ops-footer">
+          <div class="event-feed">
+            <div class="panel-head">
+              <span>事件流</span>
+              <span>LIVE</span>
+            </div>
+            <div class="feed-lines" aria-label="近期事件">
+              <div class="feed-line"><span>10:42</span><span>prod-node-08 CPU 恢复到安全阈值</span><span class="feed-ok">OK</span></div>
+              <div class="feed-line"><span>10:39</span><span>payment-api 发布审批完成</span><span class="feed-ok">PASS</span></div>
+              <div class="feed-line"><span>10:35</span><span>k8s-east ingress latency p95 偏高</span><span class="feed-warn">WARN</span></div>
+            </div>
+          </div>
+
+          <div class="capability-list">
+            <div class="panel-head">
+              <span>值班能力</span>
+              <span>READY</span>
+            </div>
+            <div class="capabilities">
+              <div class="capability">
+                <span class="capability-icon" aria-hidden="true"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"></path><path d="M4 19h16"></path><path d="m7 15 4-4 3 3 5-7"></path></svg></span></span>
+                实时监控告警
+              </div>
+              <div class="capability">
+                <span class="capability-icon" aria-hidden="true"><span class="icon"><svg viewBox="0 0 24 24"><path d="M21 16V8l-9-5-9 5v8l9 5z"></path><path d="M3.3 7.2 12 12l8.7-4.8"></path><path d="M12 22V12"></path></svg></span></span>
+                资产容器管理
+              </div>
+              <div class="capability">
+                <span class="capability-icon" aria-hidden="true"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"></path><path d="M8 9h8"></path><path d="M8 13h6"></path><path d="M8 17h4"></path></svg></span></span>
+                工单协作流转
+              </div>
+              <div class="capability">
+                <span class="capability-icon" aria-hidden="true"><span class="icon"><svg viewBox="0 0 24 24"><path d="M7 8h10"></path><path d="M7 12h6"></path><path d="M9 20h6"></path><path d="M12 16v4"></path><path d="M5 4h14v12H5z"></path></svg></span></span>
+                SSH 批量执行
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="login-panel" aria-labelledby="login-title">
+        <div class="login-panel-top">
+          <div class="login-secure">
+            <span class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+            </span>
+            SECURITY GATEWAY
+          </div>
+          <h2 class="login-title" id="login-title">安全登录</h2>
+          <p class="login-copy">登录后继续处理监控、告警、终端与发布任务。</p>
+        </div>
+
+        <form class="login-form" aria-label="登录表单">
+          <label class="field">
+            <span class="field-label">账号</span>
+            <span class="control">
+              <span class="control-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </span>
+              <input class="input" type="text" autocomplete="username" placeholder="请输入用户名">
+            </span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">密码</span>
+            <span class="control">
+              <span class="control-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M6 10V8a6 6 0 1 1 12 0v2"></path><rect x="4" y="10" width="16" height="10" rx="2"></rect></svg>
+              </span>
+              <input class="input" type="password" autocomplete="current-password" placeholder="请输入密码">
+            </span>
+          </label>
+
+          <div class="captcha-row">
+            <label class="field">
+              <span class="field-label">验证码</span>
+              <span class="control">
+                <span class="control-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M15 7h.01"></path><path d="M9 7h.01"></path><path d="M7 16h10"></path><path d="M8 3h8a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4z"></path></svg>
+                </span>
+                <input class="input" type="text" inputmode="numeric" placeholder="输入验证码">
+              </span>
+            </label>
+            <button class="captcha-image" type="button" aria-label="刷新验证码">81·72</button>
+          </div>
+
+          <button class="login-button" type="submit">登录</button>
+
+          <div class="session-row">
+            <span>会话有效期 <strong>12h</strong></span>
+            <span>RBAC enabled</span>
+          </div>
+        </form>
+
+        <div class="login-panel-bottom">
+          <span>Ops Platform</span>
+          <span class="health-pill">0 incidents</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
