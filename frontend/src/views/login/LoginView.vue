@@ -332,8 +332,8 @@ const captchaId = ref('')
 const captchaUrl = ref('')
 const form = reactive({ username: '', password: '', captcha_code: '' })
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  username: [{ required: true, message: '用户名不能为空', trigger: 'blur' }],
+  password: [{ required: true, message: '密码不能为空', trigger: 'blur' }],
   captcha_code: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
 }
 
@@ -922,8 +922,10 @@ async function handleLogin() {
 }
 
 .login-form :deep(.el-form-item__error) {
+  position: static;
   margin-top: 4px;
   color: #ff8c90;
+  line-height: 1.35;
 }
 
 .login-form :deep(.el-input__wrapper) {
@@ -1011,6 +1013,7 @@ async function handleLogin() {
 .login-button {
   width: 100%;
   height: 46px;
+  margin-top: 8px;
   border: 1px solid rgba(125, 240, 181, 0.58);
   border-radius: var(--login-radius);
   background: var(--login-primary);

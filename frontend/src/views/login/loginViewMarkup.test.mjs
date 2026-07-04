@@ -17,3 +17,11 @@ test('login page uses the command center visual direction while preserving auth 
   assert.match(loginView, /@keyup\.enter="handleLogin"/)
   assert.match(loginView, /captchaUrl/)
 })
+
+test('login validation messages are explicit and reserve space before the submit button', () => {
+  assert.match(loginView, /message: '用户名不能为空'/)
+  assert.match(loginView, /message: '密码不能为空'/)
+  assert.match(loginView, /message: '请输入验证码'/)
+  assert.match(loginView, /\.login-form :deep\(\.el-form-item__error\) \{[\s\S]*position: static;/)
+  assert.match(loginView, /\.login-button \{[\s\S]*margin-top: 8px;/)
+})
