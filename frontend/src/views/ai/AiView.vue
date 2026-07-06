@@ -330,6 +330,12 @@ async function loadConversations() {
   } catch { /* ignore */ }
 }
 
+function scheduleConversationTitleRefresh() {
+  window.setTimeout(() => {
+    loadConversations()
+  }, 1500)
+}
+
 async function loadMessages(convId: number) {
   try {
     const msgs = await getMessages(convId)
@@ -391,6 +397,7 @@ async function sendMessage(text: string) {
       handleEvent(event, streamState)
     }
     await loadConversations()
+    scheduleConversationTitleRefresh()
   } catch (e: any) {
     handleEvent(
       { type: 'error', content: '请求失败：' + (e.message || '服务暂时不可用') },
@@ -427,6 +434,7 @@ async function handleConfirm(msg: DisplayMessage) {
       handleEvent(event, streamState)
     }
     await loadConversations()
+    scheduleConversationTitleRefresh()
   } catch (e: any) {
     handleEvent(
       { type: 'error', content: '操作失败：' + (e.message || '服务暂时不可用') },
@@ -450,6 +458,8 @@ async function handleReject(msg: DisplayMessage) {
     for await (const event of rejectAiActionStream(msg.pending_id, currentConvId.value)) {
       handleEvent(event, streamState)
     }
+    await loadConversations()
+    scheduleConversationTitleRefresh()
   } catch (e: any) {
     handleEvent(
       { type: 'error', content: '请求失败：' + (e.message || '服务暂时不可用') },

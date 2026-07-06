@@ -163,6 +163,7 @@ async def api_chat(
     )
     from app.services.ai.dispatcher import dispatch_tool, is_readonly
     from app.services.ai.llm_client import LLMClient
+    from app.services.ai.titles import maybe_set_rule_title, schedule_title_refinement
     from app.services.ai.tools import TOOL_DEFINITIONS
 
     config = get_llm_config(db)
@@ -185,6 +186,7 @@ async def api_chat(
 
     # 追加用户消息
     add_message(db, cid, "user", body.message)
+    rule_title = maybe_set_rule_title(db, cid, body.message)
     db.commit()
 
     temperature = float(config.get("temperature") or 0.7)
@@ -228,6 +230,13 @@ async def api_chat(
                 if full_text:
                     add_message(db, cid, "assistant", full_text)
                     db.commit()
+                if rule_title:
+                    schedule_title_refinement(
+                        cid,
+                        body.message,
+                        rule_title=rule_title,
+                        assistant_text=full_text,
+                    )
                 yield _sse_event({"type": "done", "conversation_id": cid})
                 return
 
@@ -263,10 +272,14 @@ async def api_chat(
                         "description": f"{asset_info}操作: {tool_name}\n参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}",
                     })
                     db.commit()
+                    if rule_title:
+                        schedule_title_refinement(cid, body.message, rule_title=rule_title)
                     return
 
             db.commit()
 
+        if rule_title:
+            schedule_title_refinement(cid, body.message, rule_title=rule_title)
         yield _sse_event({"type": "done", "conversation_id": cid})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
