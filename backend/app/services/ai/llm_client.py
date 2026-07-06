@@ -351,7 +351,7 @@ class LLMClient:
         return items
 
     def _response_item_reference_for_input(self, item: dict[str, Any]) -> dict[str, Any]:
-        item_id = item.get("id")
+        item_id = item.get("call_id") if item.get("type") == "function_call" else item.get("id")
         if item_id:
             return {"type": "item_reference", "id": item_id}
         return self._response_item_for_input(item)

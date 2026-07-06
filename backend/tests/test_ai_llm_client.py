@@ -220,7 +220,7 @@ def test_responses_input_conversion_for_tool_messages():
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"},
         {"type": "item_reference", "id": "rs_1"},
-        {"type": "item_reference", "id": "fc_1"},
+        {"type": "item_reference", "id": "call_1"},
         {
             "type": "function_call_output",
             "call_id": "call_1",
