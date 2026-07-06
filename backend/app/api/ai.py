@@ -126,6 +126,25 @@ class ConfirmRequest(BaseModel):
     conversation_id: int
 
 
+def _build_assistant_tool_calls(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    assistant_tool_calls = []
+    for tc in tool_calls:
+        item = {
+            "id": tc["id"],
+            "type": "function",
+            "function": {
+                "name": tc["name"],
+                "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
+            },
+        }
+        if tc.get("response_item"):
+            item["response_item"] = tc["response_item"]
+        if tc.get("response_items"):
+            item["response_items"] = tc["response_items"]
+        assistant_tool_calls.append(item)
+    return assistant_tool_calls
+
+
 @router.post("/chat")
 async def api_chat(
     body: ChatRequest,
@@ -173,6 +192,8 @@ async def api_chat(
     top_p = float(config.get("top_p") or 1.0)
     client = LLMClient(
         config["base_url"], config["api_key"], config["model"],
+        api_mode=config.get("api_mode") or "chat_completions",
+        reasoning_effort=config.get("reasoning_effort") or "",
         temperature=temperature, max_tokens=max_tokens, top_p=top_p,
     )
 
@@ -211,13 +232,7 @@ async def api_chat(
                 return
 
             # 处理工具调用
-            assistant_tool_calls = []
-            for tc in tool_calls:
-                assistant_tool_calls.append({
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)},
-                })
+            assistant_tool_calls = _build_assistant_tool_calls(tool_calls)
             add_message(db, cid, "assistant", full_text or None, tool_calls=assistant_tool_calls)
 
             for tc in tool_calls:
@@ -301,6 +316,8 @@ async def api_chat_confirm(
     top_p = float(config.get("top_p") or 1.0)
     client = LLMClient(
         config["base_url"], config["api_key"], config["model"],
+        api_mode=config.get("api_mode") or "chat_completions",
+        reasoning_effort=config.get("reasoning_effort") or "",
         temperature=temperature, max_tokens=max_tokens, top_p=top_p,
     )
 
@@ -368,6 +385,8 @@ async def api_chat_reject(
     top_p = float(config.get("top_p") or 1.0)
     client = LLMClient(
         config["base_url"], config["api_key"], config["model"],
+        api_mode=config.get("api_mode") or "chat_completions",
+        reasoning_effort=config.get("reasoning_effort") or "",
         temperature=temperature, max_tokens=max_tokens, top_p=top_p,
     )
 
