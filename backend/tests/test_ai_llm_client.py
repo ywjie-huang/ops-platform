@@ -40,6 +40,9 @@ class _FakeAsyncClient:
         self._recorder["url"] = url
         self._recorder["headers"] = headers
         self._recorder["json"] = json
+        self._recorder.setdefault("requests", []).append(
+            {"method": method, "url": url, "headers": headers, "json": json}
+        )
         return self._response
 
 
@@ -227,6 +230,83 @@ def test_responses_input_conversion_for_tool_messages():
             "output": "done",
         },
     ]
+
+
+def test_responses_mode_retries_tool_outputs_as_plain_context_after_502(monkeypatch):
+    recorder = {}
+    responses = [
+        _FakeStreamResponse(502, [], b""),
+        _FakeStreamResponse(
+            200,
+            [
+                'data: {"type":"response.output_text.delta","delta":"server-a CPU is high"}',
+                'data: {"type":"response.completed"}',
+            ],
+        ),
+    ]
+
+    def fake_async_client(*args, **kwargs):
+        return _FakeAsyncClient(recorder, responses.pop(0))
+
+    monkeypatch.setattr("app.services.ai.llm_client.httpx.AsyncClient", fake_async_client)
+
+    client = LLMClient("https://relay.example.com/v1", "sk-test", "o3", api_mode="responses")
+    messages = [
+        {"role": "user", "content": "今天哪台服务器资源异常？"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "query_assets", "arguments": "{}"},
+                    "response_items": [
+                        {
+                            "id": "fc_1",
+                            "type": "function_call",
+                            "call_id": "call_1",
+                            "name": "query_assets",
+                            "arguments": "{}",
+                        }
+                    ],
+                }
+            ],
+        },
+        {"role": "tool", "content": "server-a cpu=96%", "tool_call_id": "call_1"},
+    ]
+
+    async def collect_events():
+        return [
+            event
+            async for event in client.chat_stream(
+                messages,
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "query_assets",
+                            "description": "query assets",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            )
+        ]
+
+    events = asyncio.run(collect_events())
+
+    assert events == [
+        {"type": "text", "content": "server-a CPU is high"},
+        {"type": "done"},
+    ]
+    first_input = recorder["requests"][0]["json"]["input"]
+    retry_input = recorder["requests"][1]["json"]["input"]
+    assert any(item.get("type") == "function_call_output" for item in first_input)
+    assert not any(item.get("type") in {"function_call_output", "item_reference"} for item in retry_input)
+    assert retry_input[-1]["role"] == "user"
+    assert "query_assets" in retry_input[-1]["content"]
+    assert "server-a cpu=96%" in retry_input[-1]["content"]
 
 
 def test_responses_mode_falls_back_to_plain_json_response(monkeypatch):

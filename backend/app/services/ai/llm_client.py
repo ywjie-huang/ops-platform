@@ -10,6 +10,13 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+class LLMAPIError(RuntimeError):
+    def __init__(self, status_code: int, body: str):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"LLM API error {status_code}: {body}")
+
+
 class LLMClient:
     """Async LLM client for OpenAI-compatible APIs."""
 
@@ -136,9 +143,30 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
+        payload = self._build_responses_payload(messages, tools)
+        try:
+            async for event in self._responses_stream_payload(payload):
+                yield event
+        except LLMAPIError as exc:
+            if not self._can_retry_responses_with_plain_tool_context(exc, payload):
+                raise
+            logger.warning(
+                "Responses tool continuation failed with %s; retrying with plain tool context",
+                exc.status_code,
+            )
+            retry_payload = self._build_responses_payload(messages, tools, plain_tool_context=True)
+            async for event in self._responses_stream_payload(retry_payload):
+                yield event
+
+    def _build_responses_payload(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        plain_tool_context: bool = False,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "input": self._build_responses_input(messages),
+            "input": self._build_responses_input(messages, plain_tool_context=plain_tool_context),
             "stream": True,
             "max_output_tokens": self.max_tokens,
         }
@@ -150,7 +178,9 @@ class LLMClient:
         else:
             payload["temperature"] = self.temperature
             payload["top_p"] = self.top_p
+        return payload
 
+    async def _responses_stream_payload(self, payload: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         pending_tool_calls: dict[str, dict[str, Any]] = {}
         emitted_tool_ids: set[str] = set()
         response_items: list[dict[str, Any]] = []
@@ -260,8 +290,13 @@ class LLMClient:
                 yield tool_call
             yield {"type": "done"}
 
-    def _build_responses_input(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _build_responses_input(
+        self,
+        messages: list[dict[str, Any]],
+        plain_tool_context: bool = False,
+    ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
+        tool_names_by_call_id: dict[str, str] = {}
         for message in messages:
             role = message.get("role")
             if role in ("system", "user"):
@@ -272,6 +307,20 @@ class LLMClient:
                 tool_calls = message.get("tool_calls") or []
                 text_content = message.get("content")
                 if tool_calls:
+                    for tool_call in tool_calls:
+                        fn = tool_call.get("function", {})
+                        tool_names_by_call_id[tool_call.get("id", "")] = fn.get("name", "")
+
+                    if plain_tool_context:
+                        if text_content:
+                            result.append(
+                                {
+                                    "role": "assistant",
+                                    "content": [{"type": "output_text", "text": text_content}],
+                                }
+                            )
+                        continue
+
                     response_items = self._collect_response_items(tool_calls)
                     if response_items:
                         result.extend(response_items)
@@ -298,6 +347,20 @@ class LLMClient:
                 continue
 
             if role == "tool" and message.get("tool_call_id"):
+                if plain_tool_context:
+                    call_id = message["tool_call_id"]
+                    tool_name = tool_names_by_call_id.get(call_id) or "unknown_tool"
+                    result.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"已执行工具 {tool_name}（call_id: {call_id}），"
+                                f"返回结果如下：\n{message.get('content', '')}"
+                            ),
+                        }
+                    )
+                    continue
+
                 result.append(
                     {
                         "type": "function_call_output",
@@ -307,6 +370,15 @@ class LLMClient:
                 )
 
         return result
+
+    def _can_retry_responses_with_plain_tool_context(
+        self,
+        exc: "LLMAPIError",
+        payload: dict[str, Any],
+    ) -> bool:
+        if exc.status_code in (401, 403):
+            return False
+        return any(item.get("type") == "function_call_output" for item in payload.get("input", []))
 
     def _build_responses_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         response_tools = []
@@ -444,11 +516,10 @@ class _ValidatedStream:
         self._response = await self._response_cm.__aenter__()
         if self._response.status_code != 200:
             body = await self._response.aread()
+            body_text = body.decode(errors="replace")[:500] if body else "<empty response body>"
             await self._response_cm.__aexit__(None, None, None)
             await self._client.__aexit__(None, None, None)
-            raise RuntimeError(
-                f"LLM API error {self._response.status_code}: {body.decode()[:500]}"
-            )
+            raise LLMAPIError(self._response.status_code, body_text)
         return self._response
 
     async def __aexit__(self, exc_type, exc, tb):
