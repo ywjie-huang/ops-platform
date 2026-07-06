@@ -199,20 +199,17 @@ import 'highlight.js/styles/github.css'
 import {
   getAiInfo, getConversations, getMessages, deleteConversation,
   sendAiMessageStream, confirmAiActionStream, rejectAiActionStream,
-  type SSEEvent, type Conversation, type ChatMessage,
+  type Conversation,
 } from '@/api/ai'
-
-interface DisplayMessage {
-  type: 'user' | 'text' | 'tool_start' | 'tool_result' | 'tool_confirm'
-  content?: string
-  tool?: string
-  args?: Record<string, unknown>
-  result?: string
-  description?: string
-  pending_id?: string
-  time?: string
-  elapsed?: number
-}
+import { formatRelativeTime as formatTime } from '@/utils/time'
+import {
+  applyAiStreamEvent,
+  buildDisplayMessagesFromHistory,
+  createAiStreamState,
+  type AiStreamEvent,
+  type AiStreamState,
+  type DisplayMessage,
+} from './messageDisplay'
 
 const searchText = ref('')
 const conversations = ref<Conversation[]>([])
@@ -271,17 +268,6 @@ function formatArgs(args?: Record<string, unknown>): string {
   return Object.entries(args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('  |  ')
 }
 
-function formatTime(iso?: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const now = new Date()
-  const diff = now.getTime() - d.getTime()
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
-  return d.toLocaleDateString('zh-CN')
-}
-
 function now(): string {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
@@ -301,14 +287,7 @@ async function loadConversations() {
 async function loadMessages(convId: number) {
   try {
     const msgs = await getMessages(convId)
-    displayMessages.value = msgs
-      .filter(m => m.role !== 'tool')
-      .map(m => {
-        if (m.role === 'user') {
-          return { type: 'user' as const, content: m.content || '', time: formatTime(m.created_at) }
-        }
-        return { type: 'text' as const, content: m.content || '', time: formatTime(m.created_at) }
-      })
+    displayMessages.value = buildDisplayMessagesFromHistory(msgs, formatTime)
     scrollToBottom()
   } catch { /* ignore */ }
 }
@@ -346,7 +325,8 @@ function handleQuickAsk(q: string) {
   sendMessage(q)
 }
 
-function handleKeydown(e: KeyboardEvent) {
+function handleKeydown(e: Event | KeyboardEvent) {
+  if (!(e instanceof KeyboardEvent)) return
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     handleSend()
@@ -358,26 +338,18 @@ async function sendMessage(text: string) {
   scrollToBottom()
 
   loading.value = true
-  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
-  let textMsgPushed = false
-  const toolStartTime: Record<string, number> = {}
+  const streamState = createAiStreamState()
 
   try {
     for await (const event of sendAiMessageStream(text, currentConvId.value || undefined)) {
-      handleEvent(event, textMsg, () => {
-        if (!textMsgPushed) {
-          displayMessages.value.push(textMsg)
-          textMsgPushed = true
-        }
-      }, toolStartTime)
-    }
-    if (!textMsgPushed && textMsg.content) {
-      displayMessages.value.push(textMsg)
+      handleEvent(event, streamState)
     }
     await loadConversations()
   } catch (e: any) {
-    textMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
-    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    handleEvent(
+      { type: 'error', content: '请求失败：' + (e.message || '服务暂时不可用') },
+      streamState,
+    )
   } finally {
     loading.value = false
     scrollToBottom()
@@ -385,59 +357,14 @@ async function sendMessage(text: string) {
 }
 
 function handleEvent(
-  event: SSEEvent,
-  textMsg: DisplayMessage,
-  ensureTextMsg: () => void,
-  toolStartTime: Record<string, number>,
+  event: AiStreamEvent,
+  streamState: AiStreamState,
 ) {
-  switch (event.type) {
-    case 'text':
-      ensureTextMsg()
-      textMsg.content = (textMsg.content || '') + event.content
-      scrollToBottom()
-      break
-    case 'tool_start':
-      toolStartTime[event.tool || ''] = Date.now()
-      displayMessages.value.push({ type: 'tool_start', tool: event.tool, args: event.args })
-      scrollToBottom()
-      break
-    case 'tool_result': {
-      const startIdx = displayMessages.value.findIndex(
-        m => m.type === 'tool_start' && m.tool === event.tool,
-      )
-      if (startIdx !== -1) displayMessages.value.splice(startIdx, 1)
-      const elapsed = toolStartTime[event.tool || '']
-        ? Date.now() - toolStartTime[event.tool || '']
-        : undefined
-      displayMessages.value.push({
-        type: 'tool_result', tool: event.tool, result: event.result,
-        args: event.args, elapsed,
-      })
-      scrollToBottom()
-      break
-    }
-    case 'tool_confirm':
-      if (event.conversation_id && !currentConvId.value) {
-        currentConvId.value = event.conversation_id
-      }
-      displayMessages.value.push({
-        type: 'tool_confirm', tool: event.tool,
-        description: event.description, pending_id: event.pending_id,
-        args: event.args,
-      })
-      scrollToBottom()
-      break
-    case 'error':
-      ensureTextMsg()
-      textMsg.content = (textMsg.content || '') + '\n\n' + event.content
-      scrollToBottom()
-      break
-    case 'done':
-      if (event.conversation_id && !currentConvId.value) {
-        currentConvId.value = event.conversation_id
-      }
-      break
+  applyAiStreamEvent(event, displayMessages.value, streamState, now)
+  if (event.conversation_id && !currentConvId.value) {
+    currentConvId.value = event.conversation_id
   }
+  scrollToBottom()
 }
 
 async function handleConfirm(msg: DisplayMessage) {
@@ -447,26 +374,18 @@ async function handleConfirm(msg: DisplayMessage) {
   const idx = displayMessages.value.indexOf(msg)
   if (idx !== -1) displayMessages.value.splice(idx, 1)
 
-  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
-  let textMsgPushed = false
-  const toolStartTime: Record<string, number> = {}
+  const streamState = createAiStreamState()
 
   try {
     for await (const event of confirmAiActionStream(msg.pending_id, currentConvId.value)) {
-      handleEvent(event, textMsg, () => {
-        if (!textMsgPushed) {
-          displayMessages.value.push(textMsg)
-          textMsgPushed = true
-        }
-      }, toolStartTime)
-    }
-    if (!textMsgPushed && textMsg.content) {
-      displayMessages.value.push(textMsg)
+      handleEvent(event, streamState)
     }
     await loadConversations()
   } catch (e: any) {
-    textMsg.content = '操作失败：' + (e.message || '服务暂时不可用')
-    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    handleEvent(
+      { type: 'error', content: '操作失败：' + (e.message || '服务暂时不可用') },
+      streamState,
+    )
   } finally {
     confirmLoading.value = false
     scrollToBottom()
@@ -479,25 +398,17 @@ async function handleReject(msg: DisplayMessage) {
   const idx = displayMessages.value.indexOf(msg)
   if (idx !== -1) displayMessages.value.splice(idx, 1)
 
-  const textMsg: DisplayMessage = { type: 'text', content: '', time: now() }
-  let textMsgPushed = false
-  const toolStartTime: Record<string, number> = {}
+  const streamState = createAiStreamState()
 
   try {
     for await (const event of rejectAiActionStream(msg.pending_id, currentConvId.value)) {
-      handleEvent(event, textMsg, () => {
-        if (!textMsgPushed) {
-          displayMessages.value.push(textMsg)
-          textMsgPushed = true
-        }
-      }, toolStartTime)
-    }
-    if (!textMsgPushed && textMsg.content) {
-      displayMessages.value.push(textMsg)
+      handleEvent(event, streamState)
     }
   } catch (e: any) {
-    textMsg.content = '请求失败：' + (e.message || '服务暂时不可用')
-    if (!textMsgPushed) displayMessages.value.push(textMsg)
+    handleEvent(
+      { type: 'error', content: '请求失败：' + (e.message || '服务暂时不可用') },
+      streamState,
+    )
   } finally {
     scrollToBottom()
   }
