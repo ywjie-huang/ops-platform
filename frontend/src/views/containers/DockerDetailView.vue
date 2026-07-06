@@ -147,9 +147,16 @@
             <el-table-column label="更新时间" width="150">
               <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="210" fixed="right" align="right">
+            <el-table-column label="操作" width="250" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-cell">
+                  <el-button
+                    size="small"
+                    type="info"
+                    link
+                    :aria-label="`查看容器 ${row.name} 日志`"
+                    @click.stop="openContainerLogs(row)"
+                  >日志</el-button>
                   <el-button
                     v-if="row.status !== 'running'"
                     size="small"
@@ -231,6 +238,31 @@
         </div>
       </aside>
     </div>
+
+    <el-dialog v-model="logsDialogVisible" width="860px">
+      <template #header="{ titleId, titleClass }">
+        <div class="dialog-header-bar">
+          <h3 :id="titleId" :class="titleClass">{{ logsDialogTitle }}</h3>
+          <div class="dialog-header-actions">
+            <el-button size="small" :loading="logsLoading" @click="fetchSelectedContainerLogs">刷新</el-button>
+            <el-button size="small" :disabled="!containerLogs" @click="copyLogs">复制</el-button>
+            <el-button size="small" :disabled="!containerLogs" @click="downloadLogs">下载</el-button>
+          </div>
+        </div>
+      </template>
+      <div class="log-toolbar">
+        <span>最近</span>
+        <el-select v-model="logTailLines" size="small" class="log-tail-select" @change="fetchSelectedContainerLogs">
+          <el-option :value="100" label="100 行" />
+          <el-option :value="300" label="300 行" />
+          <el-option :value="500" label="500 行" />
+          <el-option :value="1000" label="1000 行" />
+        </el-select>
+      </div>
+      <div v-loading="logsLoading">
+        <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -244,6 +276,7 @@ import {
   deleteDockerHost,
   refreshDockerHost,
   getHostContainers,
+  getDockerContainerLogs,
   startDockerContainer,
   stopDockerContainer,
   restartDockerContainer,
@@ -267,12 +300,18 @@ const statusFilter = ref('all')
 const page = ref(1)
 const pageSize = ref(20)
 const autoRefresh = ref(false)
+const selectedContainer = ref<any | null>(null)
+const logsDialogVisible = ref(false)
+const logsLoading = ref(false)
+const containerLogs = ref('')
+const logTailLines = ref(300)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const containerSummary = computed(() => summarizeContainers(containers.value))
 const syncState = computed(() => getHostSyncState(host.value))
 const relativeSyncTime = computed(() => formatRelativeTime(host.value.last_heartbeat))
+const logsDialogTitle = computed(() => selectedContainer.value ? `容器日志：${selectedContainer.value.name}` : '容器日志')
 
 const syncValueClass = computed(() => {
   if (syncState.value === 'fresh') return ''
@@ -441,6 +480,45 @@ function containerStatusLabel(s: string) {
   if (s === 'paused') return '暂停'
   if (s === 'restarting') return '重启中'
   return s
+}
+
+async function openContainerLogs(row: any) {
+  selectedContainer.value = row
+  containerLogs.value = ''
+  logsDialogVisible.value = true
+  await fetchSelectedContainerLogs()
+}
+
+async function fetchSelectedContainerLogs() {
+  if (!selectedContainer.value) return
+  logsLoading.value = true
+  try {
+    const res: any = await getDockerContainerLogs(hostId.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
+    containerLogs.value = res.data?.logs || ''
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载日志失败')
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function copyLogs() {
+  if (!containerLogs.value) return
+  navigator.clipboard.writeText(containerLogs.value).then(
+    () => ElMessage.success('已复制到剪贴板'),
+    () => ElMessage.error('复制失败'),
+  )
+}
+
+function downloadLogs() {
+  if (!containerLogs.value || !selectedContainer.value) return
+  const blob = new Blob([containerLogs.value], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${selectedContainer.value.name || selectedContainer.value.container_id}.log`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 async function handleContainerAction(row: any, action: 'start' | 'stop' | 'restart' | 'delete') {
@@ -811,6 +889,47 @@ onDeactivated(stopAutoRefresh)
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
+}
+.dialog-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dialog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.log-tail-select {
+  width: 110px;
+}
+.log-box {
+  min-height: 320px;
+  max-height: 560px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: #d1d5db;
+  background: #111827;
+  border-radius: var(--border-radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+}
+.log-box:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary-color);
 }
 @media (max-width: 1200px) {
   .summary-grid {

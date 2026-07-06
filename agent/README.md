@@ -41,6 +41,7 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | `GET /info` | 主机系统信息 |
 | `GET /containers` | 容器列表及指标 |
 | `GET /snapshot` | 一次性返回全部数据（平台用） |
+| `GET /containers/{id}/logs?tail=300` | 查看容器最近日志 |
 | `POST /containers/{id}/start` | 启动容器 |
 | `POST /containers/{id}/stop` | 停止容器 |
 | `POST /containers/{id}/restart` | 重启容器 |

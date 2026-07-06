@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException
 
+from app.api import docker_mgmt
 from app.api.docker_mgmt import _proxy_to_agent
 from app.api.containers import api_list_clusters
 from app.models.container import ContainerCluster, ContainerDeployment, ContainerPod
@@ -179,3 +180,35 @@ def test_proxy_to_agent_explains_unsupported_post_from_old_agent(monkeypatch):
         assert exc.status_code == 502
         assert "当前 Docker Agent 版本不支持容器操作" in exc.detail
         assert "<!DOCTYPE HTML>" not in exc.detail
+
+
+def test_container_logs_proxy_clamps_tail_and_returns_logs(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    calls = []
+
+    def fake_proxy(host: ContainerCluster, method: str, path: str):
+        calls.append((host.endpoint, method, path))
+        return {"logs": "line-1\nline-2", "tail": 1000}
+
+    monkeypatch.setattr("app.api.docker_mgmt._proxy_to_agent", fake_proxy)
+
+    db = SessionLocal()
+    try:
+        host = ContainerCluster(name="docker-01", provider="docker", endpoint="127.0.0.1:9001")
+        db.add(host)
+        db.commit()
+
+        response = docker_mgmt.api_container_logs(
+            host.id,
+            "abc123def456",
+            tail_lines=5000,
+            db=db,
+            _=None,
+        )
+
+        assert response == {"code": 0, "data": {"logs": "line-1\nline-2", "tail": 1000}}
+        assert calls == [("127.0.0.1:9001", "GET", "/containers/abc123def456/logs?tail=1000")]
+    finally:
+        db.close()

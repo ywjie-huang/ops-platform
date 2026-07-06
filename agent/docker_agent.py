@@ -23,10 +23,12 @@ import json
 import logging
 import os
 import platform
+import re
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Lock
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import docker
 import psutil
@@ -34,6 +36,8 @@ import psutil
 # ─── 配置 ──────────────────────────────────────────────────
 
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "9001"))
+DEFAULT_LOG_TAIL = 300
+MAX_LOG_TAIL = 1000
 
 logging.basicConfig(
     level=logging.INFO,
@@ -186,6 +190,30 @@ def _fill_stats(info: dict, stats: dict) -> None:
             info["block_write"] += entry.get("value", 0)
 
 
+def normalize_tail_lines(value: Any, default: int = DEFAULT_LOG_TAIL) -> int:
+    try:
+        tail_lines = int(value)
+    except (TypeError, ValueError):
+        tail_lines = default
+    return max(1, min(tail_lines, MAX_LOG_TAIL))
+
+
+def read_container_logs(container_id: str, tail_lines: int = DEFAULT_LOG_TAIL) -> str:
+    if not _docker_client:
+        raise RuntimeError("docker client not available")
+
+    container = _docker_client.containers.get(container_id)
+    raw = container.logs(
+        stdout=True,
+        stderr=True,
+        tail=normalize_tail_lines(tail_lines),
+        timestamps=True,
+    )
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    return str(raw or "")
+
+
 # ─── 后台采集线程 ──────────────────────────────────────────
 
 def _background_collector():
@@ -225,32 +253,44 @@ class AgentHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path == "/ping":
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/ping":
             self._json_response({"status": "ok"})
 
-        elif self.path == "/info":
+        elif path == "/info":
             with _data_lock:
                 data = _cached_data.get("host_info", {})
             self._json_response(data)
 
-        elif self.path == "/containers":
+        elif path == "/containers":
             with _data_lock:
                 data = _cached_data.get("containers", [])
             self._json_response(data)
 
-        elif self.path == "/snapshot":
+        elif path == "/snapshot":
             # 一次性返回所有数据（平台用这个接口拉取）
             with _data_lock:
                 data = dict(_cached_data)
             self._json_response(data)
+
+        elif m := re.match(r'^/containers/([a-f0-9]{12,64})/logs$', path):
+            query = parse_qs(parsed.query)
+            tail_lines = normalize_tail_lines((query.get("tail") or [DEFAULT_LOG_TAIL])[0])
+            try:
+                logs = read_container_logs(m.group(1), tail_lines)
+                self._json_response({"status": "ok", "logs": logs, "tail": tail_lines})
+            except docker.errors.NotFound:
+                self._json_response({"error": f"容器 {m.group(1)} 不存在"}, 404)
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
 
         else:
             self._json_response({"error": "not found"}, 404)
 
     def do_POST(self):
         """处理容器操作请求。"""
-        import re
-
         # POST /containers/<id>/<action>  (action: start|stop|restart|delete)
         m = re.match(r'^/containers/([a-f0-9]{12,64})/(start|stop|restart|delete)$', self.path)
         if not m:

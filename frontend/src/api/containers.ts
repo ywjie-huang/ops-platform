@@ -65,6 +65,9 @@ export function getDockerContainers(params?: { host_id?: number; keyword?: strin
 export function getHostContainers(hostId: number, params?: { keyword?: string; status?: string }) {
   return request.get(`/containers/docker/hosts/${hostId}/containers`, { params })
 }
+export function getDockerContainerLogs(hostId: number, containerId: string, params?: { tail_lines?: number }) {
+  return request.get(`/containers/docker/hosts/${hostId}/containers/${encodeURIComponent(containerId)}/logs`, { params })
+}
 
 // Docker 容器操作
 export function startDockerContainer(hostId: number, containerId: string) {

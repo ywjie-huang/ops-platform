@@ -126,6 +126,7 @@ docker run -d -p 9001:9001 \
 | `/info` | GET | 主机系统信息 |
 | `/containers` | GET | 容器列表及指标 |
 | `/snapshot` | GET | 一次性返回全部数据 |
+| `/containers/{id}/logs?tail=300` | GET | 查看容器最近日志 |
 | `/containers/{id}/start` | POST | 启动容器 |
 | `/containers/{id}/stop` | POST | 停止容器 |
 | `/containers/{id}/restart` | POST | 重启容器 |
@@ -743,6 +744,7 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | Docker | `POST /containers/docker/hosts/{id}/refresh` | 手动刷新（从 Agent 拉取） |
 | Docker | `GET /containers/docker/containers` | Docker 容器列表 |
 | Docker | `GET /containers/docker/hosts/{id}/containers` | 指定主机容器列表 |
+| Docker | `GET /containers/docker/hosts/{id}/containers/{cid}/logs` | 查看容器日志 |
 | Docker | `POST /containers/docker/hosts/{id}/containers/{cid}/{action}` | 容器操作（start/stop/restart/delete） |
 | 告警规则 | `GET /alertmanager/rules/hosts` | 告警规则关联主机映射 |
 | 批量执行 | `WS /batch-exec/ws/exec` | 批量命令执行（WebSocket） |

@@ -27,6 +27,7 @@ from app.services.docker_agent import (
 )
 
 router = APIRouter(prefix="/containers/docker", tags=["Docker 管理"])
+MAX_DOCKER_LOG_TAIL = 1000
 
 
 # ─── Schemas ───────────────────────────────────────────────
@@ -95,6 +96,10 @@ def _container_dict(c) -> dict:
         "started_at": c.started_at or "",
         "updated_at": c.updated_at.isoformat(),
     }
+
+
+def _normalize_log_tail_lines(value: int) -> int:
+    return max(1, min(int(value or 300), MAX_DOCKER_LOG_TAIL))
 
 
 # ─── 概览 ─────────────────────────────────────────────────
@@ -266,6 +271,23 @@ def api_host_containers(
         raise HTTPException(status_code=404, detail="主机不存在")
     containers = list_docker_containers(db, host_id=host_id, keyword=keyword, status=status)
     return {"code": 0, "data": [_container_dict(c) for c in containers]}
+
+
+@router.get("/hosts/{host_id}/containers/{container_id}/logs")
+def api_container_logs(
+    host_id: int,
+    container_id: str,
+    tail_lines: int = 300,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    h = get_docker_host(db, host_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="主机不存在")
+
+    tail = _normalize_log_tail_lines(tail_lines)
+    result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/logs?tail={tail}")
+    return {"code": 0, "data": {"logs": result.get("logs", ""), "tail": result.get("tail", tail)}}
 
 
 # ─── 容器操作（代理到 Agent）─────────────────────────────────
