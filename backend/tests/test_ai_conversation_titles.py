@@ -140,5 +140,16 @@ def test_async_refinement_uses_fresh_session_and_keeps_manual_title():
 def test_chat_api_schedules_title_refinement_once_after_final_answer():
     source = Path("backend/app/api/ai.py").read_text(encoding="utf-8")
 
-    assert source.count("schedule_title_refinement(") == 1
-    assert "assistant_text=full_text" in source
+    assert "maybe_set_rule_title" not in source
+    assert source.count("\n            schedule_title_refinement(") == 1
+    assert "title_refinement_scheduled = False" in source
+    assert "def maybe_schedule_title_refinement" in source
+    assert "maybe_schedule_title_refinement(full_text)" in source
+    assert "maybe_schedule_title_refinement(confirm_description)" in source
+
+
+def test_chat_api_uses_title_worthiness_only_as_a_generation_gate():
+    source = Path("backend/app/api/ai.py").read_text(encoding="utf-8")
+
+    assert "is_title_worthy" in source
+    assert "should_generate_title = is_title_worthy(body.message)" in source
