@@ -272,14 +272,10 @@ async def api_chat(
                         "description": f"{asset_info}操作: {tool_name}\n参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}",
                     })
                     db.commit()
-                    if rule_title:
-                        schedule_title_refinement(cid, body.message, rule_title=rule_title)
                     return
 
             db.commit()
 
-        if rule_title:
-            schedule_title_refinement(cid, body.message, rule_title=rule_title)
         yield _sse_event({"type": "done", "conversation_id": cid})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

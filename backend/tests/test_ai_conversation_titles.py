@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.ai.titles import (
@@ -134,3 +135,10 @@ def test_async_refinement_uses_fresh_session_and_keeps_manual_title():
     assert sessions[0].conv.title == "人工命名"
     assert sessions[0].committed is False
     assert sessions[0].closed is True
+
+
+def test_chat_api_schedules_title_refinement_once_after_final_answer():
+    source = Path("backend/app/api/ai.py").read_text(encoding="utf-8")
+
+    assert source.count("schedule_title_refinement(") == 1
+    assert "assistant_text=full_text" in source
