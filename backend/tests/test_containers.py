@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.api.docker_mgmt import _proxy_to_agent
 from app.api.containers import api_list_clusters
 from app.models.container import ContainerCluster, ContainerDeployment, ContainerPod
 from app.services.containers import refresh_cluster_connection_status
@@ -107,3 +108,43 @@ def test_list_clusters_refreshes_connection_status_before_returning_rows(monkeyp
         assert response["data"][0]["status_message"] == "authentication failed"
     finally:
         db.close()
+
+
+def test_proxy_to_agent_treats_empty_success_response_as_success(monkeypatch):
+    calls = []
+
+    class EmptySuccessResponse:
+        status_code = 204
+        text = ""
+
+        def json(self):
+            raise AssertionError("empty 2xx responses should not be parsed as JSON")
+
+    def fake_request(method: str, url: str, timeout: int):
+        calls.append((method, url, timeout))
+        return EmptySuccessResponse()
+
+    monkeypatch.setattr("app.api.docker_mgmt.http_requests.request", fake_request)
+
+    host = ContainerCluster(name="docker-01", provider="docker", endpoint="127.0.0.1:9001")
+
+    assert _proxy_to_agent(host, "POST", "/containers/abc123/restart") == {}
+    assert calls == [("POST", "http://127.0.0.1:9001/containers/abc123/restart", 15)]
+
+
+def test_proxy_to_agent_treats_plain_text_success_response_as_message(monkeypatch):
+    class PlainTextSuccessResponse:
+        status_code = 200
+        text = "restarted"
+
+        def json(self):
+            raise ValueError("not json")
+
+    monkeypatch.setattr(
+        "app.api.docker_mgmt.http_requests.request",
+        lambda method, url, timeout: PlainTextSuccessResponse(),
+    )
+
+    host = ContainerCluster(name="docker-01", provider="docker", endpoint="http://127.0.0.1:9001")
+
+    assert _proxy_to_agent(host, "POST", "/containers/abc123/restart") == {"message": "restarted"}

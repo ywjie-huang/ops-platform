@@ -275,7 +275,15 @@ def _proxy_to_agent(host: ContainerCluster, method: str, path: str) -> dict:
 
     try:
         resp = http_requests.request(method, f"{endpoint}{path}", timeout=15)
-        data = resp.json()
+        if resp.status_code < 400 and not (getattr(resp, "text", "") or "").strip():
+            return {}
+        try:
+            data = resp.json()
+        except ValueError:
+            if resp.status_code >= 400:
+                detail = (getattr(resp, "text", "") or "Agent request failed").strip()
+                raise HTTPException(status_code=resp.status_code, detail=detail[:500])
+            return {"message": (getattr(resp, "text", "") or "").strip()}
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=data.get("error", "Agent 请求失败"))
         return data
