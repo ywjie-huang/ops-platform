@@ -219,14 +219,8 @@ def test_responses_input_conversion_for_tool_messages():
     assert converted == [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"},
-        {"id": "rs_1", "type": "reasoning", "content": [], "summary": []},
-        {
-            "id": "fc_1",
-            "type": "function_call",
-            "call_id": "call_1",
-            "name": "query_assets",
-            "arguments": "{\"keyword\": \"db\"}",
-        },
+        {"type": "item_reference", "id": "rs_1"},
+        {"type": "item_reference", "id": "fc_1"},
         {
             "type": "function_call_output",
             "call_id": "call_1",

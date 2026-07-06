@@ -338,7 +338,7 @@ class LLMClient:
             if tool_call.get("response_item"):
                 raw_items.append(tool_call["response_item"])
             for raw_item in raw_items:
-                item = self._response_item_for_input(raw_item)
+                item = self._response_item_reference_for_input(raw_item)
                 marker = (
                     item.get("id", ""),
                     item.get("type", ""),
@@ -349,6 +349,12 @@ class LLMClient:
                 seen.add(marker)
                 items.append(item)
         return items
+
+    def _response_item_reference_for_input(self, item: dict[str, Any]) -> dict[str, Any]:
+        item_id = item.get("id")
+        if item_id:
+            return {"type": "item_reference", "id": item_id}
+        return self._response_item_for_input(item)
 
     def _response_item_for_input(self, item: dict[str, Any]) -> dict[str, Any]:
         item_type = item.get("type", "")
