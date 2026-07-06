@@ -5,10 +5,12 @@ Docker 容器监控 Agent
 暴露 HTTP API 供运维平台主动拉取容器和系统指标。
 
 一条命令启动：
+    docker rm -f ops-agent >/dev/null 2>&1 || true
+    docker pull hub1.lczy.com/public/ops-agent:latest
     docker run -d -p 9001:9001 \\
       --name ops-agent \\
       --restart=always \\
-      -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+      -v /var/run/docker.sock:/var/run/docker.sock \\
       hub1.lczy.com/public/ops-agent:latest
 
 环境变量：

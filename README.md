@@ -109,10 +109,12 @@
 **Agent 部署：**
 
 ```bash
+docker rm -f ops-agent >/dev/null 2>&1 || true
+docker pull hub1.lczy.com/public/ops-agent:latest
 docker run -d -p 9001:9001 \
   --name ops-agent \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   hub1.lczy.com/public/ops-agent:latest
 ```
 
@@ -671,10 +673,12 @@ Docker 监控通过在目标主机部署轻量 Agent 容器实现，Agent 暴露
 **部署 Agent：**
 
 ```bash
+docker rm -f ops-agent >/dev/null 2>&1 || true
+docker pull hub1.lczy.com/public/ops-agent:latest
 docker run -d -p 9001:9001 \
   --name ops-agent \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   hub1.lczy.com/public/ops-agent:latest
 ```
 

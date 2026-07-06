@@ -154,14 +154,9 @@
         </el-steps>
 
         <div v-if="setupStep === 0">
-          <p class="setup-hint">在目标 Docker 主机上执行以下命令启动 Agent：</p>
+          <p class="setup-hint">在目标 Docker 主机上执行以下命令安装或升级 Agent：</p>
           <div class="setup-command-box">
-            <pre class="setup-command">docker run -d \
-  -p 9001:9001 \
-  --name ops-agent \
-  --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  hub1.lczy.com/public/ops-agent:latest</pre>
+            <pre class="setup-command">{{ agentInstallCmd }}</pre>
             <el-button type="primary" size="small" class="copy-btn" @click="copyAgentCmd">复制命令</el-button>
           </div>
           <el-button type="primary" class="next-btn" @click="setupStep = 1">下一步，填写信息</el-button>
@@ -249,6 +244,15 @@ const hostRules = {
   endpoint: [{ required: true, message: '请输入 Agent 地址', trigger: 'blur' }],
 }
 
+const agentInstallCmd = `docker rm -f ops-agent >/dev/null 2>&1 || true
+docker pull hub1.lczy.com/public/ops-agent:latest
+docker run -d \\
+  -p 9001:9001 \\
+  --name ops-agent \\
+  --restart=always \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  hub1.lczy.com/public/ops-agent:latest`
+
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const containerStatsByHost = computed(() => {
@@ -322,7 +326,7 @@ const lastRefreshText = computed(() => lastRefreshAt.value ? lastRefreshAt.value
 watch([hostKeyword, statusFilter, sortMode], () => { page.value = 1 })
 
 function copyAgentCmd() {
-  const cmd = `docker run -d \\\n  -p 9001:9001 \\\n  --name ops-agent \\\n  --restart=always \\\n  -v /var/run/docker.sock:/var/run/docker.sock:ro \\\n  hub1.lczy.com/public/ops-agent:latest`
+  const cmd = agentInstallCmd
   navigator.clipboard.writeText(cmd).then(() => ElMessage.success('已复制命令'))
 }
 

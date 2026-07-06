@@ -7,10 +7,12 @@
 ### 1. 在目标机器启动 Agent
 
 ```bash
+docker rm -f ops-agent >/dev/null 2>&1 || true
+docker pull hub1.lczy.com/public/ops-agent:latest
 docker run -d -p 9001:9001 \
   --name ops-agent \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   hub1.lczy.com/public/ops-agent:latest
 ```
 
@@ -39,6 +41,10 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | `GET /info` | 主机系统信息 |
 | `GET /containers` | 容器列表及指标 |
 | `GET /snapshot` | 一次性返回全部数据（平台用） |
+| `POST /containers/{id}/start` | 启动容器 |
+| `POST /containers/{id}/stop` | 停止容器 |
+| `POST /containers/{id}/restart` | 重启容器 |
+| `POST /containers/{id}/delete` | 删除容器（force） |
 
 ## 采集内容
 

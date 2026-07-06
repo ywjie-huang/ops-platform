@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from fastapi import HTTPException
 
 from app.api.docker_mgmt import _proxy_to_agent
 from app.api.containers import api_list_clusters
@@ -148,3 +149,33 @@ def test_proxy_to_agent_treats_plain_text_success_response_as_message(monkeypatc
     host = ContainerCluster(name="docker-01", provider="docker", endpoint="http://127.0.0.1:9001")
 
     assert _proxy_to_agent(host, "POST", "/containers/abc123/restart") == {"message": "restarted"}
+
+
+def test_proxy_to_agent_explains_unsupported_post_from_old_agent(monkeypatch):
+    class UnsupportedPostResponse:
+        status_code = 501
+        text = """<!DOCTYPE HTML>
+<html lang="en">
+  <body>
+    <p>Error code: 501</p>
+    <p>Message: Unsupported method ('POST').</p>
+  </body>
+</html>"""
+
+        def json(self):
+            raise ValueError("not json")
+
+    monkeypatch.setattr(
+        "app.api.docker_mgmt.http_requests.request",
+        lambda method, url, timeout: UnsupportedPostResponse(),
+    )
+
+    host = ContainerCluster(name="docker-01", provider="docker", endpoint="http://127.0.0.1:9001")
+
+    try:
+        _proxy_to_agent(host, "POST", "/containers/abc123/restart")
+        raise AssertionError("expected HTTPException")
+    except HTTPException as exc:
+        assert exc.status_code == 502
+        assert "当前 Docker Agent 版本不支持容器操作" in exc.detail
+        assert "<!DOCTYPE HTML>" not in exc.detail

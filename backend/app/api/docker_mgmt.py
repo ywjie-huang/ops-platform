@@ -1,5 +1,8 @@
 """Docker 管理 API — 平台端 Docker 主机管理 / 容器查询 / 容器操作 / 主动拉取。"""
 
+import re
+from html import unescape
+
 import requests as http_requests
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -281,14 +284,24 @@ def _proxy_to_agent(host: ContainerCluster, method: str, path: str) -> dict:
             data = resp.json()
         except ValueError:
             if resp.status_code >= 400:
-                detail = (getattr(resp, "text", "") or "Agent request failed").strip()
-                raise HTTPException(status_code=resp.status_code, detail=detail[:500])
+                detail = _agent_error_detail(resp.status_code, getattr(resp, "text", ""), method)
+                raise HTTPException(status_code=502, detail=detail)
             return {"message": (getattr(resp, "text", "") or "").strip()}
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=data.get("error", "Agent 请求失败"))
         return data
     except http_requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Agent 连接失败: {e}")
+
+
+def _agent_error_detail(status_code: int, body: str, method: str) -> str:
+    text = (body or "").strip()
+    if status_code == 501 and f"Unsupported method ('{method}')" in text:
+        return "当前 Docker Agent 版本不支持容器操作，请在目标主机拉取最新镜像并重建 ops-agent 后重试。"
+    if text.startswith("<"):
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", unescape(text)).strip()
+    return (text or "Agent 请求失败")[:500]
 
 
 @router.post("/hosts/{host_id}/containers/{container_id}/{action}")
