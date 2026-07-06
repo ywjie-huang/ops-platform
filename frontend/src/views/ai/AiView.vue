@@ -72,6 +72,48 @@
             <div class="msg-bubble user-bubble">{{ msg.content }}</div>
           </div>
 
+          <!-- 合并的思考过程 -->
+          <div v-else-if="msg.type === 'tool_trace'" class="msg-row assistant">
+            <div class="msg-meta">
+              <div class="msg-avatar assistant-avatar">A</div>
+              <span class="msg-role assistant-role">AI</span>
+              <span class="msg-time">{{ msg.time }}</span>
+            </div>
+            <div class="tool-panel tool-trace">
+              <details open>
+                <summary class="tool-header">
+                  <el-icon color="#67c23a"><CircleCheckFilled /></el-icon>
+                  <span class="tool-name">{{ traceSummary(msg) }}</span>
+                  <span class="tool-time" v-if="traceTotalElapsed(msg)">{{ traceTotalElapsed(msg) }}ms</span>
+                  <el-icon class="expand-icon"><ArrowRight /></el-icon>
+                </summary>
+                <div class="tool-body">
+                  <div v-for="(step, stepIdx) in msg.steps || []" :key="stepIdx" class="trace-step">
+                    <span class="trace-index">{{ stepIdx + 1 }}</span>
+                    <div class="trace-content">
+                      <div class="trace-title">
+                        <span class="trace-label">{{ traceStepLabel(step) }}</span>
+                        <span v-if="step.type === 'tool'" class="trace-tool">{{ toolDisplayName(step.tool) }}</span>
+                        <span v-if="step.elapsed" class="trace-elapsed">{{ step.elapsed }}ms</span>
+                      </div>
+                      <div v-if="step.type === 'note'" class="trace-note">{{ step.content }}</div>
+                      <template v-else>
+                        <div v-if="step.args" class="tool-section compact">
+                          <div class="tool-label">{{ '\u53c2\u6570' }}:</div>
+                          <div class="tool-code">{{ formatArgs(step.args) }}</div>
+                        </div>
+                        <div v-if="step.result && traceHasResults(msg)" class="tool-section compact">
+                          <div class="tool-label">{{ '\u7ed3\u679c' }}:</div>
+                          <div class="tool-code" v-html="renderMarkdown(step.result || '')" />
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
           <!-- 工具执行中 -->
           <div v-else-if="msg.type === 'tool_start'" class="msg-row assistant">
             <div class="msg-meta">
@@ -206,6 +248,10 @@ import {
   applyAiStreamEvent,
   buildDisplayMessagesFromHistory,
   createAiStreamState,
+  traceHasResults,
+  traceStepLabel,
+  traceSummary,
+  traceTotalElapsed,
   type AiStreamEvent,
   type AiStreamState,
   type DisplayMessage,
@@ -710,6 +756,88 @@ onActivated(async () => {
       font-size: 12px;
       transition: transform 0.2s;
     }
+  }
+
+  &.tool-trace {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+
+    .tool-header {
+      color: #15803d;
+      cursor: pointer;
+      list-style: none;
+
+      &::-webkit-details-marker { display: none; }
+    }
+
+    details[open] .expand-icon { transform: rotate(90deg); }
+
+    .expand-icon {
+      margin-left: auto;
+      font-size: 12px;
+      transition: transform 0.2s ease-out;
+    }
+  }
+
+  .trace-step {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 0;
+
+    & + .trace-step {
+      border-top: 1px solid rgba(21, 128, 61, 0.12);
+    }
+  }
+
+  .trace-index {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #dcfce7;
+    color: #15803d;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .trace-content {
+    min-width: 0;
+  }
+
+  .trace-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 18px;
+  }
+
+  .trace-label {
+    color: #15803d;
+    font-weight: 600;
+  }
+
+  .trace-tool {
+    color: #166534;
+    font-weight: 500;
+  }
+
+  .trace-elapsed {
+    color: #9ca3af;
+    margin-left: auto;
+    font-size: 10px;
+  }
+
+  .trace-note {
+    color: #4b5563;
+    line-height: 1.6;
+    margin-top: 4px;
+  }
+
+  .tool-section.compact {
+    margin: 5px 0 0;
   }
 
   &.tool-confirm {

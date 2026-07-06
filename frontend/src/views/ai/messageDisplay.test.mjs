@@ -7,7 +7,7 @@ const {
   createAiStreamState,
 } = await import('./messageDisplay.ts')
 
-test('builds history display with tool results before the final assistant answer', () => {
+test('builds history display with a merged trace before the final assistant answer', () => {
   const messages = [
     {
       id: 1,
@@ -46,13 +46,16 @@ test('builds history display with tool results before the final assistant answer
 
   const display = buildDisplayMessagesFromHistory(messages, value => value)
 
-  assert.deepEqual(display.map(item => item.type), ['user', 'text', 'tool_result', 'text'])
-  assert.equal(display[2].tool, 'query_alerts')
-  assert.deepEqual(display[2].args, { limit: 10 })
-  assert.equal(display[3].content, 'No servers are currently abnormal.')
+  assert.deepEqual(display.map(item => item.type), ['user', 'tool_trace', 'text'])
+  assert.equal(display[1].steps[0].type, 'note')
+  assert.equal(display[1].steps[0].content, 'I will check alerts and host metrics first.')
+  assert.equal(display[1].steps[1].type, 'tool')
+  assert.equal(display[1].steps[1].tool, 'query_alerts')
+  assert.deepEqual(display[1].steps[1].args, { limit: 10 })
+  assert.equal(display[2].content, 'No servers are currently abnormal.')
 })
 
-test('streams post-tool assistant text after the tool result instead of merging upward', () => {
+test('buffers pre-tool text into the merged trace and keeps final text after tools', () => {
   const display = []
   const state = createAiStreamState()
   let now = 1000
@@ -64,9 +67,39 @@ test('streams post-tool assistant text after the tool result instead of merging 
   now = 1042
   apply({ type: 'tool_result', tool: 'query_alerts', result: 'No active alerts.', args: { limit: 10 } })
   apply({ type: 'text', content: 'No servers are currently abnormal.' })
+  apply({ type: 'done' })
 
-  assert.deepEqual(display.map(item => item.type), ['text', 'tool_result', 'text'])
-  assert.equal(display[0].content, 'I will check alerts first.')
-  assert.equal(display[1].elapsed, 42)
-  assert.equal(display[2].content, 'No servers are currently abnormal.')
+  assert.deepEqual(display.map(item => item.type), ['tool_trace', 'text'])
+  assert.equal(display[0].steps[0].type, 'note')
+  assert.equal(display[0].steps[0].content, 'I will check alerts first.')
+  assert.equal(display[0].steps[1].type, 'tool')
+  assert.equal(display[0].steps[1].elapsed, 42)
+  assert.equal(display[1].content, 'No servers are currently abnormal.')
+})
+
+test('keeps text-only answers visible when no tool is used', () => {
+  const display = []
+  const state = createAiStreamState()
+  const apply = event => applyAiStreamEvent(event, display, state, () => '15:00')
+
+  apply({ type: 'text', content: 'I am GPT.' })
+  apply({ type: 'done' })
+
+  assert.deepEqual(display, [{ type: 'text', content: 'I am GPT.', time: '15:00' }])
+})
+
+test('turns text between tool calls into trace notes instead of final answers', () => {
+  const display = []
+  const state = createAiStreamState()
+  const apply = event => applyAiStreamEvent(event, display, state, () => '15:00')
+
+  apply({ type: 'tool_start', tool: 'query_alerts' })
+  apply({ type: 'tool_result', tool: 'query_alerts', result: 'No active alerts.' })
+  apply({ type: 'text', content: 'Alerts are empty; I will check metrics next.' })
+  apply({ type: 'tool_start', tool: 'query_host_metrics' })
+
+  assert.deepEqual(display.map(item => item.type), ['tool_trace'])
+  assert.equal(display[0].steps[1].type, 'note')
+  assert.equal(display[0].steps[1].content, 'Alerts are empty; I will check metrics next.')
+  assert.equal(display[0].steps[2].tool, 'query_host_metrics')
 })
