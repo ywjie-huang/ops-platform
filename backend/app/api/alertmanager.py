@@ -50,11 +50,12 @@ async def api_rules(
 
 @router.get("/rules/hosts")
 async def api_rules_hosts(
+    names: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("monitoring.view")),
 ):
     """获取每条告警规则关联的主机列表。"""
-    mapping = await get_rules_hosts(db)
+    mapping = await get_rules_hosts(db, rule_names=names)
     return {"code": 0, "data": mapping}
 
 

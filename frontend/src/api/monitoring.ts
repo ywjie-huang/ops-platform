@@ -54,6 +54,7 @@ export interface HostTrendData {
 
 export function getHosts() { return request.get('/monitoring/hosts') }
 export function getHostDetail(id: number) { return request.get(`/monitoring/hosts/${id}`) }
+export function getPrometheusHealth() { return request.get('/monitoring/prometheus/health') }
 export function getHostTrends(id: number, params = { minutes: 60, step_seconds: 60 }) {
   return request.get(`/monitoring/hosts/${id}/trends`, { params })
 }

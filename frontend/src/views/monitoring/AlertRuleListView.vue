@@ -3,8 +3,9 @@
     <div class="page-header">
       <h2 class="page-title">告警规则</h2>
       <div class="header-actions">
-        <el-tag v-if="connected" type="success" size="small" effect="plain">Prometheus 已连接</el-tag>
-        <el-tag v-else type="danger" size="small" effect="plain">Prometheus 未连接</el-tag>
+        <el-tag v-if="connected === true" type="success" size="small" effect="plain">Prometheus 已连接</el-tag>
+        <el-tag v-else-if="connected === false" type="danger" size="small" effect="plain">Prometheus 未连接</el-tag>
+        <el-tag v-else type="info" size="small" effect="plain">Prometheus 检测中</el-tag>
       </div>
     </div>
 
@@ -67,6 +68,7 @@
             <RuleHostCell
               :hosts="getRuleHosts(row.name)"
               :expanded="isRuleExpanded(row.name)"
+              :loading="isRuleHostsLoading(row.name)"
               @navigate="goToHost"
               @toggle-expand="toggleRuleExpand(row.name)"
             />
@@ -91,9 +93,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAlertManagerRules, getAlertManagerStatus, getAlertManagerRulesHosts } from '@/api/alertmanager'
+import { getAlertManagerRules, getAlertManagerRulesHosts } from '@/api/alertmanager'
+import { getPrometheusHealth } from '@/api/monitoring'
 import RuleHostCell from './RuleHostCell.vue'
 
 interface Rule {
@@ -111,7 +114,8 @@ interface Rule {
 
 const router = useRouter()
 const loading = ref(false)
-const connected = ref(false)
+const rulesHostsLoading = ref(false)
+const connected = ref<boolean | null>(null)
 const rules = ref<Rule[]>([])
 const rulesHosts = ref<Record<string, Array<{ id: number; name: string; ip: string }>>>({})
 const expandedRules = ref<Set<string>>(new Set())
@@ -119,6 +123,10 @@ const filterSeverity = ref('')
 const filterState = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
+const lastRulesLoadedAt = ref(0)
+let hostLoadRequestId = 0
+
+const RULES_REFRESH_TTL_MS = 30_000
 
 const filteredRules = computed(() => {
   return rules.value.filter(r => {
@@ -132,6 +140,12 @@ const paginatedRules = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filteredRules.value.slice(start, start + pageSize.value)
 })
+
+const visibleRuleNames = computed(() =>
+  paginatedRules.value
+    .map(rule => rule.name)
+    .filter(Boolean)
+)
 
 watch([filterSeverity, filterState], () => { currentPage.value = 1 })
 
@@ -158,6 +172,10 @@ function getRuleHosts(ruleName: string) {
   return rulesHosts.value[ruleName] || []
 }
 
+function isRuleHostsLoading(ruleName: string) {
+  return rulesHostsLoading.value && rulesHosts.value[ruleName] === undefined
+}
+
 function isRuleExpanded(ruleName: string) {
   return expandedRules.value.has(ruleName)
 }
@@ -176,19 +194,24 @@ function goToHost(hostId: number) {
   router.push(`/monitoring/hosts/${hostId}`)
 }
 
-async function fetchData() {
-  loading.value = true
+async function fetchPrometheusStatus() {
+  connected.value = null
   try {
-    const [statusRes, rulesRes, hostsRes]: any[] = await Promise.all([
-      getAlertManagerStatus(),
-      getAlertManagerRules(),
-      getAlertManagerRulesHosts(),
-    ])
+    const statusRes: any = await getPrometheusHealth()
     connected.value = statusRes?.data?.connected ?? false
-    rules.value = rulesRes?.data ?? []
-    rulesHosts.value = hostsRes?.data ?? {}
   } catch {
     connected.value = false
+  }
+}
+
+async function fetchRules() {
+  loading.value = true
+  try {
+    const rulesRes: any = await getAlertManagerRules()
+    rules.value = rulesRes?.data ?? []
+    rulesHosts.value = {}
+    lastRulesLoadedAt.value = Date.now()
+  } catch {
     rules.value = []
     rulesHosts.value = {}
   } finally {
@@ -196,7 +219,47 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
+async function loadVisibleRuleHosts() {
+  const names = visibleRuleNames.value.filter(name => rulesHosts.value[name] === undefined)
+  if (!names.length) return
+
+  const requestId = ++hostLoadRequestId
+  rulesHostsLoading.value = true
+  try {
+    const hostsRes: any = await getAlertManagerRulesHosts({ names })
+    const nextHosts = { ...rulesHosts.value, ...(hostsRes?.data ?? {}) }
+    names.forEach((name) => {
+      if (nextHosts[name] === undefined) nextHosts[name] = []
+    })
+    rulesHosts.value = nextHosts
+  } catch {
+    const nextHosts = { ...rulesHosts.value }
+    names.forEach((name) => { nextHosts[name] = [] })
+    rulesHosts.value = nextHosts
+  } finally {
+    if (requestId === hostLoadRequestId) {
+      rulesHostsLoading.value = false
+    }
+  }
+}
+
+async function fetchData() {
+  const rulesAreStale = Date.now() - lastRulesLoadedAt.value > RULES_REFRESH_TTL_MS
+  const shouldFetchRules = !rules.value.length || rulesAreStale
+  await Promise.all([
+    fetchPrometheusStatus(),
+    shouldFetchRules ? fetchRules() : Promise.resolve(),
+  ])
+  if (!shouldFetchRules) {
+    void loadVisibleRuleHosts()
+  }
+}
+
+watch(visibleRuleNames, () => {
+  void loadVisibleRuleHosts()
+})
+
+onActivated(fetchData)
 </script>
 
 <style scoped>

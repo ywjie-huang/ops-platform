@@ -1,6 +1,7 @@
 <template>
   <div class="host-cell">
-    <div v-if="hosts.length > 0" class="host-tags">
+    <span v-if="loading" class="host-loading">加载中...</span>
+    <div v-else-if="hosts.length > 0" class="host-tags">
       <el-tag
         v-for="host in visibleHosts"
         :key="host.id"
@@ -67,6 +68,7 @@ interface Host {
 const props = defineProps<{
   hosts: Host[]
   expanded: boolean
+  loading: boolean
 }>()
 
 defineEmits<{
@@ -113,5 +115,10 @@ const visibleHosts = computed(() =>
 .host-empty {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.host-loading {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 </style>

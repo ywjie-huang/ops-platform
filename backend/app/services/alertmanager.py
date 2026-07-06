@@ -101,25 +101,42 @@ async def get_rules(db=None) -> list[dict[str, Any]]:
 
 # ─── 规则关联主机 ────────────────────────────────────────────
 
-_rules_hosts_cache: dict[str, list[dict]] = {}
+_rules_hosts_cache: dict[tuple[str, ...], tuple[float, dict[str, list[dict]]]] = {}
 _rules_hosts_cache_ts: float = 0
 _RULES_HOSTS_CACHE_TTL = 30  # 30 秒缓存
 
 
-async def get_rules_hosts(db=None) -> dict[str, list[dict]]:
+def _normalize_rule_names(rule_names: list[str] | None) -> list[str]:
+    return list(dict.fromkeys(name for name in (rule_names or []) if name))
+
+
+async def get_rules_hosts(db=None, rule_names: list[str] | None = None) -> dict[str, list[dict]]:
     """查询每条告警规则关联的主机列表。
 
     流程：获取规则 → 并发执行每条规则的 PromQL → 提取 instance 标签 → 匹配资产。
     返回 { rule_name: [{ id, name, ip }, ...] } 映射。
     """
     global _rules_hosts_cache, _rules_hosts_cache_ts
+    requested_names = _normalize_rule_names(rule_names)
+    cache_key = tuple(sorted(requested_names))
     now = time.time()
-    if _rules_hosts_cache and (now - _rules_hosts_cache_ts) < _RULES_HOSTS_CACHE_TTL:
-        return _rules_hosts_cache
+    cached = _rules_hosts_cache.get(cache_key)
+    if cached and (now - cached[0]) < _RULES_HOSTS_CACHE_TTL:
+        return cached[1]
+
+    full_cached = _rules_hosts_cache.get(())
+    if requested_names and full_cached and (now - full_cached[0]) < _RULES_HOSTS_CACHE_TTL:
+        return {name: full_cached[1].get(name, []) for name in requested_names}
 
     rules = await get_rules(db)
+    if requested_names:
+        requested_set = set(requested_names)
+        rules = [rule for rule in rules if rule.get("name") in requested_set]
     if not rules:
-        return {}
+        result = {name: [] for name in requested_names}
+        _rules_hosts_cache[cache_key] = (time.time(), result)
+        _rules_hosts_cache_ts = time.time()
+        return result
 
     prom_url = get_prometheus_url(db) if db else PROMETHEUS_URL
 
@@ -143,14 +160,17 @@ async def get_rules_hosts(db=None) -> dict[str, list[dict]]:
         if asset.name:
             ip_to_asset[asset.name] = asset
 
-    async def _query_rule_hosts(rule: dict) -> list[dict]:
+    query_timeout = httpx.Timeout(connect=3, read=3, write=3, pool=3)
+    query_semaphore = asyncio.Semaphore(10)
+
+    async def _query_rule_hosts(client: httpx.AsyncClient, rule: dict) -> list[dict]:
         """执行单条规则的 PromQL，提取关联主机。"""
         query = rule.get("query", "")
         if not query:
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3, read=3, write=3, pool=3)) as client:
+            async with query_semaphore:
                 resp = await client.get(
                     f"{prom_url}/api/v1/query",
                     params={"query": query},
@@ -198,15 +218,16 @@ async def get_rules_hosts(db=None) -> dict[str, list[dict]]:
             return []
 
     # 并发查询所有规则
-    tasks = [_query_rule_hosts(rule) for rule in rules]
-    host_lists = await asyncio.gather(*tasks)
+    async with httpx.AsyncClient(timeout=query_timeout) as client:
+        tasks = [_query_rule_hosts(client, rule) for rule in rules]
+        host_lists = await asyncio.gather(*tasks)
 
-    result: dict[str, list[dict]] = {}
+    result: dict[str, list[dict]] = {name: [] for name in requested_names}
     for rule, hosts in zip(rules, host_lists):
         result[rule["name"]] = hosts
 
-    _rules_hosts_cache = result
-    _rules_hosts_cache_ts = now
+    _rules_hosts_cache[cache_key] = (time.time(), result)
+    _rules_hosts_cache_ts = time.time()
     return result
 
 
