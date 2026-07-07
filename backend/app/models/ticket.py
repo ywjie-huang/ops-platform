@@ -18,7 +18,7 @@ class Ticket(Base):
     status: Mapped[str] = mapped_column(String(20), default="open")       # open / in_progress / resolved / closed
     assignee: Mapped[str] = mapped_column(String(100), default="")
     asset_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
-    creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ), onupdate=lambda: datetime.now(CHINA_TZ))
 

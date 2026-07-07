@@ -19,6 +19,20 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+USER_DELETE_SET_NULL_FOREIGN_KEYS = (
+    ("audit_logs", "user_id", "users", "id"),
+    ("alerts", "handler_id", "users", "id"),
+    ("conversations", "user_id", "users", "id"),
+    ("deploy_applications", "creator_id", "users", "id"),
+    ("deploy_records", "trigger_user_id", "users", "id"),
+    ("deploy_approvals", "approver_id", "users", "id"),
+    ("tickets", "creator_id", "users", "id"),
+)
+
+USER_DELETE_CASCADE_FOREIGN_KEYS = (
+    ("user_roles", "user_id", "users", "id"),
+)
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -79,6 +93,73 @@ def _ensure_asset_ssh_columns() -> None:
             conn.commit()
     finally:
         conn.close()
+
+
+def _ensure_user_delete_foreign_keys() -> None:
+    """Keep historical records when users are deleted."""
+    conn = None
+    try:
+        conn = pymysql.connect(
+            host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD, database=MYSQL_DATABASE,
+        )
+        with conn.cursor() as cur:
+            for table_name, column_name, ref_table, ref_column in USER_DELETE_SET_NULL_FOREIGN_KEYS:
+                _ensure_foreign_key_delete_rule(cur, table_name, column_name, ref_table, ref_column, "SET NULL")
+            for table_name, column_name, ref_table, ref_column in USER_DELETE_CASCADE_FOREIGN_KEYS:
+                _ensure_foreign_key_delete_rule(cur, table_name, column_name, ref_table, ref_column, "CASCADE")
+            conn.commit()
+    except Exception as e:
+        logger.warning("[init_db] _ensure_user_delete_foreign_keys skipped: %s", e)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _ensure_foreign_key_delete_rule(
+    cur,
+    table_name: str,
+    column_name: str,
+    ref_table: str,
+    ref_column: str,
+    delete_rule: str,
+) -> None:
+    cur.execute("SHOW TABLES LIKE %s", (table_name,))
+    if cur.fetchone() is None:
+        return
+
+    cur.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE %s", (column_name,))
+    if cur.fetchone() is None:
+        return
+
+    cur.execute(
+        """
+        SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+        FROM information_schema.KEY_COLUMN_USAGE kcu
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+          ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+         AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+        WHERE kcu.CONSTRAINT_SCHEMA = %s
+          AND kcu.TABLE_NAME = %s
+          AND kcu.COLUMN_NAME = %s
+          AND kcu.REFERENCED_TABLE_NAME = %s
+          AND kcu.REFERENCED_COLUMN_NAME = %s
+        LIMIT 1
+        """,
+        (MYSQL_DATABASE, table_name, column_name, ref_table, ref_column),
+    )
+    row = cur.fetchone()
+    constraint_name = row[0] if row else f"fk_{table_name}_{column_name}_{ref_table}_{ref_column}"
+    if row and row[1] == delete_rule:
+        return
+
+    if row:
+        cur.execute(f"ALTER TABLE `{table_name}` DROP FOREIGN KEY `{constraint_name}`")
+    cur.execute(
+        f"ALTER TABLE `{table_name}` "
+        f"ADD CONSTRAINT `{constraint_name}` FOREIGN KEY (`{column_name}`) "
+        f"REFERENCES `{ref_table}`(`{ref_column}`) ON DELETE {delete_rule}"
+    )
+    print(f"[init_db] Updated {table_name}.{column_name} FK ON DELETE {delete_rule}")
 
 
 def _ensure_container_token_column() -> None:
@@ -350,6 +431,7 @@ def init_db() -> None:
     _ensure_container_token_column()
     _ensure_docker_columns()
     _ensure_deploy_tables()
+    _ensure_user_delete_foreign_keys()
     _ensure_deploy_artifact_columns()
     _ensure_webhook_columns()
 
@@ -593,4 +675,3 @@ def _seed_alerts(db: Session) -> None:
             ),
         ]
     )
-

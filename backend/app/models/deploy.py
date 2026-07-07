@@ -39,7 +39,7 @@ class DeployApplication(Base):
     # Webhook 配置（build_mode=webhook 时使用）
     webhook_secret: Mapped[str] = mapped_column(String(64), default="")        # Webhook 签名密钥
 
-    creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    creator_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ), onupdate=lambda: datetime.now(CHINA_TZ))
 
@@ -127,7 +127,7 @@ class DeployRecord(Base):
     version: Mapped[str] = mapped_column(String(100), default="")             # 部署版本号/commit/tag
     status: Mapped[str] = mapped_column(String(20), default="pending")        # pending / building / deploying / success / failed / cancelled
     trigger_type: Mapped[str] = mapped_column(String(20), default="manual")   # manual / rollback / webhook
-    trigger_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    trigger_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # 部署配置快照（部署时冻结，保证回滚时配置不变）
     deploy_config: Mapped[str] = mapped_column(Text, default="")              # JSON 快照
@@ -156,7 +156,7 @@ class DeployApproval(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     record_id: Mapped[int] = mapped_column(Integer, ForeignKey("deploy_records.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")         # pending / approved / rejected
-    approver_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    approver_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

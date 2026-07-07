@@ -12,7 +12,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     username: Mapped[str] = mapped_column(String(100), default="")
     action: Mapped[str] = mapped_column(String(50), nullable=False)       # create / update / delete / login / logout
     target_type: Mapped[str] = mapped_column(String(50), nullable=False)  # asset / user / role / ticket / alert / auth
