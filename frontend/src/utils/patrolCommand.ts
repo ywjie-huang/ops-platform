@@ -71,6 +71,28 @@ export interface RiskObjectPage<T = RiskObject> {
   totalPages: number
 }
 
+export interface CockpitStat {
+  key: string
+  label: string
+  value: string
+  helper: string
+  tone: PatrolTone
+}
+
+export interface RadarObject extends RiskObject {
+  ring: number
+  angle: number
+  size: number
+}
+
+export interface TickerItem {
+  key: string
+  title: string
+  detail: string
+  meta: string
+  tone: PatrolTone
+}
+
 export interface PagerMeta {
   page: number
   pageSize: number
@@ -164,6 +186,49 @@ export function buildPatrolOverview(report?: PatrolReportLike | null): PatrolOve
   }
 }
 
+export function buildCockpitStats(report: PatrolReportLike | null | undefined, coverageCount = 0, updatedText = '-'): CockpitStat[] {
+  const overview = buildPatrolOverview(report)
+  const healthTone: PatrolTone = overview.critical > 0 ? 'danger' : overview.warning > 0 ? 'warning' : 'success'
+
+  return [
+    {
+      key: 'health',
+      label: '健康分',
+      value: String(overview.healthScore),
+      helper: overview.priorityLabel,
+      tone: healthTone,
+    },
+    {
+      key: 'critical',
+      label: '严重项',
+      value: String(overview.critical),
+      helper: `${overview.priority} 优先级`,
+      tone: overview.critical > 0 ? 'danger' : 'success',
+    },
+    {
+      key: 'warning',
+      label: '警告项',
+      value: String(overview.warning),
+      helper: `${overview.abnormal} 个异常项`,
+      tone: overview.warning > 0 ? 'warning' : 'success',
+    },
+    {
+      key: 'coverage',
+      label: '覆盖对象',
+      value: String(coverageCount),
+      helper: '主机 / K8s / 资产',
+      tone: 'info',
+    },
+    {
+      key: 'updated',
+      label: '最近巡检',
+      value: updatedText,
+      helper: report?.operator || '系统任务',
+      tone: 'success',
+    },
+  ]
+}
+
 export function buildRiskObjects(items: PatrolItemLike[] = []): RiskObject[] {
   const groups = new Map<string, RiskObject>()
 
@@ -223,6 +288,49 @@ export function buildRiskObjects(items: PatrolItemLike[] = []): RiskObject[] {
       if (categoryDelta !== 0) return categoryDelta
       return a.targetName.localeCompare(b.targetName)
     })
+}
+
+export function buildRadarObjects(objects: RiskObject[] = []): RadarObject[] {
+  const categoryBase: Record<string, { ring: number; angle: number }> = {
+    host: { ring: 34, angle: -34 },
+    k8s: { ring: 56, angle: 86 },
+    asset: { ring: 64, angle: 164 },
+  }
+
+  const seenByCategory: Record<string, number> = {}
+
+  return objects.slice(0, 10).map((object) => {
+    const seen = seenByCategory[object.category] || 0
+    seenByCategory[object.category] = seen + 1
+    const base = categoryBase[object.category] || { ring: 62, angle: 220 }
+
+    return {
+      ...object,
+      ring: Math.min(72, base.ring + seen * 9),
+      angle: base.angle + seen * 52,
+      size: object.status === 'critical' ? 18 : object.status === 'warning' ? 14 : 10,
+    }
+  })
+}
+
+export function buildTickerItems(priorityObjects: RiskObject[] = [], reports: PatrolReportLike[] = []): TickerItem[] {
+  const riskItems = priorityObjects.slice(0, 4).map((object) => ({
+    key: `risk-${object.key}`,
+    title: object.targetName,
+    detail: `${object.headline}，${object.impact}`,
+    meta: `${object.categoryLabel} · ${object.priority}`,
+    tone: object.tone,
+  }))
+
+  const reportItems = reports.slice(0, 3).map((report, index) => ({
+    key: `report-${index}`,
+    title: report.title || `巡检批次 ${index + 1}`,
+    detail: `${report.critical_count || 0} 严重 / ${report.warning_count || 0} 警告`,
+    meta: getPatrolPriority(report),
+    tone: statusTone(report.status),
+  }))
+
+  return [...riskItems, ...reportItems]
 }
 
 export function groupRiskObjectsByCategory(objects: RiskObject[] = []) {

@@ -4,9 +4,12 @@ import { test } from 'node:test'
 const {
   buildObjectCounts,
   buildCockpitRouteLocation,
+  buildCockpitStats,
   buildPager,
   buildPatrolOverview,
+  buildRadarObjects,
   buildRiskObjects,
+  buildTickerItems,
   getPatrolPriority,
   paginateRiskObjects,
   statusLabel,
@@ -175,4 +178,59 @@ test('builds pager metadata for server-paginated lists and clamps invalid pages'
 
   assert.equal(buildPager(12, 99, 5).page, 3)
   assert.equal(buildPager(12, -1, 5).page, 1)
+})
+
+test('builds cockpit stats for the immersive top rail', () => {
+  const stats = buildCockpitStats(report, 4, '刚刚')
+
+  assert.deepEqual(stats.map((item) => ({
+    key: item.key,
+    label: item.label,
+    value: item.value,
+    tone: item.tone,
+  })), [
+    { key: 'health', label: '健康分', value: '55', tone: 'danger' },
+    { key: 'critical', label: '严重项', value: '2', tone: 'danger' },
+    { key: 'warning', label: '警告项', value: '2', tone: 'warning' },
+    { key: 'coverage', label: '覆盖对象', value: '4', tone: 'info' },
+    { key: 'updated', label: '最近巡检', value: '刚刚', tone: 'success' },
+  ])
+})
+
+test('maps risk objects into stable radar positions by category and severity', () => {
+  const radar = buildRadarObjects(buildRiskObjects(items))
+
+  assert.deepEqual(radar.map((item) => ({
+    key: item.key,
+    targetName: item.targetName,
+    ring: item.ring,
+    angle: item.angle,
+    size: item.size,
+    tone: item.tone,
+  })), [
+    { key: 'host::web-01', targetName: 'web-01', ring: 34, angle: -34, size: 18, tone: 'danger' },
+    { key: 'host::db-02', targetName: 'db-02', ring: 43, angle: 18, size: 18, tone: 'danger' },
+    { key: 'k8s::k8s-prod', targetName: 'k8s-prod', ring: 56, angle: 86, size: 14, tone: 'warning' },
+    { key: 'asset::cert-api', targetName: 'cert-api', ring: 64, angle: 164, size: 10, tone: 'success' },
+  ])
+})
+
+test('builds ticker items from priority objects and recent reports', () => {
+  const priority = buildRiskObjects(items).filter((item) => item.status !== 'normal')
+  const ticker = buildTickerItems(priority, [
+    { title: '巡检报告 A', status: 'critical', critical_count: 2, warning_count: 1 },
+    { title: '巡检报告 B', status: 'normal', critical_count: 0, warning_count: 0 },
+  ])
+
+  assert.deepEqual(ticker.map((item) => ({
+    key: item.key,
+    title: item.title,
+    tone: item.tone,
+  })), [
+    { key: 'risk-host::web-01', title: 'web-01', tone: 'danger' },
+    { key: 'risk-host::db-02', title: 'db-02', tone: 'danger' },
+    { key: 'risk-k8s::k8s-prod', title: 'k8s-prod', tone: 'warning' },
+    { key: 'report-0', title: '巡检报告 A', tone: 'danger' },
+    { key: 'report-1', title: '巡检报告 B', tone: 'success' },
+  ])
 })
