@@ -14,6 +14,7 @@ export interface SSEEvent {
   pending_id?: string
   description?: string
   conversation_id?: number
+  title_pending?: boolean
 }
 
 export interface AiInfo {

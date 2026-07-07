@@ -266,6 +266,9 @@ const loading = ref(false)
 const confirmLoading = ref(false)
 const messagesRef = ref<HTMLElement>()
 const aiModel = ref('')
+const DEFAULT_CONVERSATION_TITLE = '新对话'
+const TITLE_REFRESH_ATTEMPTS = 10
+const TITLE_REFRESH_INTERVAL_MS = 600
 
 const quickQuestions = [
   '今天哪台服务器资源异常？',
@@ -330,6 +333,30 @@ async function loadConversations() {
   } catch { /* ignore */ }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForConversationTitle(conversationId: number) {
+  let latest: Conversation[] = []
+  for (let attempt = 0; attempt < TITLE_REFRESH_ATTEMPTS; attempt += 1) {
+    await delay(TITLE_REFRESH_INTERVAL_MS)
+    try {
+      latest = await getConversations()
+    } catch {
+      return
+    }
+    const conversation = latest.find(c => c.id === conversationId)
+    if (conversation && conversation.title !== DEFAULT_CONVERSATION_TITLE) {
+      conversations.value = latest
+      return
+    }
+  }
+  if (latest.length) {
+    conversations.value = latest
+  }
+}
+
 async function loadMessages(convId: number) {
   try {
     const msgs = await getMessages(convId)
@@ -385,12 +412,20 @@ async function sendMessage(text: string) {
 
   loading.value = true
   const streamState = createAiStreamState()
+  let titlePendingConvId: number | null = null
 
   try {
     for await (const event of sendAiMessageStream(text, currentConvId.value || undefined)) {
       handleEvent(event, streamState)
+      if (event.title_pending && event.conversation_id) {
+        titlePendingConvId = event.conversation_id
+      }
     }
-    await loadConversations()
+    if (titlePendingConvId) {
+      await waitForConversationTitle(titlePendingConvId)
+    } else {
+      await loadConversations()
+    }
   } catch (e: any) {
     handleEvent(
       { type: 'error', content: '请求失败：' + (e.message || '服务暂时不可用') },

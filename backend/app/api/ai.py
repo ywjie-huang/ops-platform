@@ -163,7 +163,7 @@ async def api_chat(
     )
     from app.services.ai.dispatcher import dispatch_tool, is_readonly
     from app.services.ai.llm_client import LLMClient
-    from app.services.ai.titles import is_title_worthy, schedule_title_refinement
+    from app.services.ai.titles import DEFAULT_TITLE, is_title_worthy, schedule_title_refinement
     from app.services.ai.tools import TOOL_DEFINITIONS
 
     config = get_llm_config(db)
@@ -186,7 +186,7 @@ async def api_chat(
 
     # 追加用户消息
     add_message(db, cid, "user", body.message)
-    should_generate_title = is_title_worthy(body.message)
+    should_generate_title = conv.title == DEFAULT_TITLE and is_title_worthy(body.message)
     db.commit()
 
     temperature = float(config.get("temperature") or 0.7)
@@ -203,16 +203,17 @@ async def api_chat(
         max_rounds = 10
         title_refinement_scheduled = False
 
-        def maybe_schedule_title_refinement(assistant_text: str | None = None) -> None:
+        def maybe_schedule_title_refinement(assistant_text: str | None = None) -> bool:
             nonlocal title_refinement_scheduled
             if title_refinement_scheduled or not should_generate_title:
-                return
+                return False
             title_refinement_scheduled = True
             schedule_title_refinement(
                 cid,
                 body.message,
                 assistant_text=assistant_text,
             )
+            return True
 
         for _round in range(max_rounds):
             if await request.is_disconnected():
@@ -243,8 +244,12 @@ async def api_chat(
                 if full_text:
                     add_message(db, cid, "assistant", full_text)
                     db.commit()
-                maybe_schedule_title_refinement(full_text)
-                yield _sse_event({"type": "done", "conversation_id": cid})
+                title_pending = maybe_schedule_title_refinement(full_text)
+                yield _sse_event({
+                    "type": "done",
+                    "conversation_id": cid,
+                    "title_pending": title_pending,
+                })
                 return
 
             # 处理工具调用
@@ -274,6 +279,7 @@ async def api_chat(
                         f"{asset_info}操作: {tool_name}\n"
                         f"参数: {json.dumps(tool_args, ensure_ascii=False, indent=2)}"
                     )
+                    title_pending = maybe_schedule_title_refinement(confirm_description)
                     yield _sse_event({
                         "type": "tool_confirm",
                         "pending_id": pending_id,
@@ -281,9 +287,9 @@ async def api_chat(
                         "args": tool_args,
                         "conversation_id": cid,
                         "description": confirm_description,
+                        "title_pending": title_pending,
                     })
                     db.commit()
-                    maybe_schedule_title_refinement(confirm_description)
                     return
 
             db.commit()

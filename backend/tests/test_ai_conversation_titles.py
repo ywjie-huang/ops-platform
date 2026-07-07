@@ -146,10 +146,13 @@ def test_chat_api_schedules_title_refinement_once_after_final_answer():
     assert "def maybe_schedule_title_refinement" in source
     assert "maybe_schedule_title_refinement(full_text)" in source
     assert "maybe_schedule_title_refinement(confirm_description)" in source
+    assert '"title_pending": title_pending' in source
 
 
 def test_chat_api_uses_title_worthiness_only_as_a_generation_gate():
     source = Path("backend/app/api/ai.py").read_text(encoding="utf-8")
 
+    assert "DEFAULT_TITLE" in source
     assert "is_title_worthy" in source
-    assert "should_generate_title = is_title_worthy(body.message)" in source
+    assert "conv.title == DEFAULT_TITLE" in source
+    assert "and is_title_worthy(body.message)" in source

@@ -23,6 +23,7 @@ export interface AiStreamEvent {
   pending_id?: string
   description?: string
   conversation_id?: number
+  title_pending?: boolean
 }
 
 export interface DisplayMessage {
