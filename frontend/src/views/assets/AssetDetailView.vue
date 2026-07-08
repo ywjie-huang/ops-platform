@@ -214,7 +214,14 @@
       </div>
     </template>
 
-    <el-dialog v-model="dialogVisible" title="编辑主机" width="min(620px, 90vw)" destroy-on-close>
+    <el-drawer
+      v-model="dialogVisible"
+      title="编辑主机"
+      direction="rtl"
+      size="560px"
+      destroy-on-close
+      class="asset-drawer"
+    >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="86px" label-position="left">
         <div class="form-group">
           <div class="form-group-title"><span class="form-group-number">1</span> 基础信息</div>
@@ -245,51 +252,69 @@
           <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
         </div>
         <div class="form-group">
-          <div class="form-group-title"><span class="form-group-number">3</span> SSH 连接配置</div>
+          <div class="form-group-title">
+            <span class="form-group-number">3</span> SSH 连接配置
+            <span class="form-group-hint">可选，可稍后补齐</span>
+          </div>
           <div class="form-row">
-            <el-form-item label="端口"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" class="form-control" /></el-form-item>
+            <el-form-item label="端口" prop="ssh_port"><el-input-number v-model="form.ssh_port" :min="1" :max="65535" controls-position="right" class="form-control" /></el-form-item>
             <el-form-item label="用户名"><el-input v-model="form.ssh_username" placeholder="root" /></el-form-item>
           </div>
-          <div class="form-row">
-            <el-form-item label="认证方式">
-              <el-select v-model="form.auth_method" class="form-control">
-                <el-option label="密码" value="password" />
-                <el-option label="SSH 密钥" value="key" />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="form.auth_method === 'password'" label="密码">
-              <el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" />
-            </el-form-item>
-            <el-form-item v-else label="SSH 密钥">
-              <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" class="form-control" clearable>
-                <el-option v-for="key in sshKeys" :key="key.id" :label="`${key.name} (${key.username})`" :value="key.id">
-                  <div class="key-option">
-                    <span>{{ key.name }}</span>
-                    <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
-                      {{ key.auth_type === 'key' ? '私钥' : '密码' }}
-                    </el-tag>
-                  </div>
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </div>
+          <el-form-item label="认证方式">
+            <el-radio-group v-model="form.auth_method" class="auth-method-group">
+              <el-radio-button value="password">密码</el-radio-button>
+              <el-radio-button value="key">SSH 密钥</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-show="form.auth_method === 'password'" label="密码" class="credential-form-item">
+            <el-input v-model="form.ssh_password" type="password" show-password placeholder="留空则不修改" />
+          </el-form-item>
+          <el-form-item v-show="form.auth_method === 'key'" label="SSH 密钥" class="credential-form-item">
+            <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" class="form-control" clearable>
+              <template #empty>
+                <div class="key-empty">
+                  暂无密钥，<el-link type="primary" @click="goToSSHKeys">去创建</el-link>
+                </div>
+              </template>
+              <el-option v-for="key in sshKeys" :key="key.id" :label="`${key.name} (${key.username})`" :value="key.id">
+                <div class="key-option">
+                  <span>{{ key.name }}</span>
+                  <el-tag size="small" :type="key.auth_type === 'key' ? 'success' : 'info'">
+                    {{ key.auth_type === 'key' ? '私钥' : '密码' }}
+                  </el-tag>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+        <div class="drawer-footer">
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <div class="drawer-footer-right">
+            <el-button :loading="saving" @click="handleSave(true)">保存并继续</el-button>
+            <el-button type="primary" :loading="saving" @click="handleSave(false)">保存</el-button>
+          </div>
+        </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onActivated, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, type FormInstance } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { ArrowLeft, EditPen, Monitor } from '@element-plus/icons-vue'
 import { getAsset, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
+import {
+  buildAssetPayload,
+  createAssetForm,
+  createAssetFormFromAsset,
+  isValidIpAddress,
+  type AssetForm,
+} from '@/utils/assetForm'
 import {
   formatAssetDate,
   getAssetCompleteness,
@@ -372,26 +397,27 @@ const suggestedActions = computed<SuggestedAction[]>(() => {
   return actions
 })
 
-const form = reactive({
-  name: '',
-  asset_type: '云主机',
-  ip_address: '',
-  status: '使用中',
-  owner: '',
-  description: '',
-  spec: '',
-  os: '',
-  ssh_port: 22,
-  ssh_username: 'root',
-  ssh_password: '',
-  auth_method: 'password' as 'password' | 'key',
-  ssh_key_id: null as number | null,
-})
-const rules = {
+const form = reactive<AssetForm>(createAssetForm())
+
+const validateIpAddress = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback(new Error('请输入 IP'))
+    return
+  }
+  callback(isValidIpAddress(value) ? undefined : new Error('请输入正确的 IPv4 地址'))
+}
+
+const validateSshPort = (_rule: unknown, value: number, callback: (error?: Error) => void) => {
+  const port = Number(value)
+  callback(Number.isInteger(port) && port >= 1 && port <= 65535 ? undefined : new Error('端口范围为 1-65535'))
+}
+
+const rules: FormRules<AssetForm> = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
   asset_type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  ip_address: [{ required: true, message: '请输入 IP', trigger: 'blur' }],
+  ip_address: [{ validator: validateIpAddress, trigger: 'blur' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
+  ssh_port: [{ validator: validateSshPort, trigger: 'change' }],
 }
 
 async function fetchAsset() {
@@ -413,45 +439,30 @@ async function fetchSSHKeys() {
 
 function openEdit() {
   if (!asset.value) return
-  const isKey = !!asset.value.ssh_key_id
-  Object.assign(form, {
-    name: asset.value.name,
-    asset_type: asset.value.asset_type,
-    ip_address: asset.value.ip_address,
-    status: asset.value.status,
-    owner: asset.value.owner || '',
-    description: asset.value.description || '',
-    spec: asset.value.spec || '',
-    os: asset.value.os || '',
-    ssh_port: asset.value.ssh_port || 22,
-    ssh_username: asset.value.ssh_username || 'root',
-    ssh_password: '',
-    auth_method: isKey ? 'key' : 'password',
-    ssh_key_id: asset.value.ssh_key_id || null,
-  })
+  Object.assign(form, createAssetFormFromAsset(asset.value))
   fetchSSHKeys()
   dialogVisible.value = true
 }
 
-async function handleSave() {
+async function handleSave(keepOpen = false) {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   saving.value = true
   try {
-    const payload: any = { ...form }
-    if (payload.auth_method === 'password') {
-      payload.ssh_key_id = null
-    } else {
-      payload.ssh_password = ''
+    await updateAsset(assetId.value, buildAssetPayload(form))
+    ElMessage.success(keepOpen ? '已保存，可继续编辑' : '更新成功')
+    if (!keepOpen) {
+      dialogVisible.value = false
     }
-    delete payload.auth_method
-    await updateAsset(assetId.value, payload)
-    ElMessage.success('更新成功')
-    dialogVisible.value = false
     fetchAsset()
   } finally {
     saving.value = false
   }
+}
+
+function goToSSHKeys() {
+  dialogVisible.value = false
+  router.push('/assets/ssh-keys')
 }
 
 onActivated(() => {
@@ -779,11 +790,48 @@ onActivated(() => {
   width: 100%;
 }
 
+.form-group-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.auth-method-group,
+.credential-form-item :deep(.el-select),
+.credential-form-item :deep(.el-input) {
+  width: 100%;
+}
+
+.credential-form-item {
+  min-height: 32px;
+}
+
+.key-empty {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .key-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
+}
+
+.drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.drawer-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 @media (max-width: 1180px) {
@@ -828,6 +876,19 @@ onActivated(() => {
 @media (max-width: 520px) {
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .drawer-footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .drawer-footer-right {
+    width: 100%;
+  }
+
+  .drawer-footer-right :deep(.el-button) {
+    flex: 1;
   }
 }
 </style>
