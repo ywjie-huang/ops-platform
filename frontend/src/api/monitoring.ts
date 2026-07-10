@@ -7,8 +7,13 @@ export interface HostListItem {
   owner: string
   status: string
   cpu: number
+  cpu_cores?: number
   memory: number
+  memory_total_bytes?: number
+  memory_available_bytes?: number
   disk: number
+  disk_total_bytes?: number
+  disk_available_bytes?: number
   network_in: number
   network_out: number
   load: number

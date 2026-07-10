@@ -21,3 +21,7 @@ export function getActivities(limit = 20, type?: string) {
 export function getAlertTrend() {
   return request.get('/dashboard/alert-trend')
 }
+
+export function getDashboardResourceHealth() {
+  return request.get('/dashboard/resource-health')
+}

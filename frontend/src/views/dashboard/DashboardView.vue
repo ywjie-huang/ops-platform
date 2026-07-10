@@ -1,217 +1,395 @@
 <template>
-  <div v-loading="loading" class="dashboard">
-    <section class="page-head">
-      <div>
-        <div class="eyebrow">Dashboard Preview / Duty First</div>
-        <h1>先看异常，再看影响，再进入处理</h1>
-        <div class="page-subtitle">
-          这个首页直接按预览稿的逻辑展开：第一屏优先回答现在有什么问题、影响到哪里、值班人员该先点哪里。
+  <div v-loading="loading" class="command-dashboard">
+    <header class="command-header">
+      <div class="command-heading">
+        <div class="command-kicker">
+          <span class="live-dot" aria-hidden="true"></span>
+          当前值班 · {{ authStore.fullName || '管理员' }}
         </div>
+        <h1>事件指挥台</h1>
+        <p>10 秒发现异常，30 秒定位影响，1 分钟进入处置。</p>
       </div>
-      <div class="shift-meta">
-        <strong>当前值班：{{ authStore.fullName || '管理员' }}</strong>
-        <span>{{ currentDateLabel }} · {{ currentDateTime }}</span>
-      </div>
-    </section>
 
-    <section class="risk-strip" aria-label="当前风险指标">
-      <article v-for="card in metricCards" :key="card.key" class="metric">
-        <div class="metric-top">
-          <div class="metric-label">{{ card.label }}</div>
-          <div class="metric-tone" :class="toneDotClass(card.tone)"></div>
+      <div class="command-meta">
+        <div class="command-clock" aria-label="当前时间">
+          <strong>{{ currentTime }}</strong>
+          <span>{{ currentDateLabel }}</span>
         </div>
-        <div class="metric-value">{{ card.value }}</div>
-        <div class="metric-hint">{{ card.hint }}</div>
-        <div class="metric-tag" :class="toneTagClass(card.tone)">{{ metricTag(card) }}</div>
+        <button
+          type="button"
+          class="refresh-button"
+          :disabled="refreshing"
+          aria-label="刷新仪表盘数据"
+          @click="refreshDashboard(true)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" />
+          </svg>
+          {{ refreshing ? '刷新中' : '刷新' }}
+        </button>
+        <span class="updated-at">更新于 {{ lastUpdatedLabel }}</span>
+      </div>
+    </header>
+
+    <section class="status-strip" aria-label="当前运行态势">
+      <article
+        v-for="metric in healthMetrics"
+        :key="metric.key"
+        class="status-metric"
+        :class="`status-metric--${metric.tone}`"
+      >
+        <div class="status-metric__label">
+          <span class="status-indicator" aria-hidden="true"></span>
+          {{ metric.label }}
+        </div>
+        <div class="status-metric__value">
+          {{ metric.value }}<small v-if="metric.unit">{{ metric.unit }}</small>
+        </div>
+        <p>{{ metric.hint }}</p>
       </article>
     </section>
 
-    <section class="main-grid">
-      <div class="stack">
-        <article class="panel">
-          <div class="panel-head">
+    <div v-if="coreError" class="notice notice--danger" role="alert">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 9v4m0 4h.01M10.3 3.8 2.4 17.5A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.5L13.7 3.8a2 2 0 0 0-3.4 0Z" />
+      </svg>
+      部分核心数据加载失败，页面已保留成功返回的内容。可稍后刷新重试。
+    </div>
+
+    <main class="command-layout">
+      <div class="primary-column">
+        <section class="command-panel event-queue" aria-labelledby="event-queue-title">
+          <div class="panel-header">
             <div>
-              <div class="panel-title">今日关注</div>
-              <div class="panel-note">把首页黄金区域留给最需要先处理的对象，而不是最近发生过的所有事情。</div>
+              <div class="panel-heading-line">
+                <h2 id="event-queue-title">优先事件队列</h2>
+                <span class="count-badge">{{ focusItems.length }}</span>
+              </div>
+              <p>按严重程度聚合告警、工单与资产变化，先处理最可能扩大影响的事项。</p>
             </div>
-            <div class="segmented" role="tablist" aria-label="Focus filter">
+            <div class="segmented-control" role="group" aria-label="事件类型筛选">
               <button
                 v-for="filter in focusFilters"
                 :key="filter.key"
                 type="button"
+                :aria-pressed="activeFocusFilter === filter.key"
                 :class="{ active: activeFocusFilter === filter.key }"
-                @click="activeFocusFilter = filter.key"
+                @click="handleFocusFilter(filter.key)"
               >
                 {{ filter.label }}
               </button>
             </div>
           </div>
 
-          <div v-if="filteredFocusItems.length" class="focus-list">
-            <article v-for="item in filteredFocusItems" :key="item.key" class="focus-item">
-              <div class="focus-badge" :class="toneTagClass(item.tone)">{{ item.badge }}</div>
-              <div class="focus-main">
-                <div class="focus-title">{{ item.title }}</div>
-                <div class="focus-meta">{{ item.meta }}</div>
-                <div class="focus-desc">{{ item.detail }}</div>
-                <div class="focus-actions">
-                  <button type="button" class="btn primary" @click="navigate(item.primaryActionPath)">
-                    {{ item.primaryActionLabel }}
-                  </button>
-                  <button
-                    v-if="item.secondaryActionLabel && item.secondaryActionPath"
-                    type="button"
-                    class="btn"
-                    @click="navigate(item.secondaryActionPath)"
-                  >
-                    {{ item.secondaryActionLabel }}
-                  </button>
-                  <button v-else type="button" class="btn subtle" @click="navigate('/tickets')">
-                    继续跟进
-                  </button>
-                </div>
-              </div>
-              <div class="eta">
-                <strong>{{ focusEta(item).headline }}</strong>
-                {{ focusEta(item).detail }}
-              </div>
-            </article>
+          <div v-if="filteredFocusItems.length" class="event-list">
+            <button
+              v-for="item in filteredFocusItems"
+              :key="item.key"
+              type="button"
+              class="event-row"
+              :class="[`event-row--${item.tone}`, { selected: activeFocusItem?.key === item.key }]"
+              :aria-label="`查看事件：${item.title}`"
+              @click="selectEvent(item)"
+            >
+              <span class="event-severity" :class="toneClass(item.tone)">{{ item.badge }}</span>
+              <span class="event-copy">
+                <strong>{{ item.title }}</strong>
+                <span class="event-meta">{{ item.meta }}</span>
+                <span class="event-description">{{ item.detail }}</span>
+              </span>
+              <span class="event-side">
+                <span>{{ item.summaryTag }}</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </span>
+            </button>
           </div>
+
           <div v-else class="empty-state">
-            <p>当前没有需要优先处理的对象，新的告警、工单或资产异常会优先显示在这里。</p>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            <strong>当前没有匹配的优先事件</strong>
+            <span>新的告警、工单或资产异常会自动进入这里。</span>
           </div>
-        </article>
+        </section>
 
-        <div class="mini-grid">
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="panel-title">处置入口</div>
-                <div class="panel-note">入口本身带状态，不再只是静态跳转。</div>
-              </div>
-            </div>
-            <div class="shortcut-list">
-              <button
-                v-for="item in shortcutItems"
-                :key="item.key"
-                type="button"
-                class="shortcut"
-                @click="navigate(item.path)"
-              >
-                <div class="shortcut-icon" :class="toneTagClass(item.tone)">
-                  {{ shortcutAbbr[item.key] }}
-                </div>
-                <div>
-                  <div class="shortcut-name">{{ item.label }}</div>
-                  <div class="shortcut-desc">{{ item.description }}</div>
-                </div>
-                <div class="shortcut-state">
-                  <strong>{{ item.value }}</strong>
-                  {{ item.valueLabel }}
-                </div>
-              </button>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="panel-title">告警趋势</div>
-                <div class="panel-note">趋势保留，但退到辅助判断层，不抢主任务视线。</div>
-              </div>
-            </div>
-            <div class="trend-wrap">
-              <div class="trend-legend">
-                <span>近 7 天告警总量</span>
-                <strong>{{ alertTrendTotal }}</strong>
-              </div>
-              <AlertTrendChart :dates="alertTrend.dates" :counts="alertTrend.counts" />
-              <div class="trend-axis">
-                <span v-for="date in alertTrend.dates" :key="date">{{ date }}</span>
-              </div>
-            </div>
-          </article>
-        </div>
-      </div>
-
-      <div class="stack">
-        <article class="panel">
-          <div class="duty-card">
-            <div class="duty-top">
-              <div>
-                <div class="duty-title">值班视角摘要</div>
-                <div class="duty-copy">这里替代原来的欢迎区，用更少的话告诉值班人当前节奏、值班角色和整体风险态势。</div>
-              </div>
-              <div class="clock">
-                <strong>{{ currentDateTime }}</strong>
-                <span>实时更新时间</span>
-              </div>
-            </div>
-            <div class="duty-facts">
-              <div v-for="fact in dutyFacts" :key="fact.label" class="fact">
-                <div class="fact-label">{{ fact.label }}</div>
-                <div class="fact-value">{{ fact.value }}</div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
+        <section class="command-panel resource-panel" aria-labelledby="resource-title">
+          <div class="panel-header">
             <div>
-              <div class="panel-title">资产结构</div>
-              <div class="panel-note">降级到辅助信息层，用于背景认知而不是第一优先级判断。</div>
-            </div>
-          </div>
-          <div v-if="typeRows.length" class="asset-list">
-            <div v-for="item in typeRows" :key="item.key" class="asset-row">
-              <div class="asset-name">{{ item.label }}</div>
-              <div class="asset-bar">
-                <div class="asset-fill" :class="typeFillClass(item.tone)" :style="{ width: typeFillWidth(item) }"></div>
+              <div class="panel-heading-line">
+                <h2 id="resource-title">资源健康</h2>
+                <span class="coverage-badge" :class="coverageToneClass">
+                  采集覆盖 {{ resourceCoverageLabel }}
+                </span>
               </div>
-              <div class="asset-value">{{ item.value }}</div>
+              <p>CPU（容量加权）与内存（总体使用）按全主机池容量计算；P95 与热点数用于识别局部过载。</p>
             </div>
+            <button type="button" class="text-action" @click="navigate('/monitoring/hosts')">
+              查看主机明细
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
           </div>
-          <div v-else class="empty-state empty-state--compact">
-            <p>暂无资产类型分布</p>
-          </div>
-        </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <div class="panel-title">最近活动</div>
-              <div class="panel-note">保留，但降低权重，不让它压过当前风险对象。</div>
-            </div>
+          <div v-if="resourceError" class="notice notice--warning" role="status">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 9v4m0 4h.01M10.3 3.8 2.4 17.5A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.5L13.7 3.8a2 2 0 0 0-3.4 0Z" />
+            </svg>
+            Prometheus 资源聚合暂不可用，不影响告警、工单与资产数据查看。
           </div>
-          <div class="activity-list">
-            <div class="segmented segmented--activity" role="tablist" aria-label="活动筛选">
+
+          <div class="table-wrapper">
+            <table class="resource-table">
+              <thead>
+                <tr>
+                  <th scope="col">资源指标</th>
+                  <th scope="col">总体使用</th>
+                  <th scope="col">P95</th>
+                  <th scope="col">热点主机</th>
+                  <th scope="col">容量口径</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in resourceRows" :key="row.key">
+                  <th scope="row">
+                    <span class="resource-name">{{ row.label }}</span>
+                    <span class="resource-state" :class="toneClass(row.tone)">{{ resourceStateLabel(row.tone) }}</span>
+                  </th>
+                  <td class="resource-usage">
+                    <div class="resource-value">{{ row.valueLabel }}</div>
+                    <progress
+                      class="resource-progress"
+                      :class="`resource-progress--${row.tone}`"
+                      :value="row.value ?? 0"
+                      max="100"
+                      :aria-label="`${row.label}总体使用率${row.valueLabel}`"
+                    >
+                      {{ row.valueLabel }}
+                    </progress>
+                  </td>
+                  <td><strong class="mono-value">{{ row.p95Label }}</strong></td>
+                  <td><span :class="{ 'hot-hosts': row.hotHosts > 0 }">{{ row.hotHostLabel }}</span></td>
+                  <td>{{ row.detail }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <footer class="resource-footnote">
+            <span>CPU = Σ（单机 CPU% × 核心数）÷ Σ核心数</span>
+            <span>内存 = Σ已用字节 ÷ Σ总字节</span>
+            <span>根分区 = Σ已用字节 ÷ Σ总字节</span>
+            <span v-if="resourcePool?.unmonitored">{{ resourcePool.unmonitored }} 台主机未纳入容量汇总</span>
+          </footer>
+        </section>
+
+        <section class="command-panel activity-panel" aria-labelledby="activity-title">
+          <div class="panel-header panel-header--compact">
+            <div>
+              <h2 id="activity-title">最近活动</h2>
+              <p>保留处置链路中的关键操作，便于接班时快速回看。</p>
+            </div>
+            <div class="segmented-control segmented-control--scroll" role="group" aria-label="活动类型筛选">
               <button
                 v-for="filter in activityFilters"
                 :key="filter.key"
                 type="button"
-                :class="{ active: activeFilter === filter.key }"
-                @click="handleFilterChange(filter.key)"
+                :aria-pressed="activeActivityFilter === filter.key"
+                :class="{ active: activeActivityFilter === filter.key }"
+                @click="handleActivityFilter(filter.key)"
               >
                 {{ filter.label }}
               </button>
             </div>
-            <template v-if="formattedActivities.length">
-              <div v-for="item in formattedActivities" :key="`${item.time}-${item.description}`" class="activity-item">
-                <div class="activity-top">
-                  <div class="activity-text">{{ item.description }}</div>
-                  <div class="activity-chip" :class="activityToneClass(item.type)">{{ item.type_label }}</div>
+          </div>
+
+          <ol v-if="formattedActivities.length" class="activity-timeline">
+            <li v-for="activity in formattedActivities" :key="`${activity.time}-${activity.description}`">
+              <span class="timeline-marker" :class="activityToneClass(activity.type)" aria-hidden="true"></span>
+              <div class="timeline-copy">
+                <div>
+                  <strong>{{ activity.description }}</strong>
+                  <span>{{ activity.type_label }}</span>
                 </div>
-                <div class="activity-meta">{{ item.displayTime }}<span v-if="item.username"> · {{ item.username }}</span></div>
+                <p v-if="activity.detail">{{ activity.detail }}</p>
+                <time>{{ activity.displayTime }}<template v-if="activity.username"> · {{ activity.username }}</template></time>
               </div>
-            </template>
-            <div v-else class="empty-state empty-state--compact">
-              <p>暂无活动记录</p>
+            </li>
+          </ol>
+          <div v-else class="empty-state empty-state--small">
+            <strong>暂无活动记录</strong>
+            <span>系统关键操作会在这里形成可回看的时间线。</span>
+          </div>
+        </section>
+      </div>
+
+      <aside class="secondary-column" aria-label="影响与处置辅助信息">
+        <section class="command-panel impact-panel" aria-labelledby="impact-title">
+          <div class="panel-header panel-header--compact">
+            <div>
+              <h2 id="impact-title">影响与处置</h2>
+              <p>当前选中事件的定位线索与下一步入口。</p>
+            </div>
+            <button
+              v-if="activeFocusItem"
+              type="button"
+              class="icon-button"
+              aria-label="打开事件详情"
+              @click="openEventDrawer"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M15 3h6v6m-9 3 9-9" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="activeFocusItem" class="impact-content">
+            <div class="impact-event">
+              <span class="event-severity" :class="toneClass(activeFocusItem.tone)">{{ activeFocusItem.badge }}</span>
+              <h3>{{ activeFocusItem.title }}</h3>
+              <p>{{ activeFocusItem.detail }}</p>
+            </div>
+
+            <ol class="response-steps" aria-label="事件处置路径">
+              <li>
+                <span>01</span>
+                <div><strong>发现</strong><p>{{ activeFocusItem.summaryTag }} 已进入优先队列</p></div>
+              </li>
+              <li>
+                <span>02</span>
+                <div><strong>定位</strong><p>{{ activeFocusItem.meta }}</p></div>
+              </li>
+              <li>
+                <span>03</span>
+                <div><strong>处置</strong><p>{{ activeFocusItem.primaryActionLabel }}</p></div>
+              </li>
+            </ol>
+
+            <div class="impact-actions">
+              <button type="button" class="primary-action" @click="navigate(activeFocusItem.primaryActionPath)">
+                {{ activeFocusItem.primaryActionLabel }}
+              </button>
+              <button
+                v-if="activeFocusItem.secondaryActionPath"
+                type="button"
+                class="secondary-action"
+                @click="navigate(activeFocusItem.secondaryActionPath)"
+              >
+                {{ activeFocusItem.secondaryActionLabel }}
+              </button>
+              <button type="button" class="secondary-action" @click="openEventDrawer">事件详情</button>
             </div>
           </div>
-        </article>
+
+          <div v-else class="empty-state">
+            <strong>当前无优先事件</strong>
+            <span>可前往告警或工单列表查看全部事项。</span>
+          </div>
+        </section>
+
+        <section class="command-panel action-panel" aria-labelledby="action-title">
+          <div class="panel-header panel-header--compact">
+            <div>
+              <h2 id="action-title">值班动作</h2>
+              <p>以处置任务组织入口，而不是按系统模块堆叠。</p>
+            </div>
+          </div>
+
+          <div class="action-list">
+            <button type="button" @click="navigate('/monitoring/hosts')">
+              <span class="action-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v10H4zM8 19h8m-4-4v4M7 9h.01M10 9h4" /></svg>
+              </span>
+              <span><strong>打开主机监控</strong><small>{{ onlineHostLabel }} 可进入</small></span>
+              <svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <button type="button" @click="navigate('/batch-exec')">
+              <span class="action-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 3 3-3 3m5 0h3M4 5h16v14H4z" /></svg>
+              </span>
+              <span><strong>批量执行任务</strong><small>面向同类主机快速处置</small></span>
+              <svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <button type="button" @click="navigate('/patrol')">
+              <span class="action-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11 12 14 22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+              </span>
+              <span><strong>发起巡检</strong><small>{{ maintenanceAssetLabel }} 需留意</small></span>
+              <svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <button type="button" @click="navigate('/tickets')">
+              <span class="action-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 7h6m-6 4h6m-6 4h4" /></svg>
+              </span>
+              <span><strong>进入工单队列</strong><small>{{ pendingTicketLabel }} 待推进</small></span>
+              <svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="command-panel trend-panel" aria-labelledby="trend-title">
+          <div class="panel-header panel-header--compact">
+            <div>
+              <h2 id="trend-title">7 日告警走势</h2>
+              <p>趋势只做态势参考，处置优先级以事件队列为准。</p>
+            </div>
+            <strong class="trend-total">{{ alertTrendTotal }}</strong>
+          </div>
+
+          <div v-if="alertTrend.counts.length" class="trend-chart">
+            <svg viewBox="0 0 560 128" role="img" aria-label="近七日告警数量折线图" preserveAspectRatio="none">
+              <path class="chart-grid" d="M24 24H544M24 64H544M24 104H544" />
+              <polyline class="chart-line" :points="alertTrendPoints" />
+              <circle
+                v-for="point in alertTrendDots"
+                :key="`${point.x}-${point.y}`"
+                class="chart-dot"
+                :cx="point.x"
+                :cy="point.y"
+                r="3"
+              />
+            </svg>
+            <div class="trend-axis">
+              <span v-for="date in alertTrend.dates" :key="date">{{ date }}</span>
+            </div>
+          </div>
+          <div v-else class="empty-state empty-state--small">
+            <strong>暂无告警趋势</strong>
+            <span>产生告警后会展示最近七日变化。</span>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <el-drawer
+      v-model="eventDrawerOpen"
+      title="事件详情"
+      direction="rtl"
+      size="420px"
+      class="event-drawer"
+    >
+      <div v-if="activeFocusItem" class="drawer-content">
+        <span class="event-severity" :class="toneClass(activeFocusItem.tone)">{{ activeFocusItem.badge }}</span>
+        <h2>{{ activeFocusItem.title }}</h2>
+        <dl>
+          <div><dt>定位线索</dt><dd>{{ activeFocusItem.meta }}</dd></div>
+          <div><dt>当前状态</dt><dd>{{ activeFocusItem.summaryTag }}</dd></div>
+          <div><dt>事件描述</dt><dd>{{ activeFocusItem.detail }}</dd></div>
+        </dl>
+        <div class="drawer-guidance">
+          <strong>建议下一步</strong>
+          <p>先在对应业务列表核对实时状态，再根据主机监控、工单协作或资产信息继续处置。</p>
+        </div>
+        <div class="drawer-actions">
+          <button type="button" class="primary-action" @click="navigate(activeFocusItem.primaryActionPath)">
+            {{ activeFocusItem.primaryActionLabel }}
+          </button>
+          <button type="button" class="secondary-action" @click="navigate('/monitoring/alerts')">查看告警列表</button>
+          <button type="button" class="secondary-action" @click="navigate('/tickets')">进入工单队列</button>
+        </div>
       </div>
-    </section>
+    </el-drawer>
   </div>
 </template>
 
@@ -219,17 +397,23 @@
 import { computed, onActivated, onDeactivated, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { getActivities, getAlertTrend, getDashboardStats, getDashboardSummary, getSparkline } from '@/api/dashboard'
-import AlertTrendChart from '@/components/AlertTrendChart.vue'
+import {
+  getActivities,
+  getAlertTrend,
+  getDashboardResourceHealth,
+  getDashboardStats,
+  getDashboardSummary,
+} from '@/api/dashboard'
 import { useAuthStore } from '@/stores/modules/auth'
 import {
   buildDashboardFocusItems,
-  buildDashboardMetricCards,
-  buildDashboardShortcutItems,
-  buildDashboardTypeRows,
-  type DashboardQuickStatLike,
-  type DashboardShortcutKey,
-  type DashboardSparklineLike,
+  buildDashboardHealthMetrics,
+  buildDashboardResourceRows,
+  filterDashboardFocusItems,
+  type DashboardFocusFilterKey,
+  type DashboardFocusItem,
+  type DashboardResourceHealthLike,
+  type DashboardResourceRow,
   type DashboardStatsLike,
   type DashboardSummaryLike,
 } from '@/utils/dashboard'
@@ -237,34 +421,41 @@ import {
 interface DashboardActivity {
   time: string
   description: string
+  detail?: string
   type: 'alert' | 'ticket' | 'asset' | 'patrol' | 'user' | 'system'
   type_label: string
   username?: string
 }
 
+
 const authStore = useAuthStore()
 const router = useRouter()
 
 const stats = ref<DashboardStatsLike>({})
-const sparkline = ref<DashboardSparklineLike>({ series: { assets: [], online: [], alerts: [], tickets: [] } })
+const summary = ref<DashboardSummaryLike>({})
+const resourceHealth = ref<DashboardResourceHealthLike>()
 const activities = ref<DashboardActivity[]>([])
 const alertTrend = ref<{ dates: string[]; counts: number[] }>({ dates: [], counts: [] })
-const summary = ref<DashboardSummaryLike>({})
+const selectedFocusItem = ref<DashboardFocusItem>()
+const activeFocusFilter = ref<DashboardFocusFilterKey>('all')
+const activeActivityFilter = ref('all')
 const loading = ref(false)
-const activeFilter = ref('all')
-const activeFocusFilter = ref('all')
+const refreshing = ref(false)
+const resourceError = ref(false)
+const coreError = ref(false)
+const eventDrawerOpen = ref(false)
 const now = ref(new Date())
+const lastUpdated = ref<Date>()
 
 let clockTimer: ReturnType<typeof setInterval> | undefined
+let refreshTimer: ReturnType<typeof setInterval> | undefined
 
-const shortcutAbbr: Record<DashboardShortcutKey, string> = { ssh: 'SSH', batch: '批', patrol: '巡', tickets: '单' }
-
-const focusFilters = [
+const focusFilters: Array<{ key: DashboardFocusFilterKey; label: string }> = [
   { key: 'all', label: '全部' },
-  { key: 'danger', label: '高优先' },
-  { key: 'warning', label: '工单' },
-  { key: 'info', label: '资产' },
-] as const
+  { key: 'high', label: '高优先' },
+  { key: 'ticket', label: '工单' },
+  { key: 'asset', label: '资产' },
+]
 
 const activityFilters = [
   { key: 'all', label: '全部' },
@@ -272,131 +463,101 @@ const activityFilters = [
   { key: 'ticket', label: '工单' },
   { key: 'asset', label: '资产' },
   { key: 'patrol', label: '巡检' },
-  { key: 'user', label: '用户' },
 ]
 
-const currentDateTime = computed(() => {
-  return now.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+const currentTime = computed(() => now.value.toLocaleTimeString('zh-CN', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+}))
+
+const currentDateLabel = computed(() => now.value.toLocaleDateString('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  weekday: 'short',
+}))
+
+const lastUpdatedLabel = computed(() => {
+  if (!lastUpdated.value) return '—'
+  return lastUpdated.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 })
 
-const currentDateLabel = computed(() => {
-  return now.value.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
-})
-
-const metricCards = computed(() => buildDashboardMetricCards(stats.value, sparkline.value))
+const healthMetrics = computed(() => buildDashboardHealthMetrics(stats.value, resourceHealth.value))
 const focusItems = computed(() => buildDashboardFocusItems(summary.value))
-const filteredFocusItems = computed(() => {
-  if (activeFocusFilter.value === 'all') return focusItems.value
-  return focusItems.value.filter((item) => item.tone === activeFocusFilter.value)
+const filteredFocusItems = computed(() => filterDashboardFocusItems(
+  focusItems.value,
+  activeFocusFilter.value,
+))
+const activeFocusItem = computed(() => {
+  const selected = selectedFocusItem.value
+  if (selected && filteredFocusItems.value.some((item) => item.key === selected.key)) return selected
+  if (filteredFocusItems.value[0]) return filteredFocusItems.value[0]
+  return activeFocusFilter.value === 'all' ? focusItems.value[0] : undefined
 })
-const shortcutItems = computed(() => buildDashboardShortcutItems(stats.value))
-const typeRows = computed(() => buildDashboardTypeRows(summary.value))
-const dutyFacts = computed(() => summaryFacts.value.slice(0, 4))
-
-const summaryFacts = computed(() => {
-  const quickStats = summary.value.quick_stats || []
-
-  if (quickStats.length) {
-    return quickStats.map((item: DashboardQuickStatLike) => ({
-      label: item.label || '概览',
-      value: item.value || '-',
-      hint: item.hint || '暂无说明',
-      tone: item.tone === 'red' ? 'danger' : item.tone === 'orange' ? 'warning' : item.tone === 'green' ? 'success' : 'info',
-    }))
-  }
-
-  const totalAssets = Number(stats.value.asset_total || 0)
-  const onlineHosts = Number(stats.value.online_hosts || 0)
-  const alertCount = Number(stats.value.open_alerts || 0)
-  const ticketCount = Number(stats.value.pending_tickets || 0)
-  const ratio = totalAssets ? `${Math.round((onlineHosts / totalAssets) * 100)}%` : '0%'
-
-  return [
-    { label: '在线率', value: ratio, hint: `在线 ${onlineHosts} / 总资产 ${totalAssets}`, tone: 'success' },
-    { label: '待处理告警', value: String(alertCount), hint: '需要继续跟进的告警数量', tone: 'danger' },
-    { label: '处理中工单', value: String(ticketCount), hint: '当前 open / in_progress 工单', tone: 'warning' },
-  ]
+const resourceRows = computed(() => buildDashboardResourceRows(resourceHealth.value))
+const resourcePool = computed(() => resourceHealth.value?.host_pool)
+const resourceCoverageLabel = computed(() => {
+  const pool = resourcePool.value
+  if (!pool || resourceError.value) return '—'
+  if (!Number(pool.total || 0)) return '暂无主机'
+  return `${Number(pool.coverage || 0).toFixed(1)}% · ${pool.monitored || 0}/${pool.total || 0} 台`
 })
-
-const formattedActivities = computed(() => {
-  return activities.value.map((item) => ({
-    ...item,
-    displayTime: formatActivityTime(item.time),
+const coverageToneClass = computed(() => {
+  const coverage = Number(resourcePool.value?.coverage || 0)
+  if (resourceError.value || !resourcePool.value || !Number(resourcePool.value.total || 0)) return 'tone-muted'
+  if (coverage < 80) return 'tone-danger'
+  if (coverage < 100) return 'tone-warning'
+  return 'tone-success'
+})
+const formattedActivities = computed(() => activities.value.map((item) => ({
+  ...item,
+  displayTime: formatActivityTime(item.time),
+})))
+const alertTrendTotal = computed(() => alertTrend.value.counts.reduce((sum, count) => sum + Number(count || 0), 0))
+const alertTrendDots = computed(() => {
+  const values = alertTrend.value.counts.map((value) => Number(value || 0))
+  if (!values.length) return []
+  const max = Math.max(...values, 1)
+  const width = 520
+  const height = 80
+  return values.map((value, index) => ({
+    x: 24 + (values.length === 1 ? width / 2 : (index / (values.length - 1)) * width),
+    y: 104 - (value / max) * height,
   }))
 })
+const alertTrendPoints = computed(() => alertTrendDots.value.map((point) => `${point.x},${point.y}`).join(' '))
+const onlineHostLabel = computed(() => `${Number(stats.value.online_hosts || 0)}/${Number(stats.value.asset_total || 0)} 在线`)
+const maintenanceAssetLabel = computed(() => `${Number(stats.value.maintenance_assets || 0)} 个已关机资产`)
+const pendingTicketLabel = computed(() => `${Number(stats.value.pending_tickets || 0)} 个工单`)
 
-const alertTrendTotal = computed(() => alertTrend.value.counts.reduce((sum, count) => sum + count, 0))
+function toneClass(tone: DashboardFocusItem['tone'] | DashboardResourceRow['tone']) {
+  return `tone-${tone}`
+}
 
-function toneTagClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'muted') {
+function resourceStateLabel(tone: DashboardResourceRow['tone']) {
   return {
-    danger: 'tone-danger',
-    warning: 'tone-warning',
-    success: 'tone-success',
-    info: 'tone-info',
-    muted: 'tone-muted',
+    danger: '高风险',
+    warning: '需关注',
+    success: '正常',
+    muted: '不可用',
   }[tone]
-}
-
-function toneDotClass(tone: 'danger' | 'warning' | 'success' | 'info') {
-  return {
-    danger: 'dot-danger',
-    warning: 'dot-warning',
-    success: 'dot-success',
-    info: 'dot-info',
-  }[tone]
-}
-
-function metricTag(card: (typeof metricCards.value)[number]) {
-  if (card.tone === 'danger') return '需要优先处理'
-  if (card.tone === 'warning') return '影响服务范围'
-  if (card.tone === 'success') return '可控范围'
-  return '协作中'
-}
-
-function focusEta(item: (typeof focusItems.value)[number]) {
-  const match = item.meta.match(/(\d{2}:\d{2})/)
-  if (item.tone === 'danger') return { headline: match?.[1] || '立即', detail: '优先排查' }
-  if (item.tone === 'warning') return { headline: match?.[1] || '跟进', detail: '最近变更' }
-  if (item.tone === 'info') return { headline: match?.[1] || '协同', detail: '继续推进' }
-  if (item.tone === 'success') return { headline: match?.[1] || '稳定', detail: '保持观察' }
-  return { headline: match?.[1] || '处理中', detail: item.summaryTag }
 }
 
 function activityToneClass(type: DashboardActivity['type']) {
   return {
-    alert: 'tone-danger',
-    ticket: 'tone-warning',
-    asset: 'tone-info',
-    patrol: 'tone-success',
-    user: 'tone-muted',
-    system: 'tone-muted',
+    alert: 'timeline-marker--danger',
+    ticket: 'timeline-marker--warning',
+    asset: 'timeline-marker--info',
+    patrol: 'timeline-marker--success',
+    user: 'timeline-marker--muted',
+    system: 'timeline-marker--muted',
   }[type]
 }
 
-function typeFillClass(tone: (typeof typeRows.value)[number]['tone']) {
-  return `asset-fill--${tone}`
-}
-
-function typeFillWidth(item: (typeof typeRows.value)[number]) {
-  return `${Math.max(8, Math.round((item.value / item.max) * 100))}%`
-}
-
-function startClock() {
-  stopClock()
-  now.value = new Date()
-  clockTimer = setInterval(() => {
-    now.value = new Date()
-  }, 1000)
-}
-
-function stopClock() {
-  if (!clockTimer) return
-  clearInterval(clockTimer)
-  clockTimer = undefined
-}
-
 function formatActivityTime(value: string) {
-  if (!value) return '--'
+  if (!value) return '—'
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
   return parsed.toLocaleString('zh-CN', {
@@ -408,653 +569,1222 @@ function formatActivityTime(value: string) {
   })
 }
 
+function handleFocusFilter(key: DashboardFocusFilterKey) {
+  activeFocusFilter.value = key
+  selectedFocusItem.value = undefined
+}
+
+function selectEvent(item: DashboardFocusItem) {
+  selectedFocusItem.value = item
+}
+
+function openEventDrawer() {
+  if (activeFocusItem.value) eventDrawerOpen.value = true
+}
+
+function navigate(path: string) {
+  eventDrawerOpen.value = false
+  void router.push(path)
+}
+
 async function fetchActivities(type?: string) {
   try {
-    const response: any = await getActivities(10, type)
+    const response: any = await getActivities(8, type)
     activities.value = response.data?.items || []
   } catch {
     activities.value = []
   }
 }
 
-async function loadDashboard() {
-  loading.value = true
-  try {
-    const [statsRes, sparkRes, trendRes, summaryRes]: any = await Promise.all([
-      getDashboardStats(),
-      getSparkline(),
-      getAlertTrend(),
-      getDashboardSummary(),
-    ])
+async function handleActivityFilter(key: string) {
+  activeActivityFilter.value = key
+  await fetchActivities(key === 'all' ? undefined : key)
+}
 
-    stats.value = statsRes.data || {}
-    sparkline.value = sparkRes.data || { series: { assets: [], online: [], alerts: [], tickets: [] } }
-    alertTrend.value = trendRes.data || { dates: [], counts: [] }
-    summary.value = summaryRes.data || {}
-    await fetchActivities(activeFilter.value === 'all' ? undefined : activeFilter.value)
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.detail || '加载失败')
-  } finally {
-    loading.value = false
+async function refreshDashboard(showFeedback = false) {
+  if (refreshing.value) return
+  const firstLoad = !lastUpdated.value
+  loading.value = firstLoad
+  refreshing.value = true
+  coreError.value = false
+  resourceError.value = false
+
+  const results = await Promise.allSettled([
+    getDashboardStats(),
+    getAlertTrend(),
+    getDashboardSummary(),
+    getDashboardResourceHealth(),
+    getActivities(8, activeActivityFilter.value === 'all' ? undefined : activeActivityFilter.value),
+  ])
+
+  const [statsResult, trendResult, summaryResult, resourceResult, activitiesResult] = results
+  if (statsResult.status === 'fulfilled') stats.value = (statsResult.value as any).data || {}
+  if (trendResult.status === 'fulfilled') alertTrend.value = (trendResult.value as any).data || { dates: [], counts: [] }
+  if (summaryResult.status === 'fulfilled') summary.value = (summaryResult.value as any).data || {}
+  if (resourceResult.status === 'fulfilled') {
+    resourceHealth.value = (resourceResult.value as any).data || {}
+  } else {
+    resourceError.value = true
+    resourceHealth.value = undefined
+  }
+  if (activitiesResult.status === 'fulfilled') {
+    activities.value = (activitiesResult.value as any).data?.items || []
+  }
+
+  coreError.value = [statsResult, trendResult, summaryResult].some((result) => result.status === 'rejected')
+  lastUpdated.value = new Date()
+  refreshing.value = false
+  loading.value = false
+
+  if (showFeedback) {
+    if (coreError.value) ElMessage.warning('部分数据刷新失败')
+    else ElMessage.success('仪表盘已刷新')
   }
 }
 
-function handleFilterChange(key: string) {
-  activeFilter.value = key
-  void fetchActivities(key === 'all' ? undefined : key)
+function startTimers() {
+  stopTimers()
+  now.value = new Date()
+  clockTimer = setInterval(() => {
+    now.value = new Date()
+  }, 1000)
+  refreshTimer = setInterval(() => {
+    void refreshDashboard(false)
+  }, 60000)
 }
 
-function navigate(path: string) {
-  router.push(path)
+function stopTimers() {
+  if (clockTimer) clearInterval(clockTimer)
+  if (refreshTimer) clearInterval(refreshTimer)
+  clockTimer = undefined
+  refreshTimer = undefined
 }
 
 onActivated(() => {
-  startClock()
-  void loadDashboard()
+  startTimers()
+  void refreshDashboard(false)
 })
 
 onDeactivated(() => {
-  stopClock()
+  stopTimers()
 })
 </script>
 
 <style lang="scss" scoped>
-.dashboard {
-  width: 100%;
-  padding: 24px 16px 24px 0;
-}
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.eyebrow {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.15;
-  letter-spacing: 0;
-  color: var(--text-primary);
-  overflow-wrap: anywhere;
-}
-
-.page-subtitle {
-  margin: 12px 0 0;
-  max-width: 58ch;
-  color: var(--text-secondary);
-  font-size: 16px;
-  line-height: 1.6;
-}
-
-.shift-meta {
-  display: grid;
-  justify-items: end;
-  gap: 2px;
-  text-align: right;
-}
-
-.shift-meta strong {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.shift-meta span {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-}
-
-.risk-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.metric,
-.panel {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  overflow: hidden;
-}
-
-.metric {
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 132px;
-}
-
-.metric-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.metric-label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.metric-tone {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-.metric-value {
-  font-size: 30px;
-  line-height: 1;
-  font-weight: 800;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-}
-
-.metric-hint {
-  font-size: 14px;
-  color: var(--text-secondary);
-  min-height: 44px;
-}
-
-.metric-tag,
-.focus-badge,
-.activity-chip {
-  width: fit-content;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.tone-danger {
-  background: rgba(229, 72, 77, 0.1);
-  color: #e5484d;
-}
-
-.tone-warning {
-  background: rgba(245, 166, 35, 0.12);
-  color: #f5a623;
-}
-
-.tone-success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-}
-
-.tone-info {
-  background: rgba(47, 124, 246, 0.1);
-  color: #2f7cf6;
-}
-
-.tone-muted {
-  background: #f3f5f9;
-  color: var(--text-secondary);
-}
-
-.dot-danger { background: #e5484d; }
-.dot-warning { background: #f5a623; }
-.dot-success { background: #22c55e; }
-.dot-info { background: #2f7cf6; }
-
-.main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
-  gap: 16px;
-  align-items: start;
-  margin-top: 16px;
-}
-
-.stack {
+.command-dashboard {
+  --dashboard-border: color-mix(in srgb, var(--border-color) 88%, var(--text-muted));
   display: grid;
   gap: 16px;
-}
-
-.panel-head {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.panel-title,
-.duty-title {
-  font-size: 16px;
-  font-weight: 700;
+  min-width: 0;
   color: var(--text-primary);
 }
 
-.panel-note,
-.duty-copy {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.5;
+.command-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 2px 8px;
 }
 
-.focus-list,
-.shortcut-list,
-.activity-list,
-.asset-list {
-  display: grid;
-}
-
-.segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: #f3f5f9;
-}
-
-.segmented button {
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.segmented button.active {
-  background: var(--surface-color);
-  color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.segmented--activity {
-  margin: 10px 18px 0;
-  width: fit-content;
-}
-
-.focus-item,
-.shortcut,
-.activity-item,
-.asset-row {
-  border-top: 1px solid var(--border-color);
-}
-
-.focus-item:first-child,
-.shortcut:first-child,
-.activity-item:first-child,
-.asset-row:first-child {
-  border-top: 0;
-}
-
-.focus-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 16px;
-  padding: 18px;
-  align-items: start;
-}
-
-.focus-main {
+.command-heading {
   min-width: 0;
 }
 
-.focus-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.focus-meta {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.focus-desc {
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 64ch;
-}
-
-.focus-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
+.command-kicker {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
 }
 
-.btn {
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success-color);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success-color) 14%, transparent);
+}
+
+.command-heading h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.command-heading p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.command-meta {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: end;
+  gap: 5px 12px;
+  flex: 0 0 auto;
+}
+
+.command-clock {
+  display: grid;
+  justify-items: end;
+  line-height: 1.1;
+}
+
+.command-clock strong,
+.updated-at,
+.mono-value,
+.trend-total {
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.command-clock strong {
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.command-clock span,
+.updated-at {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.updated-at {
+  grid-column: 1 / -1;
+}
+
+.refresh-button,
+.icon-button,
+.text-action,
+.primary-action,
+.secondary-action,
+.segmented-control button,
+.event-row,
+.action-list button {
+  font: inherit;
+}
+
+.refresh-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid #d9deea;
+  padding: 0 13px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 6px;
   background: var(--surface-color);
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
+  transition: border-color 180ms ease-out, background-color 180ms ease-out, color 180ms ease-out;
 }
 
-.btn.primary {
-  background: var(--primary-color);
-  color: #fff;
+.refresh-button svg,
+.text-action svg,
+.icon-button svg,
+.notice svg,
+.event-side svg,
+.action-list svg,
+.empty-state svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.refresh-button:hover:not(:disabled) {
   border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-bg);
 }
 
-.btn.subtle {
-  background: #f3f5f9;
-  border-color: transparent;
-  color: var(--text-secondary);
+.refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
-.eta {
-  text-align: right;
-  font-size: 13px;
-  color: var(--text-muted);
-  min-width: 88px;
-}
-
-.eta strong {
-  display: block;
-  font-size: 15px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-  margin-bottom: 2px;
-}
-
-.mini-grid {
+.status-strip {
   display: grid;
-  grid-template-columns: 1.08fr 0.92fr;
+  grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--border-radius);
+  background: var(--surface-color);
+}
+
+.status-metric {
+  position: relative;
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.status-metric + .status-metric {
+  border-left: 1px solid var(--dashboard-border);
+}
+
+.status-metric::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: transparent;
+}
+
+.status-metric--danger::after { background: var(--danger-color); }
+.status-metric--warning::after { background: var(--warning-color); }
+.status-metric--success::after { background: var(--success-color); }
+.status-metric--info::after { background: var(--primary-color); }
+
+.status-metric__label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-metric--danger .status-indicator { background: var(--danger-color); }
+.status-metric--warning .status-indicator { background: var(--warning-color); }
+.status-metric--success .status-indicator { background: var(--success-color); }
+.status-metric--info .status-indicator { background: var(--primary-color); }
+
+.status-metric__value {
+  margin-top: 11px;
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-size: 27px;
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.status-metric__value small {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.status-metric p {
+  overflow: hidden;
+  margin-top: 9px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.75fr);
+  align-items: start;
   gap: 16px;
 }
 
-.shortcut {
-  padding: 16px 18px;
+.primary-column,
+.secondary-column {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  cursor: pointer;
+  gap: 16px;
+  min-width: 0;
 }
 
-.shortcut-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+.command-panel {
+  min-width: 0;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--border-radius);
+  background: var(--surface-color);
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--dashboard-border);
+}
+
+.panel-header--compact {
+  padding-bottom: 15px;
+}
+
+.panel-heading-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.panel-header p {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.count-badge,
+.coverage-badge,
+.event-severity,
+.resource-state,
+.timeline-copy > div > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.count-badge {
+  min-width: 22px;
+  color: var(--primary-color);
+  background: var(--primary-bg);
+}
+
+.tone-danger {
+  color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+}
+
+.tone-warning {
+  color: color-mix(in srgb, var(--warning-color) 72%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning-color) 14%, transparent);
+}
+
+.tone-success {
+  color: color-mix(in srgb, var(--success-color) 76%, var(--text-primary));
+  background: color-mix(in srgb, var(--success-color) 10%, transparent);
+}
+
+.tone-info {
+  color: var(--primary-color);
+  background: var(--primary-bg);
+}
+
+.tone-muted {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.segmented-control {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 6px;
+  background: var(--bg-color);
+}
+
+.segmented-control button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.segmented-control button:hover,
+.segmented-control button.active {
+  background: var(--surface-color);
+  color: var(--text-primary);
+}
+
+.segmented-control button.active {
+  box-shadow: inset 0 0 0 1px var(--dashboard-border);
+  font-weight: 650;
+}
+
+.event-list {
+  display: grid;
+}
+
+.event-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--dashboard-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+.event-row:last-child {
+  border-bottom: 0;
+}
+
+.event-row:hover,
+.event-row.selected {
+  background: color-mix(in srgb, var(--primary-color) 4%, var(--surface-color));
+}
+
+.event-row.selected {
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+
+.event-row--danger.selected { box-shadow: inset 3px 0 0 var(--danger-color); }
+.event-row--warning.selected { box-shadow: inset 3px 0 0 var(--warning-color); }
+
+.event-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.event-copy strong {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-meta,
+.event-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-meta {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.event-description {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.event-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.event-side svg {
+  width: 15px;
+  height: 15px;
+}
+
+.text-action,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
+.text-action {
+  gap: 4px;
+  min-height: 30px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.text-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 6px;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.notice--warning {
+  margin: 14px 20px 0;
+  color: color-mix(in srgb, var(--warning-color) 68%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning-color) 8%, var(--surface-color));
+}
+
+.notice--danger {
+  color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 7%, var(--surface-color));
+}
+
+.resource-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.resource-table th,
+.resource-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--dashboard-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.resource-table thead th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.resource-table tbody tr:last-child th,
+.resource-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.resource-table tbody th {
+  min-width: 175px;
+}
+
+.resource-name {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.resource-state {
+  min-height: 18px;
+  padding: 1px 6px;
+}
+
+.resource-usage {
+  min-width: 170px;
+}
+
+.resource-value {
+  margin-bottom: 7px;
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
   font-size: 14px;
   font-weight: 700;
 }
 
-.shortcut-name {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.shortcut-desc {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.shortcut-state {
-  text-align: right;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.shortcut-state strong {
+.resource-progress {
   display: block;
-  font-size: 15px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  width: 132px;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
 }
 
-.trend-wrap {
-  padding: 16px 18px 18px;
+.resource-progress::-webkit-progress-bar {
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
 }
 
-.trend-legend {
+.resource-progress::-webkit-progress-value { background: var(--primary-color); }
+.resource-progress--danger::-webkit-progress-value { background: var(--danger-color); }
+.resource-progress--warning::-webkit-progress-value { background: var(--warning-color); }
+.resource-progress--success::-webkit-progress-value { background: var(--success-color); }
+.resource-progress--muted::-webkit-progress-value { background: var(--text-muted); }
+.resource-progress::-moz-progress-bar { background: var(--primary-color); }
+.resource-progress--danger::-moz-progress-bar { background: var(--danger-color); }
+.resource-progress--warning::-moz-progress-bar { background: var(--warning-color); }
+.resource-progress--success::-moz-progress-bar { background: var(--success-color); }
+.resource-progress--muted::-moz-progress-bar { background: var(--text-muted); }
+
+.hot-hosts {
+  color: color-mix(in srgb, var(--warning-color) 70%, var(--text-primary));
+  font-weight: 650;
+}
+
+.resource-footnote {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px 18px;
+  padding: 11px 18px;
+  border-top: 1px solid var(--dashboard-border);
+  background: color-mix(in srgb, var(--bg-color) 65%, var(--surface-color));
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.impact-content {
+  padding: 18px 20px 20px;
+}
+
+.impact-event h3 {
+  margin-top: 11px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.impact-event p {
+  margin-top: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.response-steps {
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+  list-style: none;
+}
+
+.response-steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 11px;
+  min-height: 58px;
+}
+
+.response-steps li:not(:last-child)::after {
+  position: absolute;
+  top: 27px;
+  bottom: 2px;
+  left: 13px;
+  width: 1px;
+  content: "";
+  background: var(--dashboard-border);
+}
+
+.response-steps li > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 50%;
+  background: var(--surface-color);
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+}
+
+.response-steps strong {
+  display: block;
+  padding-top: 2px;
+  font-size: 12px;
+}
+
+.response-steps p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.impact-actions,
+.drawer-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.primary-action,
+.secondary-action {
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 170ms ease-out, border-color 170ms ease-out, color 170ms ease-out;
+}
+
+.primary-action {
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: var(--surface-color);
+}
+
+.primary-action:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.secondary-action {
+  border: 1px solid var(--dashboard-border);
+  background: var(--surface-color);
+  color: var(--text-primary);
+}
+
+.secondary-action:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-bg);
+}
+
+.action-list {
+  display: grid;
+}
+
+.action-list button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
   align-items: center;
-  margin-bottom: 16px;
-  font-size: 13px;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--dashboard-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 170ms ease-out;
+}
+
+.action-list button:last-child {
+  border-bottom: 0;
+}
+
+.action-list button:hover {
+  background: var(--primary-bg);
+}
+
+.action-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 6px;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 5%, var(--surface-color));
+}
+
+.action-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.action-list button > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.action-list strong {
+  font-size: 12px;
+}
+
+.action-list small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.action-arrow {
   color: var(--text-muted);
 }
 
-.trend-legend strong {
-  color: #e5484d;
-  font-weight: 700;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
+.trend-total {
+  color: var(--danger-color);
+  font-size: 22px;
+}
+
+.trend-chart {
+  padding: 14px 18px 16px;
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: 128px;
+  overflow: visible;
+}
+
+.chart-grid {
+  fill: none;
+  stroke: var(--dashboard-border);
+  stroke-width: 1;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--danger-color);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.chart-dot {
+  fill: var(--surface-color);
+  stroke: var(--danger-color);
+  stroke-width: 2;
 }
 
 .trend-axis {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  margin-top: 6px;
   color: var(--text-muted);
-  margin-top: 10px;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
 }
 
-.duty-card {
-  padding: 18px;
+.activity-timeline {
+  margin: 0;
+  padding: 5px 20px 10px;
+  list-style: none;
+}
+
+.activity-timeline li {
+  position: relative;
   display: grid;
-  gap: 16px;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
 }
 
-.duty-top {
+.activity-timeline li:not(:last-child)::after {
+  position: absolute;
+  top: 25px;
+  bottom: -1px;
+  left: 5px;
+  width: 1px;
+  content: "";
+  background: var(--dashboard-border);
+}
+
+.timeline-marker {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 3px solid var(--surface-color);
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 1px var(--dashboard-border);
+}
+
+.timeline-marker--danger { background: var(--danger-color); }
+.timeline-marker--warning { background: var(--warning-color); }
+.timeline-marker--success { background: var(--success-color); }
+.timeline-marker--info { background: var(--primary-color); }
+.timeline-marker--muted { background: var(--text-muted); }
+
+.timeline-copy {
+  min-width: 0;
+}
+
+.timeline-copy > div {
   display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 16px;
-}
-
-.clock {
-  text-align: right;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-}
-
-.clock strong {
-  display: block;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.clock span {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.duty-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.fact {
-  padding: 12px;
-  border-radius: 8px;
-  background: #f3f5f9;
-}
-
-.fact-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.fact-value {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.activity-item,
-.asset-row {
-  padding: 14px 18px;
-  display: grid;
-  gap: 2px;
-}
-
-.activity-top {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.activity-text {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.activity-meta {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
-}
-
-.asset-row {
-  grid-template-columns: 84px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 12px;
-}
-
-.asset-name {
-  font-size: 13px;
-  color: var(--text-secondary);
-  text-align: right;
-  font-weight: 600;
-}
-
-.asset-bar {
-  height: 8px;
-  background: #f3f5f9;
-  border-radius: 999px;
+.timeline-copy strong {
   overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.asset-fill {
-  height: 100%;
-  border-radius: inherit;
+.timeline-copy > div > span {
+  min-height: 18px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
 }
 
-.asset-fill--blue { background: #5e6ad2; }
-.asset-fill--violet { background: #7c3aed; }
-.asset-fill--cyan { background: #2f7cf6; }
-.asset-fill--amber { background: #f5a623; }
-.asset-fill--slate { background: #94a3b8; }
+.timeline-copy p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
 
-.asset-value {
-  font-size: 13px;
-  font-weight: 700;
-  text-align: right;
-  font-family: 'SF Mono', 'Cascadia Code', monospace;
+.timeline-copy time {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
 }
 
 .empty-state {
-  padding: 24px 18px;
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  min-height: 180px;
+  padding: 28px;
   color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-state svg {
+  width: 28px;
+  height: 28px;
+  color: var(--success-color);
+}
+
+.empty-state strong {
+  color: var(--text-secondary);
   font-size: 13px;
+}
+
+.empty-state span {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.empty-state--small {
+  min-height: 110px;
+}
+
+.drawer-content {
+  display: grid;
+  gap: 18px;
+}
+
+.drawer-content h2 {
+  margin: -5px 0 0;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.drawer-content dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--dashboard-border);
+}
+
+.drawer-content dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--dashboard-border);
+}
+
+.drawer-content dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.drawer-content dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.drawer-guidance {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 32%, var(--dashboard-border));
+  background: var(--primary-bg);
+}
+
+.drawer-guidance strong {
+  font-size: 12px;
+}
+
+.drawer-guidance p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
   line-height: 1.6;
 }
 
-.empty-state p {
-  margin: 0;
+:deep(.event-drawer) {
+  max-width: 100vw;
 }
 
-.empty-state--compact {
-  padding-top: 18px;
-  padding-bottom: 18px;
+:deep(.event-drawer .el-drawer__header) {
+  margin-bottom: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--dashboard-border);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+:deep(.event-drawer .el-drawer__body) {
+  padding: 20px;
+}
+
+button:focus-visible,
+.event-row:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn,
-  .shortcut,
-  .segmented button {
+  .refresh-button,
+  .primary-action,
+  .secondary-action,
+  .segmented-control button,
+  .event-row,
+  .action-list button {
     transition: none;
   }
 }
 
 @media (max-width: 1180px) {
-  .risk-strip {
+  .status-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .status-metric:nth-child(4) {
+    border-left: 0;
+    border-top: 1px solid var(--dashboard-border);
+  }
+
+  .status-metric:nth-child(5) {
+    border-top: 1px solid var(--dashboard-border);
+  }
+
+  .command-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .secondary-column {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .main-grid,
-  .mini-grid {
-    grid-template-columns: 1fr;
+  .impact-panel {
+    grid-row: span 2;
   }
 }
 
 @media (max-width: 860px) {
-  .page-head {
-    align-items: start;
+  .command-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 
-  .shift-meta {
+  .command-meta {
+    grid-template-columns: auto auto;
     justify-items: start;
-    text-align: left;
+  }
+
+  .command-clock {
+    justify-items: start;
+  }
+
+  .status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .status-metric:nth-child(3),
+  .status-metric:nth-child(5) {
+    border-left: 0;
+  }
+
+  .status-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--dashboard-border);
+  }
+
+  .secondary-column {
+    grid-template-columns: 1fr;
+  }
+
+  .impact-panel {
+    grid-row: auto;
   }
 }
 
-@media (max-width: 640px) {
-  .dashboard {
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  h1 {
+@media (max-width: 768px) {
+  .command-heading h1 {
     font-size: 24px;
-    line-height: 1.2;
   }
 
-  .page-subtitle {
-    font-size: 15px;
-  }
-
-  .risk-strip,
-  .duty-card__facts {
+  .status-strip {
     grid-template-columns: 1fr;
   }
 
-  .focus-item,
-  .shortcut {
-    grid-template-columns: 1fr;
+  .status-metric + .status-metric {
+    border-top: 1px solid var(--dashboard-border);
+    border-left: 0;
   }
 
-  .eta,
-  .shortcut-state {
-    text-align: left;
-    min-width: 0;
-  }
-
-  .panel-head {
-    align-items: start;
+  .panel-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 
-  .segmented,
-  .segmented--activity {
+  .segmented-control--scroll {
     width: 100%;
     overflow-x: auto;
-    margin-left: 0;
-    margin-right: 0;
+  }
+
+  .event-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .event-row > .event-severity {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .event-description {
+    white-space: normal;
+  }
+
+  .event-side span {
+    display: none;
   }
 }
 </style>

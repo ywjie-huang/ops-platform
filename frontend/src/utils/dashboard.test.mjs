@@ -3,7 +3,10 @@ import test from 'node:test'
 
 const {
   buildDashboardFocusItems,
+  filterDashboardFocusItems,
+  buildDashboardHealthMetrics,
   buildDashboardMetricCards,
+  buildDashboardResourceRows,
   buildDashboardShortcutItems,
   buildDashboardTypeRows,
 } = await import('./dashboard.ts')
@@ -41,17 +44,41 @@ test('builds duty-first focus items from summary alerts, tickets, and asset chan
 
   assert.deepEqual(
     items.map((item) => ({
+      source: item.source,
       badge: item.badge,
       title: item.title,
       action: item.primaryActionPath,
       tone: item.tone,
     })),
     [
-      { badge: '高优告警', title: 'API 网关 5xx 告警', action: '/monitoring/alerts', tone: 'danger' },
-      { badge: '待办工单', title: '支付链路工单待确认', action: '/tickets', tone: 'warning' },
-      { badge: '资产变更', title: 'db-replica-02 进入维护', action: '/assets/list', tone: 'info' },
+      { source: 'alert', badge: '高优告警', title: 'API 网关 5xx 告警', action: '/monitoring/alerts', tone: 'danger' },
+      { source: 'ticket', badge: '待办工单', title: '支付链路工单待确认', action: '/tickets', tone: 'warning' },
+      { source: 'asset', badge: '资产变更', title: 'db-replica-02 进入维护', action: '/assets/list', tone: 'info' },
     ],
   )
+})
+
+test('filters focus items by priority or event source instead of display tone', () => {
+  const items = buildDashboardFocusItems({
+    recent_alerts: [
+      { title: '普通告警', tone: 'orange' },
+      { title: '高优告警', tone: 'red' },
+    ],
+    recent_tickets: [
+      { title: '普通工单', tone: 'blue' },
+    ],
+    recent_asset_changes: [
+      { title: '异常资产', tone: 'red' },
+    ],
+  })
+
+  assert.deepEqual(filterDashboardFocusItems(items, 'ticket').map((item) => item.title), ['普通工单'])
+  assert.deepEqual(filterDashboardFocusItems(items, 'asset').map((item) => item.title), ['异常资产'])
+  assert.deepEqual(
+    filterDashboardFocusItems(items, 'high').map((item) => item.title),
+    ['高优告警', '异常资产'],
+  )
+  assert.equal(filterDashboardFocusItems(items, 'all').length, 4)
 })
 
 test('builds metric cards, shortcuts, and type rows from dashboard aggregates', () => {
@@ -129,4 +156,88 @@ test('builds metric cards, shortcuts, and type rows from dashboard aggregates', 
       { label: 'Other', value: 2, max: 10, tone: 'slate' },
     ],
   )
+})
+
+test('builds explicit weighted resource rows with P95 and hotspot counts', () => {
+  const rows = buildDashboardResourceRows({
+    host_pool: {
+      total: 128,
+      monitored: 124,
+      unmonitored: 4,
+      coverage: 96.9,
+      cpu_usage: 61,
+      cpu_p95: 84,
+      cpu_hot_hosts: 6,
+      cpu_cores: 1024,
+      memory_usage: 68,
+      memory_p95: 89,
+      memory_hot_hosts: 4,
+      memory_total_gb: 4096,
+      disk_usage: 52,
+      disk_p95: 82,
+      disk_hot_hosts: 2,
+      disk_total_gb: 80000,
+    },
+  })
+
+  assert.deepEqual(
+    rows.map((row) => ({
+      key: row.key,
+      label: row.label,
+      valueLabel: row.valueLabel,
+      p95Label: row.p95Label,
+      hotHostLabel: row.hotHostLabel,
+      detail: row.detail,
+    })),
+    [
+      {
+        key: 'cpu',
+        label: 'CPU（容量加权）',
+        valueLabel: '61.0%',
+        p95Label: '84.0%',
+        hotHostLabel: '6 台 ≥ 80%',
+        detail: '按 1,024 核容量加权',
+      },
+      {
+        key: 'memory',
+        label: '内存（总体使用）',
+        valueLabel: '68.0%',
+        p95Label: '89.0%',
+        hotHostLabel: '4 台 ≥ 85%',
+        detail: '总容量 4.0 TiB',
+      },
+      {
+        key: 'disk',
+        label: '根分区（总体使用）',
+        valueLabel: '52.0%',
+        p95Label: '82.0%',
+        hotHostLabel: '2 台 ≥ 85%',
+        detail: '总容量 78.1 TiB',
+      },
+    ],
+  )
+})
+
+test('resource rows and health metrics degrade truthfully when aggregate data is unavailable', () => {
+  const rows = buildDashboardResourceRows(undefined)
+  assert.equal(rows.length, 3)
+  assert.ok(rows.every((row) => row.value === null && row.valueLabel === '—'))
+
+  const metrics = buildDashboardHealthMetrics(
+    {
+      asset_total: 20,
+      online_hosts: 17,
+      open_alerts: 2,
+      pending_tickets: 4,
+      offline_assets: 1,
+      maintenance_assets: 2,
+    },
+    undefined,
+  )
+
+  assert.equal(metrics[0].label, '运行健康度')
+  assert.equal(metrics[0].value, '76')
+  assert.equal(metrics[1].value, '2')
+  assert.equal(metrics[3].value, '3')
+  assert.equal(metrics[4].value, '85%')
 })

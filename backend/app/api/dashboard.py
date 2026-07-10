@@ -5,7 +5,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required
 from app.db.database import get_db
 from app.models.user import User
-from app.services.dashboard import build_activities, build_alert_trend, build_dashboard_stats, build_dashboard_summary, build_sparkline_data
+from app.services.dashboard import (
+    build_activities,
+    build_alert_trend,
+    build_dashboard_stats,
+    build_dashboard_summary,
+    build_host_resource_health,
+    build_sparkline_data,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
 
@@ -101,3 +108,16 @@ def api_dashboard_alert_trend(
 ):
     data = build_alert_trend(db)
     return {"code": 0, "data": data}
+
+
+@router.get("/resource-health")
+async def api_dashboard_resource_health(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("dashboard.view")),
+):
+    """返回主机池容量加权资源健康数据。"""
+    from app.services.assets import list_assets
+    from app.services.prometheus import get_hosts_summary
+
+    hosts = await get_hosts_summary(list_assets(db), db)
+    return {"code": 0, "data": build_host_resource_health(hosts)}

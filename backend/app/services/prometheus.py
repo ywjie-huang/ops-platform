@@ -199,8 +199,13 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
         s = f'instance="{inst}"'
         prefix = f"a{i}"
         all_exprs[f"{prefix}_cpu"] = f'100 - (avg by(instance)(rate(node_cpu_seconds_total{{mode="idle",{s}}}[5m])) * 100)'
+        all_exprs[f"{prefix}_cpu_cores"] = f'count(node_cpu_seconds_total{{mode="idle",{s}}})'
         all_exprs[f"{prefix}_mem"] = f'(1 - node_memory_MemAvailable_bytes{{{s}}} / node_memory_MemTotal_bytes{{{s}}}) * 100'
+        all_exprs[f"{prefix}_mem_total"] = f'node_memory_MemTotal_bytes{{{s}}}'
+        all_exprs[f"{prefix}_mem_available"] = f'node_memory_MemAvailable_bytes{{{s}}}'
         all_exprs[f"{prefix}_disk"] = f'(1 - node_filesystem_avail_bytes{{mountpoint="/",{s}}} / node_filesystem_size_bytes{{mountpoint="/",{s}}}) * 100'
+        all_exprs[f"{prefix}_disk_total"] = f'node_filesystem_size_bytes{{mountpoint="/",{s}}}'
+        all_exprs[f"{prefix}_disk_available"] = f'node_filesystem_avail_bytes{{mountpoint="/",{s}}}'
         all_exprs[f"{prefix}_netin"] = f'rate(node_network_receive_bytes_total{{{s}}}[5m]) * 8'
         all_exprs[f"{prefix}_netout"] = f'rate(node_network_transmit_bytes_total{{{s}}}[5m]) * 8'
         all_exprs[f"{prefix}_load"] = f'node_load1{{{s}}}'
@@ -216,6 +221,9 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
                 "id": asset.id, "name": asset.name, "ip_address": asset.ip_address,
                 "owner": asset.owner or "", "status": asset.status,
                 "cpu": 0, "memory": 0, "disk": 0,
+                "cpu_cores": 0,
+                "memory_total_bytes": 0, "memory_available_bytes": 0,
+                "disk_total_bytes": 0, "disk_available_bytes": 0,
                 "network_in": 0, "network_out": 0, "load": 0,
                 "prometheus_ok": False,
             })
@@ -229,8 +237,13 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
             "id": asset.id, "name": asset.name, "ip_address": asset.ip_address,
             "owner": asset.owner or "", "status": asset.status,
             "cpu": round(val("cpu"), 1),
+            "cpu_cores": round(val("cpu_cores")),
             "memory": round(val("mem"), 1),
+            "memory_total_bytes": val("mem_total"),
+            "memory_available_bytes": val("mem_available"),
             "disk": round(val("disk"), 1),
+            "disk_total_bytes": val("disk_total"),
+            "disk_available_bytes": val("disk_available"),
             "network_in": round(val("netin") / (1024 ** 2), 1),
             "network_out": round(val("netout") / (1024 ** 2), 1),
             "load": round(val("load"), 2),

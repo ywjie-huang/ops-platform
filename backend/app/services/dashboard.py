@@ -1,14 +1,16 @@
 """仪表盘数据构建服务。"""
-from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, cast, Date
+import math
+from datetime import datetime, timedelta
+from typing import Any
+
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import CHINA_TZ
 from app.models.alert_event import AlertEvent
 from app.models.asset import Asset
 from app.models.audit import AuditLog
-from app.models.ticket import Ticket
 from app.models.dashboard import (
     DashboardActivityItem,
     DashboardDistributionItem,
@@ -17,8 +19,14 @@ from app.models.dashboard import (
     DashboardSummary,
     DashboardTypeBreakdown,
 )
+from app.models.ticket import Ticket
 from app.services.alerts import count_pending_alerts, list_alerts
-from app.services.assets import count_assets_by_status, count_assets_by_type, list_assets, list_recent_assets
+from app.services.assets import (
+    count_assets_by_status,
+    count_assets_by_type,
+    list_assets,
+    list_recent_assets,
+)
 from app.services.roles import count_users_by_role, list_roles
 from app.services.tickets import count_open_tickets, list_tickets
 from app.services.users import count_new_users_since, list_recent_users, list_users
@@ -28,6 +36,141 @@ def _format_ratio(numerator: int, denominator: int) -> str:
     if denominator <= 0:
         return "0%"
     return f"{round(numerator / denominator * 100)}%"
+
+
+def _as_number(value: Any) -> float | None:
+    """将 Prometheus 聚合值收敛为有限浮点数。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _nearest_rank_percentile(values: list[float], percentile: float) -> float | None:
+    """按 nearest-rank 算法计算百分位，空样本返回 None。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(1, math.ceil(percentile * len(ordered)))
+    return round(ordered[rank - 1], 1)
+
+
+def _weighted_usage(
+    hosts: list[dict[str, Any]],
+    usage_key: str,
+    weight_key: str,
+) -> tuple[float | None, float]:
+    weighted_total = 0.0
+    total_weight = 0.0
+    for host in hosts:
+        usage = _as_number(host.get(usage_key))
+        weight = _as_number(host.get(weight_key))
+        if usage is None or weight is None or weight <= 0:
+            continue
+        weighted_total += max(0.0, min(100.0, usage)) * weight
+        total_weight += weight
+    if total_weight <= 0:
+        return None, 0.0
+    return round(weighted_total / total_weight, 1), total_weight
+
+
+def _capacity_usage(
+    hosts: list[dict[str, Any]],
+    total_key: str,
+    available_key: str,
+) -> tuple[float | None, float]:
+    used_total = 0.0
+    capacity_total = 0.0
+    for host in hosts:
+        total = _as_number(host.get(total_key))
+        available = _as_number(host.get(available_key))
+        if total is None or available is None or total <= 0:
+            continue
+        bounded_available = max(0.0, min(total, available))
+        used_total += total - bounded_available
+        capacity_total += total
+    if capacity_total <= 0:
+        return None, 0.0
+    return round(used_total / capacity_total * 100, 1), capacity_total
+
+
+def build_host_resource_health(hosts: list[dict[str, Any]]) -> dict[str, Any]:
+    """构建主机池资源健康视图。
+
+    CPU 按主机核心数进行容量加权；内存和根分区按总字节数汇总后再计算使用率。
+    P95 与热点主机数使用单机百分比，避免总体平均掩盖局部过载。
+    """
+    total = len(hosts)
+    monitored_hosts = [host for host in hosts if bool(host.get("prometheus_ok"))]
+    monitored = len(monitored_hosts)
+
+    cpu_usage, cpu_cores = _weighted_usage(monitored_hosts, "cpu", "cpu_cores")
+    memory_usage, memory_total = _capacity_usage(
+        monitored_hosts,
+        "memory_total_bytes",
+        "memory_available_bytes",
+    )
+    disk_usage, disk_total = _capacity_usage(
+        monitored_hosts,
+        "disk_total_bytes",
+        "disk_available_bytes",
+    )
+
+    def samples(key: str) -> list[float]:
+        values: list[float] = []
+        for host in monitored_hosts:
+            value = _as_number(host.get(key))
+            if value is not None:
+                values.append(max(0.0, min(100.0, value)))
+        return values
+
+    cpu_values = samples("cpu")
+    memory_values = samples("memory")
+    disk_values = samples("disk")
+    coverage = round(monitored / total * 100, 1) if total else 0.0
+
+    cpu_p95 = _nearest_rank_percentile(cpu_values, 0.95)
+    memory_p95 = _nearest_rank_percentile(memory_values, 0.95)
+    disk_p95 = _nearest_rank_percentile(disk_values, 0.95)
+    cpu_hot_hosts = sum(value >= 80 for value in cpu_values)
+    memory_hot_hosts = sum(value >= 85 for value in memory_values)
+    disk_hot_hosts = sum(value >= 85 for value in disk_values)
+
+    critical = (
+        (total > 0 and coverage < 80)
+        or any(value is not None and value >= 90 for value in (cpu_usage, memory_usage, disk_usage))
+        or any(value is not None and value >= 95 for value in (cpu_p95, memory_p95, disk_p95))
+    )
+    warning = (
+        (total > 0 and coverage < 100)
+        or cpu_hot_hosts > 0
+        or memory_hot_hosts > 0
+        or disk_hot_hosts > 0
+    )
+    status = "unknown" if total == 0 else "critical" if critical else "warning" if warning else "healthy"
+
+    return {
+        "host_pool": {
+            "total": total,
+            "monitored": monitored,
+            "unmonitored": total - monitored,
+            "coverage": coverage,
+            "status": status,
+            "cpu_usage": cpu_usage,
+            "cpu_p95": cpu_p95,
+            "cpu_hot_hosts": cpu_hot_hosts,
+            "cpu_cores": round(cpu_cores),
+            "memory_usage": memory_usage,
+            "memory_p95": memory_p95,
+            "memory_hot_hosts": memory_hot_hosts,
+            "memory_total_gb": round(memory_total / 1024**3, 1),
+            "disk_usage": disk_usage,
+            "disk_p95": disk_p95,
+            "disk_hot_hosts": disk_hot_hosts,
+            "disk_total_gb": round(disk_total / 1024**3, 1),
+        }
+    }
 
 
 def build_dashboard_stats(db: Session) -> DashboardStats:

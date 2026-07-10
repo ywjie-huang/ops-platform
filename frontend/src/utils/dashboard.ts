@@ -58,8 +58,12 @@ export interface DashboardMetricCard {
   tone: 'danger' | 'warning' | 'success' | 'info'
 }
 
+export type DashboardFocusSource = 'alert' | 'ticket' | 'asset'
+export type DashboardFocusFilterKey = 'all' | 'high' | 'ticket' | 'asset'
+
 export interface DashboardFocusItem {
   key: string
+  source: DashboardFocusSource
   badge: string
   title: string
   meta: string
@@ -155,12 +159,13 @@ function normalizeText(value?: string, fallback = '暂无信息') {
 }
 
 function buildFocusEntry(
-  source: 'alert' | 'ticket' | 'asset',
+  source: DashboardFocusSource,
   item: DashboardSummaryItemLike,
 ): DashboardFocusItem {
   if (source === 'alert') {
     return {
       key: `alert-${normalizeText(item.title)}`,
+      source,
       badge: item.tone === 'red' ? '高优告警' : '告警',
       title: normalizeText(item.title),
       meta: normalizeText(item.meta),
@@ -177,6 +182,7 @@ function buildFocusEntry(
   if (source === 'ticket') {
     return {
       key: `ticket-${normalizeText(item.title)}`,
+      source,
       badge: item.tone === 'orange' ? '待办工单' : '工单',
       title: normalizeText(item.title),
       meta: normalizeText(item.meta),
@@ -190,6 +196,7 @@ function buildFocusEntry(
 
   return {
     key: `asset-${normalizeText(item.title)}`,
+    source,
     badge: item.tone === 'red' || item.tone === 'orange' ? '资产异常' : '资产变更',
     title: normalizeText(item.title),
     meta: normalizeText(item.meta),
@@ -274,6 +281,15 @@ export function buildDashboardFocusItems(summary: DashboardSummaryLike): Dashboa
     .map(({ source, item }) => buildFocusEntry(source, item))
 }
 
+export function filterDashboardFocusItems(
+  items: DashboardFocusItem[],
+  key: DashboardFocusFilterKey,
+): DashboardFocusItem[] {
+  if (key === 'all') return items
+  if (key === 'high') return items.filter((item) => item.tone === 'danger')
+  return items.filter((item) => item.source === key)
+}
+
 export function buildDashboardShortcutItems(stats: DashboardStatsLike): DashboardShortcutItem[] {
   const onlineHosts = Number(stats.online_hosts || 0)
   const totalAssets = Number(stats.asset_total || 0)
@@ -351,4 +367,209 @@ export function buildDashboardTypeRows(summary: DashboardSummaryLike): Dashboard
       tone,
     }
   })
+}
+
+export interface DashboardHostPoolLike {
+  total?: number
+  monitored?: number
+  unmonitored?: number
+  coverage?: number
+  status?: 'healthy' | 'warning' | 'critical' | 'unknown'
+  cpu_usage?: number | null
+  cpu_p95?: number | null
+  cpu_hot_hosts?: number
+  cpu_cores?: number
+  memory_usage?: number | null
+  memory_p95?: number | null
+  memory_hot_hosts?: number
+  memory_total_gb?: number
+  disk_usage?: number | null
+  disk_p95?: number | null
+  disk_hot_hosts?: number
+  disk_total_gb?: number
+}
+
+export interface DashboardResourceHealthLike {
+  host_pool?: DashboardHostPoolLike
+}
+
+export interface DashboardResourceRow {
+  key: 'cpu' | 'memory' | 'disk'
+  label: string
+  value: number | null
+  valueLabel: string
+  p95: number | null
+  p95Label: string
+  hotHosts: number
+  hotHostLabel: string
+  threshold: number
+  detail: string
+  tone: 'danger' | 'warning' | 'success' | 'muted'
+}
+
+export interface DashboardHealthMetric {
+  key: 'health' | 'alerts' | 'tickets' | 'degraded' | 'online'
+  label: string
+  value: string
+  unit?: string
+  hint: string
+  tone: 'danger' | 'warning' | 'success' | 'info'
+}
+
+function optionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function formatPercent(value: number | null) {
+  return value === null ? '—' : `${value.toFixed(1)}%`
+}
+
+function formatCapacity(totalGb: number | null) {
+  if (totalGb === null || totalGb <= 0) return '容量数据不可用'
+  if (totalGb >= 1024) return `总容量 ${(totalGb / 1024).toFixed(1)} TiB`
+  return `总容量 ${totalGb.toFixed(1)} GiB`
+}
+
+function resourceTone(
+  value: number | null,
+  p95: number | null,
+  hotHosts: number,
+  warningThreshold: number,
+): DashboardResourceRow['tone'] {
+  if (value === null && p95 === null) return 'muted'
+  if ((value ?? 0) >= 90 || (p95 ?? 0) >= 95) return 'danger'
+  if ((value ?? 0) >= warningThreshold || hotHosts > 0) return 'warning'
+  return 'success'
+}
+
+export function buildDashboardResourceRows(
+  resourceHealth?: DashboardResourceHealthLike,
+): DashboardResourceRow[] {
+  const pool = resourceHealth?.host_pool
+  const cpuUsage = optionalNumber(pool?.cpu_usage)
+  const cpuP95 = optionalNumber(pool?.cpu_p95)
+  const cpuHotHosts = Number(pool?.cpu_hot_hosts || 0)
+  const memoryUsage = optionalNumber(pool?.memory_usage)
+  const memoryP95 = optionalNumber(pool?.memory_p95)
+  const memoryHotHosts = Number(pool?.memory_hot_hosts || 0)
+  const diskUsage = optionalNumber(pool?.disk_usage)
+  const diskP95 = optionalNumber(pool?.disk_p95)
+  const diskHotHosts = Number(pool?.disk_hot_hosts || 0)
+
+  return [
+    {
+      key: 'cpu',
+      label: 'CPU（容量加权）',
+      value: cpuUsage,
+      valueLabel: formatPercent(cpuUsage),
+      p95: cpuP95,
+      p95Label: formatPercent(cpuP95),
+      hotHosts: cpuHotHosts,
+      hotHostLabel: `${cpuHotHosts} 台 ≥ 80%`,
+      threshold: 80,
+      detail: pool?.cpu_cores
+        ? `按 ${Number(pool.cpu_cores).toLocaleString('en-US')} 核容量加权`
+        : '核心容量数据不可用',
+      tone: resourceTone(cpuUsage, cpuP95, cpuHotHosts, 80),
+    },
+    {
+      key: 'memory',
+      label: '内存（总体使用）',
+      value: memoryUsage,
+      valueLabel: formatPercent(memoryUsage),
+      p95: memoryP95,
+      p95Label: formatPercent(memoryP95),
+      hotHosts: memoryHotHosts,
+      hotHostLabel: `${memoryHotHosts} 台 ≥ 85%`,
+      threshold: 85,
+      detail: formatCapacity(optionalNumber(pool?.memory_total_gb)),
+      tone: resourceTone(memoryUsage, memoryP95, memoryHotHosts, 85),
+    },
+    {
+      key: 'disk',
+      label: '根分区（总体使用）',
+      value: diskUsage,
+      valueLabel: formatPercent(diskUsage),
+      p95: diskP95,
+      p95Label: formatPercent(diskP95),
+      hotHosts: diskHotHosts,
+      hotHostLabel: `${diskHotHosts} 台 ≥ 85%`,
+      threshold: 85,
+      detail: formatCapacity(optionalNumber(pool?.disk_total_gb)),
+      tone: resourceTone(diskUsage, diskP95, diskHotHosts, 85),
+    },
+  ]
+}
+
+export function buildDashboardHealthMetrics(
+  stats: DashboardStatsLike,
+  resourceHealth?: DashboardResourceHealthLike,
+): DashboardHealthMetric[] {
+  const total = Number(stats.asset_total || 0)
+  const online = Number(stats.online_hosts || 0)
+  const alerts = Number(stats.open_alerts || 0)
+  const tickets = Number(stats.pending_tickets || 0)
+  const offline = Number(stats.offline_assets || 0)
+  const maintenance = Number(stats.maintenance_assets || 0)
+  const degraded = offline + maintenance
+  const pool = resourceHealth?.host_pool
+  const hasResourceData = Boolean(pool)
+  const hotspotPenalty = Math.min(10,
+    Number(pool?.cpu_hot_hosts || 0)
+      + Number(pool?.memory_hot_hosts || 0)
+      + Number(pool?.disk_hot_hosts || 0),
+  )
+  const coveragePenalty = pool && Number(pool.coverage || 0) < 90 ? 5 : 0
+  const score = Math.max(0, Math.min(100,
+    100
+      - Math.min(32, alerts * 4)
+      - Math.min(16, tickets)
+      - Math.min(24, degraded * 4)
+      - hotspotPenalty
+      - coveragePenalty,
+  ))
+  const onlineRate = total > 0 ? Math.round((online / total) * 100) : 0
+
+  return [
+    {
+      key: 'health',
+      label: '运行健康度',
+      value: String(score),
+      unit: '/100',
+      hint: hasResourceData
+        ? '综合告警、工单、资产与资源热点'
+        : '资源数据不可用，当前仅综合告警、工单与资产状态',
+      tone: score >= 90 ? 'success' : score >= 70 ? 'warning' : 'danger',
+    },
+    {
+      key: 'alerts',
+      label: '待处理告警',
+      value: String(alerts),
+      hint: '待确认与已确认告警',
+      tone: alerts > 0 ? 'danger' : 'success',
+    },
+    {
+      key: 'tickets',
+      label: '待办工单',
+      value: String(tickets),
+      hint: '待处理与处理中工单',
+      tone: tickets > 0 ? 'warning' : 'success',
+    },
+    {
+      key: 'degraded',
+      label: '降级资产',
+      value: String(degraded),
+      hint: `已删除 ${offline} · 已关机 ${maintenance}`,
+      tone: degraded > 0 ? 'warning' : 'success',
+    },
+    {
+      key: 'online',
+      label: '资产在线率',
+      value: `${onlineRate}%`,
+      hint: total > 0 ? `${online}/${total} 资产使用中` : '暂无资产',
+      tone: total === 0 ? 'info' : onlineRate >= 95 ? 'success' : onlineRate >= 80 ? 'info' : 'danger',
+    },
+  ]
 }
