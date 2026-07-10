@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
 from app.core.config import CHINA_TZ, DEPLOY_ARTIFACT_DIR
+from app.core.security_controls import SECURITY_CONTROLS, ensure_feature_enabled
 from app.db.database import get_db
 from app.models.deploy import DeployApplication, DeployBuild
 from app.models.user import User
@@ -65,6 +66,19 @@ from app.services.deploy.webhook import (
 )
 
 router = APIRouter(prefix="/deploy", tags=["应用发布"])
+
+
+def require_deploy_webhook_enabled() -> None:
+    """Keep CI/CD artifact callbacks closed until explicitly enabled."""
+    ensure_feature_enabled(SECURITY_CONTROLS.deploy_webhook, "部署产物 Webhook")
+
+
+def validate_deploy_webhook_signature(payload: bytes, signature: str, secret: str) -> None:
+    """Require a configured secret and a valid HMAC signature for callbacks."""
+    if not secret:
+        raise HTTPException(status_code=503, detail="Webhook 未配置签名密钥，已拒绝请求")
+    if not verify_webhook_signature(payload, signature, secret):
+        raise HTTPException(status_code=401, detail="签名验证失败")
 
 
 # ──────────────────────── Pydantic 模型 ────────────────────────
@@ -1360,7 +1374,7 @@ def api_get_webhook_url(
     }
 
 
-@router.post("/artifacts/webhook/{app_id}")
+@router.post("/artifacts/webhook/{app_id}", dependencies=[Depends(require_deploy_webhook_enabled)])
 async def api_webhook_push(
     app_id: int,
     request: Request,
@@ -1397,8 +1411,7 @@ async def api_webhook_push(
 
     # 验证签名（使用 webhook_secret 字段）
     secret = app.webhook_secret or ""
-    if secret and not verify_webhook_signature(body, x_webhook_signature or "", secret):
-        raise HTTPException(status_code=401, detail="签名验证失败")
+    validate_deploy_webhook_signature(body, x_webhook_signature or "", secret)
 
     # 解析参数
     build_number = x_build_number or generate_build_number()
@@ -1472,7 +1485,7 @@ async def api_webhook_push(
     return {"code": 0, "msg": "构建产物已接收", "data": _build_dict(build)}
 
 
-@router.post("/artifacts/callback/{app_id}")
+@router.post("/artifacts/callback/{app_id}", dependencies=[Depends(require_deploy_webhook_enabled)])
 async def api_webhook_callback(
     app_id: int,
     request: Request,
@@ -1505,8 +1518,7 @@ async def api_webhook_callback(
     # 验证签名（使用 webhook_secret 字段）
     x_webhook_signature = request.headers.get("X-Webhook-Signature", "")
     secret = app.webhook_secret or ""
-    if secret and not verify_webhook_signature(body, x_webhook_signature, secret):
-        raise HTTPException(status_code=401, detail="签名验证失败")
+    validate_deploy_webhook_signature(body, x_webhook_signature, secret)
 
     # 解析 JSON
     try:

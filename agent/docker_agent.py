@@ -4,14 +4,12 @@ Docker 容器监控 Agent
 ====================
 暴露 HTTP API 供运维平台主动拉取容器和系统指标。
 
-一条命令启动：
-    docker rm -f ops-agent >/dev/null 2>&1 || true
-    docker pull hub1.lczy.com/public/ops-agent:latest
-    docker run -d -p 9001:9001 \\
-      --name ops-agent \\
-      --restart=always \\
-      -v /var/run/docker.sock:/var/run/docker.sock \\
-      hub1.lczy.com/public/ops-agent:latest
+部署流程：
+    1. 在仓库 agent 目录构建镜像并推送到自己的镜像仓库。
+    2. 在目标 Docker 主机拉取镜像，并将 9001 端口绑定到管理网 IP。
+    3. 在平台填写“管理网 IP:9001”完成主机注册。
+
+完整命令和网络安全注意事项见 agent/README.md。
 
 环境变量：
     AGENT_PORT  - 监听端口，默认 9001

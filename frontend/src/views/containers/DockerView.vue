@@ -146,36 +146,76 @@
       </div>
     </div>
 
-    <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="min(600px, 90vw)" destroy-on-close>
+    <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="min(720px, 90vw)" destroy-on-close>
       <template v-if="!editingHostId">
         <el-steps :active="setupStep" finish-status="success" align-center class="setup-steps">
+          <el-step title="发布镜像" />
           <el-step title="部署 Agent" />
           <el-step title="注册主机" />
         </el-steps>
 
-        <div v-if="setupStep === 0">
-          <p class="setup-hint">在目标 Docker 主机上执行以下命令安装或升级 Agent：</p>
-          <div class="setup-command-box">
-            <pre class="setup-command">{{ agentInstallCmd }}</pre>
-            <el-button type="primary" size="small" class="copy-btn" @click="copyAgentCmd">复制命令</el-button>
+        <section v-if="setupStep === 0" class="setup-panel" aria-labelledby="publish-agent-title">
+          <div class="setup-heading">
+            <h3 id="publish-agent-title">从源码构建并发布 Agent 镜像</h3>
+            <p>在获取本仓库源码的开发机上进入 <code>agent</code> 目录，将镜像推送到你有权限访问的仓库。</p>
           </div>
-          <el-button type="primary" class="next-btn" @click="setupStep = 1">下一步，填写信息</el-button>
-        </div>
+          <el-form label-position="top">
+            <el-form-item label="镜像地址" required>
+              <el-input
+                v-model="agentImage"
+                placeholder="例：registry.example.com/ops/ops-agent:v1.0.0"
+                aria-label="Agent 镜像地址"
+              />
+              <div class="setup-field-tip">请使用你自己的镜像仓库地址；目标 Docker 主机需要具备拉取权限。</div>
+            </el-form-item>
+          </el-form>
+          <div v-if="agentPublishCmd" class="setup-command-box">
+            <pre class="setup-command" role="region" aria-label="Agent 构建与推送命令">{{ agentPublishCmd }}</pre>
+            <el-button type="primary" size="small" class="copy-btn" @click="copySetupCommand(agentPublishCmd, '构建与推送命令已复制')">复制命令</el-button>
+          </div>
+          <div v-else class="setup-command-empty">填写镜像地址后生成构建、登录和推送命令。</div>
+        </section>
 
-        <div v-if="setupStep === 1">
+        <section v-if="setupStep === 1" class="setup-panel" aria-labelledby="deploy-agent-title">
+          <div class="setup-heading">
+            <h3 id="deploy-agent-title">在目标主机部署 Agent</h3>
+            <p>填写管理平台能够访问的目标主机管理网 IP。端口暴露范围和防火墙规则请在服务器侧限制。</p>
+          </div>
+          <el-form label-position="top">
+            <el-form-item label="管理网 IP" required>
+              <el-input
+                v-model="agentManagementIp"
+                placeholder="例：10.10.20.15"
+                aria-label="Docker 主机管理网 IP"
+              />
+              <div class="setup-field-tip">生成的命令会将 Agent 绑定到该地址的 9001 端口，不修改 Agent 业务逻辑。</div>
+            </el-form-item>
+          </el-form>
+          <div v-if="agentRunCmd" class="setup-command-box">
+            <pre class="setup-command" role="region" aria-label="Agent 拉取与运行命令">{{ agentRunCmd }}</pre>
+            <el-button type="primary" size="small" class="copy-btn" @click="copySetupCommand(agentRunCmd, '拉取与运行命令已复制')">复制命令</el-button>
+          </div>
+          <div v-else class="setup-command-empty">填写镜像地址和管理网 IP 后生成拉取与运行命令。</div>
+        </section>
+
+        <section v-if="setupStep === 2" class="setup-panel" aria-labelledby="register-agent-title">
+          <div class="setup-heading">
+            <h3 id="register-agent-title">将 Agent 注册到平台</h3>
+            <p>平台会通过 Agent 地址拉取 Docker 数据并执行容器管理操作。</p>
+          </div>
           <el-form ref="hostFormRef" :model="hostForm" :rules="hostRules" label-width="100px">
             <el-form-item label="主机名称" prop="name">
               <el-input v-model="hostForm.name" placeholder="例：docker-prod-01" />
             </el-form-item>
             <el-form-item label="Agent 地址" prop="endpoint">
-              <el-input v-model="hostForm.endpoint" placeholder="例：192.168.1.200:9001" />
-              <div class="endpoint-tip">填写目标主机 IP 和 Agent 端口（默认 9001）。</div>
+              <el-input v-model="hostForm.endpoint" placeholder="例：10.10.20.15:9001" />
+              <div class="endpoint-tip">默认根据上一步的管理网 IP 生成，也可按实际网络配置修改。</div>
             </el-form-item>
             <el-form-item label="说明">
               <el-input v-model="hostForm.description" placeholder="备注信息" />
             </el-form-item>
           </el-form>
-        </div>
+        </section>
       </template>
 
       <el-form v-else ref="hostFormRef" :model="hostForm" :rules="hostRules" label-width="100px">
@@ -193,8 +233,11 @@
       <template #footer>
         <el-button @click="hostDialogVisible = false">取消</el-button>
         <template v-if="!editingHostId">
-          <el-button v-if="setupStep === 1" @click="setupStep = 0">上一步</el-button>
-          <el-button v-if="setupStep === 1" type="primary" :loading="saving" @click="handleHostSubmit">注册</el-button>
+          <el-button v-if="setupStep > 0" @click="setupStep -= 1">上一步</el-button>
+          <el-button v-if="setupStep < 2" type="primary" @click="goToNextSetupStep">
+            {{ setupStep === 0 ? '下一步，部署 Agent' : '下一步，注册主机' }}
+          </el-button>
+          <el-button v-else type="primary" :loading="saving" @click="handleHostSubmit">注册</el-button>
         </template>
         <el-button v-else type="primary" :loading="saving" @click="handleHostSubmit">保存</el-button>
       </template>
@@ -217,6 +260,7 @@ import {
   refreshDockerHost,
 } from '@/api/containers'
 import { getHostSyncState, secondsSince, sortHostsByRisk, summarizeContainers } from '@/utils/dockerMonitor'
+import { buildAgentEndpoint, buildAgentPublishCommand, buildAgentRunCommand } from '@/utils/dockerAgentSetup'
 
 const router = useRouter()
 
@@ -237,6 +281,8 @@ const lastRefreshAt = ref<Date | null>(null)
 const hostDialogVisible = ref(false)
 const editingHostId = ref<number | null>(null)
 const setupStep = ref(0)
+const agentImage = ref('')
+const agentManagementIp = ref('')
 const hostFormRef = ref<FormInstance>()
 const hostForm = reactive({ name: '', endpoint: '', description: '' })
 const hostRules = {
@@ -244,15 +290,8 @@ const hostRules = {
   endpoint: [{ required: true, message: '请输入 Agent 地址', trigger: 'blur' }],
 }
 
-const agentInstallCmd = `docker rm -f ops-agent >/dev/null 2>&1 || true
-docker pull hub1.lczy.com/public/ops-agent:latest
-docker run -d \\
-  -p 9001:9001 \\
-  --name ops-agent \\
-  --restart=always \\
-  -v /var/run/docker.sock:/var/run/docker.sock \\
-  hub1.lczy.com/public/ops-agent:latest`
-
+const agentPublishCmd = computed(() => buildAgentPublishCommand(agentImage.value))
+const agentRunCmd = computed(() => buildAgentRunCommand(agentImage.value, agentManagementIp.value))
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const containerStatsByHost = computed(() => {
@@ -325,9 +364,34 @@ const lastRefreshText = computed(() => lastRefreshAt.value ? lastRefreshAt.value
 
 watch([hostKeyword, statusFilter, sortMode], () => { page.value = 1 })
 
-function copyAgentCmd() {
-  const cmd = agentInstallCmd
-  navigator.clipboard.writeText(cmd).then(() => ElMessage.success('已复制命令'))
+async function copySetupCommand(command: string, successMessage: string) {
+  if (!command) {
+    ElMessage.warning('请先填写生成命令所需的信息')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(command)
+    ElMessage.success(successMessage)
+  } catch {
+    ElMessage.error('复制失败，请手动选择命令复制')
+  }
+}
+
+function goToNextSetupStep() {
+  if (setupStep.value === 0 && !agentPublishCmd.value) {
+    ElMessage.warning('请先填写有效的镜像地址')
+    return
+  }
+  if (setupStep.value === 1) {
+    if (!agentRunCmd.value) {
+      ElMessage.warning('请先填写有效的管理网 IP')
+      return
+    }
+    if (!hostForm.endpoint) {
+      hostForm.endpoint = buildAgentEndpoint(agentManagementIp.value)
+    }
+  }
+  setupStep.value += 1
 }
 
 function endpointHost(endpoint = '') {
@@ -424,6 +488,8 @@ async function refreshAll() {
 function handleCreate() {
   editingHostId.value = null
   setupStep.value = 0
+  agentImage.value = ''
+  agentManagementIp.value = ''
   Object.assign(hostForm, { name: '', endpoint: '', description: '' })
   hostDialogVisible.value = true
 }
@@ -692,37 +758,72 @@ onUnmounted(stopAutoRefresh)
   border-top: 1px solid var(--border-color);
 }
 .setup-steps {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
-.setup-hint {
-  margin: 0 0 12px;
+.setup-panel {
+  display: grid;
+  gap: 16px;
+}
+.setup-heading {
+  display: grid;
+  gap: 6px;
+}
+.setup-heading h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+.setup-heading p {
+  max-width: 70ch;
+  margin: 0;
   color: var(--text-secondary);
-  font-size: 14px;
-}
-.copy-btn {
-  margin-top: 8px;
-}
-.next-btn {
-  margin-top: 16px;
-}
-.endpoint-tip {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-.setup-command-box {
-  background: var(--text-primary);
-  border-radius: var(--border-radius);
-  padding: 16px;
-}
-.setup-command {
-  color: var(--bg-color);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 13px;
   line-height: 1.6;
+}
+.setup-heading code {
+  padding: 1px 5px;
+  color: var(--text-primary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.setup-field-tip,
+.endpoint-tip {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.setup-command-box {
+  padding: 14px;
+  background: var(--text-primary);
+  border: 1px solid var(--text-primary);
+  border-radius: var(--border-radius);
+}
+.setup-command {
+  max-height: 260px;
   margin: 0;
+  overflow: auto;
+  color: var(--bg-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word;
+}
+.setup-command-empty {
+  padding: 24px 16px;
+  color: var(--text-secondary);
+  background: var(--bg-color);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+  text-align: center;
+}
+.copy-btn {
+  margin-top: 10px;
 }
 @media (max-width: 1200px) {
   .summary-grid {
@@ -745,6 +846,12 @@ onUnmounted(stopAutoRefresh)
   .status-select,
   .sort-select {
     width: 100%;
+  }
+  .setup-steps :deep(.el-step__title) {
+    font-size: 12px;
+  }
+  .setup-command-box {
+    padding: 12px;
   }
 }
 </style>

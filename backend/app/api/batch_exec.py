@@ -23,6 +23,7 @@ from app.services.audit import write_log
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/batch-exec", tags=["批量执行"])
+websocket_router = APIRouter(prefix="/batch-exec", tags=["批量执行"])
 
 
 # ─── WebSocket：实时批量执行 ────────────────────────────────
@@ -64,7 +65,7 @@ def _save_execution(command: str, asset_ids: list[int], asset_names: list[str],
         db.close()
 
 
-@router.websocket("/ws/exec")
+@websocket_router.websocket("/ws/exec")
 async def ws_batch_exec(websocket: WebSocket):
     """
     WebSocket 批量执行端点。

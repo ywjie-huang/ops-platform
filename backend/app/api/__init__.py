@@ -1,41 +1,80 @@
 from fastapi import APIRouter
 
-from app.api import auth, users, roles, dashboard, containers, monitoring, reports, audit, password, assets, alerts, tickets, ssh_terminal, sftp, alertmanager, settings, batch_exec, batch_presets, patrol, ai, docker_mgmt, ssh_keys, scheduler, deploy
+from app.api import (
+    ai,
+    alertmanager,
+    alerts,
+    assets,
+    audit,
+    auth,
+    batch_exec,
+    batch_presets,
+    containers,
+    dashboard,
+    deploy,
+    docker_mgmt,
+    monitoring,
+    password,
+    patrol,
+    reports,
+    roles,
+    scheduler,
+    settings,
+    sftp,
+    ssh_keys,
+    ssh_terminal,
+    tickets,
+    users,
+)
+from app.core.security_controls import EmergencyAccessControls, SECURITY_CONTROLS
 
-router = APIRouter(prefix="/api/v1")
 
-# 认证
-router.include_router(auth.router)
+def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> APIRouter:
+    """Build the v1 API router with emergency-closed high-risk capabilities."""
+    api_router = APIRouter(prefix="/api/v1")
 
-# 核心业务
-router.include_router(dashboard.router)
-router.include_router(assets.router)
-router.include_router(users.router)
-router.include_router(roles.router)
+    # 认证
+    api_router.include_router(auth.router)
 
-# 业务模块
-router.include_router(tickets.router)
-router.include_router(alerts.router)
-router.include_router(containers.router)
-router.include_router(monitoring.router)
-router.include_router(reports.router)
-router.include_router(audit.router)
-router.include_router(password.router)
-router.include_router(ssh_terminal.router)
-router.include_router(sftp.router)
-router.include_router(alertmanager.router)
-router.include_router(settings.router)
-router.include_router(batch_exec.router)
-router.include_router(batch_presets.router)
-router.include_router(patrol.router)
-router.include_router(ai.router)
-router.include_router(docker_mgmt.router)
+    # 核心业务
+    api_router.include_router(dashboard.router)
+    api_router.include_router(assets.router)
+    api_router.include_router(users.router)
+    api_router.include_router(roles.router)
 
-# 定时任务
-router.include_router(scheduler.router)
+    # 业务模块
+    api_router.include_router(tickets.router)
+    api_router.include_router(alerts.router)
+    api_router.include_router(containers.router)
+    api_router.include_router(monitoring.router)
+    api_router.include_router(reports.router)
+    api_router.include_router(audit.router)
+    api_router.include_router(password.router)
+    api_router.include_router(alertmanager.router)
+    api_router.include_router(settings.router)
+    api_router.include_router(batch_exec.router)
+    api_router.include_router(batch_presets.router)
+    api_router.include_router(patrol.router)
+    api_router.include_router(ai.router)
+    api_router.include_router(docker_mgmt.router)
 
-# SSH 密钥管理
-router.include_router(ssh_keys.router)
+    # 紧急止血：以下高风险入口默认不注册，必须通过环境变量显式开启。
+    if controls.ssh_terminal:
+        api_router.include_router(ssh_terminal.router)
+    if controls.sftp:
+        api_router.include_router(sftp.router)
+    if controls.batch_exec:
+        api_router.include_router(batch_exec.websocket_router)
+    if controls.ssh_key_management:
+        api_router.include_router(ssh_keys.router)
 
-# 应用发布
-router.include_router(deploy.router)
+    # 定时任务
+    api_router.include_router(scheduler.router)
+
+    # 应用发布（产物 Webhook 在端点级别通过独立开关保护）
+    api_router.include_router(deploy.router)
+
+    return api_router
+
+
+router = create_api_router()

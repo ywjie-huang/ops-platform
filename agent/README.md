@@ -4,34 +4,43 @@
 
 ## 快速开始
 
-### 1. 在目标机器启动 Agent
+### 1. 从源码构建并发布镜像
+
+在获取本仓库源码的开发机上执行。请将示例镜像地址替换为你自己的镜像仓库：
 
 ```bash
+cd agent
+docker build -t <你的镜像仓库>/ops-agent:latest .
+docker login <你的镜像仓库>
+docker push <你的镜像仓库>/ops-agent:latest
+```
+
+### 2. 在目标 Docker 主机部署 Agent
+
+将 `10.10.20.15` 替换为管理平台能够访问的目标主机管理网 IP：
+
+```bash
+docker pull <你的镜像仓库>/ops-agent:latest
 docker rm -f ops-agent >/dev/null 2>&1 || true
-docker pull hub1.lczy.com/public/ops-agent:latest
-docker run -d -p 9001:9001 \
+docker run -d \
+  -p 10.10.20.15:9001:9001 \
   --name ops-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  hub1.lczy.com/public/ops-agent:latest
+  <你的镜像仓库>/ops-agent:latest
 ```
 
-### 2. 在平台注册主机
+> Agent 挂载了 Docker Socket，具备管理宿主机容器的高权限。请在服务器启动参数与防火墙中限制 9001 端口仅允许管理平台访问，不要直接暴露到公网。
 
-进入 **资产管理 → Docker 监控 → 注册主机**，填写名称和 Agent 地址（`目标IP:9001`）即可。
+### 3. 在平台注册主机
 
-## 构建镜像
-
-```bash
-docker build -t hub1.lczy.com/public/ops-agent:latest .
-docker push hub1.lczy.com/public/ops-agent:latest
-```
+进入 **资产管理 → Docker 监控 → 注册主机**，按向导填写镜像地址和管理网 IP，最后确认 Agent 地址（例如 `10.10.20.15:9001`）并完成注册。
 
 ## 环境变量
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `AGENT_PORT` | ❌ | `9001` | 监听端口 |
+| `AGENT_PORT` | 否 | `9001` | 监听端口 |
 
 ## API 接口
 

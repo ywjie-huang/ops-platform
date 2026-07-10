@@ -16,5 +16,5 @@ ENV AGENT_PORT=9001
 
 ENTRYPOINT ["python", "docker_agent.py"]
 
-# 构建：docker build -t hub1.lczy.com/public/ops-agent:latest .
-# 推送：docker push hub1.lczy.com/public/ops-agent:latest
+# 构建：docker build -t <你的镜像仓库>/ops-agent:latest .
+# 推送：docker push <你的镜像仓库>/ops-agent:latest
