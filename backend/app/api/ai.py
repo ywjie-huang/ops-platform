@@ -113,6 +113,7 @@ def api_delete_conversation(
     from app.services.ai.conversations import delete_conversation
 
     delete_conversation(db, conversation_id)
+    db.commit()
     return {"code": 0, "msg": "已删除"}
 
 
