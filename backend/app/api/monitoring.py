@@ -1,4 +1,6 @@
 """监控 API — 主机监控（Prometheus 数据源）。"""
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -41,7 +43,11 @@ async def api_host_detail(
         raise HTTPException(status_code=404, detail="主机不存在")
 
     try:
-        metrics = await get_host_metrics(asset.ip_address, asset.name, db)
+        metrics, prometheus_connected = await asyncio.gather(
+            get_host_metrics(asset.ip_address, asset.name, db),
+            check_prometheus_health(db),
+        )
+        target_available = bool(metrics.pop("prometheus_ok", True))
         return {
             "code": 0,
             "data": {
@@ -52,7 +58,7 @@ async def api_host_detail(
                 "owner": asset.owner or "",
                 "spec": asset.spec or "",
                 "os_info": asset.os or "",
-                "prometheus_ok": True,
+                "prometheus_ok": prometheus_connected and target_available,
                 **metrics,
             },
         }

@@ -259,7 +259,7 @@ async def get_host_metrics(ip: str, name: str = "", db=None) -> dict[str, Any]:
     instances = await discover_instances(prom_url)
     inst = _find_instance(ip, name, instances)
     if not inst:
-        return _empty_metrics()
+        return {"prometheus_ok": False, **_empty_metrics()}
 
     s = f'instance="{inst}"'
     exprs = {
@@ -297,6 +297,7 @@ async def get_host_metrics(ip: str, name: str = "", db=None) -> dict[str, Any]:
         return int(s_val / 3600)
 
     return {
+        "prometheus_ok": True,
         "cpu": {"usage": round(val("cpu_usage"), 1), "cores": int(val("cpu_cores"))},
         "memory": {
             "usage": round(val("memory_usage"), 1),
