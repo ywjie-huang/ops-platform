@@ -1,6 +1,6 @@
-# my-project · 运维管理平台
+# ops-platform · 运维管理平台
 
-基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Kubernetes** 实现主机监控、告警管理与容器资源自动发现。
+基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Kubernetes + Docker Agent + Jenkins + LLM**，覆盖主机监控、告警管理、容器运维、巡检指挥、应用发布与 AI 智能助手。
 
 ---
 
@@ -8,17 +8,16 @@
 
 | 一级分组 | 二级菜单 | 说明 |
 |---------|---------|------|
-| **报表大屏** | 仪表盘 / 报表中心 | 系统概览 + 预置报表/自定义报表/CSV导出 |
-| **资产管理** | 主机管理 / 主机密钥 / 容器管理 / Docker 监控 | 资产台账 + SSH 密钥管理 + SSH 终端(含SFTP) + K8s 集群自动发现 + Docker Agent 主机监控 |
-| **监控告警** | 主机监控 / 告警规则 / 告警事件 / 告警管理 | Prometheus 实时数据 + 告警规则 + Alertmanager 事件 + 告警处理 |
-| **工单协作** | 工单协作 | 工单流转 |
-| **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
-| **巡检中心** | 巡检报告 / 阈值配置 / 定时任务 | 主机/K8s/资产自动巡检 + 报告管理 + 滑块式阈值配置 + 快捷预设 + Cron 定时调度 |
+| **报表大屏** | 仪表盘 / 报表中心 | 值班首页概览 + 预置报表/自定义报表/CSV 导出 |
+| **资产管理** | 主机管理 / 主机密钥 / K8s 集群 / Docker 监控 | 资产台账 + SSH 密钥 + K8s 自动发现 + Docker Agent 主机/容器运维 |
+| **监控告警** | 主机监控 / 告警规则 / 告警事件 / 告警管理 | Prometheus 工作台 + 指标趋势 + Alertmanager 事件 + 告警处理 |
+| **工单协作** | 工单协作 | 工单流转与资产关联 |
+| **应用发布** | 应用管理 / 部署记录 / 部署审批 | Jenkins 触发 / SSH 上传部署 / 审批流程 / 一键回滚 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
-| **应用发布** | 发布看板 / 应用管理 / 发布记录 | Jenkins 触发 / SSH 文件上传部署 / 发布状态矩阵 / 审批流程 / 一键回滚 |
-| **应用发布** | 发布看板 / 应用管理 / 发布记录 | Jenkins 触发 / SSH 文件上传部署 / 审批流程 / 一键回滚 |
-| **AI 助手** | AI 助手 | LLM 流式对话 + 工具调用 + 写操作确认 |
-| **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager 地址配置 + LLM 模型配置 |
+| **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
+| **巡检中心** | 巡检指挥台 / 阈值配置 / 定时任务 | 指挥台分车道处置 + 态势大屏 + 阈值滑块 + Cron 调度 |
+| **智能中心** | 智能助手 / 模型配置 | LLM 流式对话 + 工具调用 + 多配置档案 + Responses 模式 |
+| **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager/Jenkins 配置 |
 
 ---
 
@@ -37,11 +36,12 @@
 
 - **统计卡片**：页面顶部 4 个统计卡片（主机总数 / 使用中 / 已关机 / 已删除），带彩色图标
 - **资产列表**：搜索 + 类型/状态筛选，主机信息+规格双行展示，分页左右分布
-- **分组表单**：新增资产弹窗分 3 组（基础信息 / 规格与系统 / SSH 连接配置），带编号标记
+- **分组表单**：新增/编辑资产采用顶部标签布局，分 3 组（基础信息 / 规格与系统 / SSH 连接配置），组间分隔更清晰
+- **负责人联想**：负责人字段支持按用户姓名自动补全，也可直接手填
 - **CMDB 详情页**：顶部 Header（名称+IP+状态+操作按钮），4 个 Tab 页签（基础信息 / 连接配置 / 关联工单 / 变更记录）
-- 字段：名称、IP、类型、规格、系统、状态、负责人、描述
+- 字段：名称、IP、类型、规格、操作系统、状态、负责人、描述
 - 资产状态：**使用中** / **已关机** / **已删除**
-- SSH 配置：端口、用户名、密码（详情页编辑，留空不修改）
+- SSH 配置：端口、用户名、密码（详情页编辑，留空不修改）/ 关联已保存密钥
 
 ### 3. 主机密钥管理
 
@@ -96,15 +96,17 @@
 ### 6. Docker 监控（Agent 拉取模式 + 容器操作）
 
 - 采用 **Portainer 风格**：目标主机部署轻量 Agent 容器，平台主动拉取数据
-- **一键部署**：注册主机时直接显示 `docker run` 命令，复制即可
-- **自动发现**：Agent 每 5 秒采集容器数据，平台每 10 秒自动拉取
+- **一键部署引导**：注册主机时展示标准化 `docker run` 命令，支持复制；Agent 版本不匹配时给出升级提示
+- **自动发现**：Agent 采集容器数据，平台定时拉取并刷新在线状态
 - **主机管理**：注册、编辑、删除 Docker 主机，自动检测在线/离线状态
-- **独立详情页**：点击主机进入独立详情页（路由 `/docker/:id`），展示主机信息、系统指标（CPU/内存/磁盘带进度条）、容器列表
+- **独立详情页**：点击主机进入独立详情页（路由 `/assets/docker/:id`），展示主机信息、系统指标（CPU/内存/磁盘带进度条）、容器列表
 - **容器操作**：支持启动、停止、重启、删除容器，操作通过 Agent 代理执行，删除有二次确认
+- **容器日志**：支持查看指定容器最近日志（`/logs?tail=300`）
 - **容器列表**：容器名称、镜像、状态、CPU、内存（进度条）、网络 I/O、重启次数、端口映射，支持搜索和状态筛选；低频信息（容器 ID、磁盘 I/O、更新时间）通过展开行查看
 - **概览指标**：CPU/内存/磁盘使用率 + 进度条、容器总数、运行中容器数、主机 IP
 - **手动刷新**：支持一键手动从 Agent 拉取最新数据
 - **自动刷新可控**：用户可开关自动刷新（默认关闭），tooltip 提示刷新间隔
+- **安全加固**：高风险入口与 Agent 引导流程做安全控制，避免误暴露危险操作
 
 **Agent 部署：**
 
@@ -135,21 +137,21 @@ docker run -d -p 9001:9001 \
 ### 7. 主机监控（Prometheus）
 
 - 对接 **Prometheus + node_exporter**，实时采集主机指标
-- **主机列表**（Datadog 风格数据密集表格）：
-  - 表格为唯一视图，废弃卡片模式，信息密度高
+- **主机监控工作台**（列表 + 详情联动）：
   - 统计 pills（主机总数 / 在线 / 离线 / 高负载）一行紧凑展示
-  - 行内嵌 48×6px 指标条（CPU / 内存 / 磁盘），颜色随阈值变化（绿→黄→红）
+  - 行内嵌指标条（CPU / 内存 / 磁盘），颜色随阈值变化（绿→黄→红）
   - 语义色状态：在线（绿）/ 离线（灰）/ 告警（红），状态点 + 文字双重标识
   - 搜索 + 状态筛选（在线/离线/高负载）+ 排序（CPU/内存/磁盘/名称）
   - 整行可点击跳转详情，悬停显示详情/SSH 操作按钮
-  - 自动刷新（60s 可控）+ 最后刷新时间显示
+  - 自动刷新（可控）+ 最后刷新时间显示
   - 窄屏响应式：1100px 隐藏次要列，768px 隐藏更多列
-- **主机详情**（圆形仪表盘 + 面板网格）：
+- **主机详情**（圆形仪表盘 + 趋势图 + 面板网格）：
   - 4 个圆形仪表盘（CPU / 内存 / 磁盘 / 负载）
+  - 指标趋势图：支持多时间范围、坐标轴与网格参考线
+  - 磁盘展示已用容量，不只是使用率
   - 5 个详情面板（系统信息 / CPU / 内存 / 磁盘 / 网络）
   - 骨架屏加载 + 错误状态 + 重试按钮
-  - Element Plus SVG 图标，无 emoji
-- Prometheus 连接状态指示
+- Prometheus 连接状态判断已修正，避免误报在线/离线
 - 批量并发查询，一次 HTTP 请求获取所有主机数据
 
 **采集的核心指标：**
@@ -221,6 +223,8 @@ docker run -d -p 9001:9001 \
 
 ### 13. 巡检中心
 
+- **巡检指挥台**：以“分车道处置”方式展示主机 / K8s / 资产异常对象，支持分页、筛选与报告联动
+- **态势大屏**：沉浸式暗色大屏（LIVE 状态、实时时钟、雷达分区、优先队列、趋势面积图、健康环），适合投屏值班
 - **一键巡检**：手动触发，自动检查主机、K8s 集群、资产状态
 - **主机巡检**（Prometheus）：CPU、内存、磁盘、负载各项指标独立检查，阈值可自定义
 - **K8s 巡检**：节点 NotReady、异常 Pod（Failed/Unknown）、Pending Pod、频繁重启 Pod（>5次）
@@ -249,6 +253,7 @@ docker run -d -p 9001:9001 \
 ### 15. 用户与权限
 
 - 用户管理：CRUD + 分配角色
+- 支持删除用户并保留历史关联记录（审计/工单等）
 - 角色权限（RBAC）：三级权限树（页面 → 子页面 → 功能），支持批量全选/反选
 - 页面级 + 接口级权限校验，侧边栏按权限动态显示
 
@@ -258,15 +263,15 @@ docker run -d -p 9001:9001 \
 - **真实客户端 IP 采集**：优先读取 `X-Forwarded-For` / `X-Real-IP`（反向代理场景），回退到直连 IP；开发环境下 Vite 代理自动透传客户端 IP
 - 搜索栏：关键词 + 操作类型 + 对象类型 + 时间范围
 
-### 17. 仪表盘（数据驱动风格）
+### 17. 仪表盘（值班指挥风格）
 
 - **问候语 + 日期**：根据时间段自动显示早上好/下午好/晚上好，当前日期
-- **时间筛选**：今天 / 本周 / 本月（UI 展示）
+- **值班首页布局**：事件指挥台 + 资源健康视图，突出当前待处理事项
 - **4 张统计卡片**：资产总数 / 在线主机 / 待处理告警 / 待处理工单，每张卡片包含：
   - 图标 + 大号数值
   - SVG Sparkline 迷你趋势图（近 7 天数据）
   - 变化百分比（绿色上升 / 红色下降 / 灰色持平）
-- **活动时间线**（左侧）：从审计日志实时拉取，支持分类筛选（全部 / 告警 / 工单 / 资产 / 巡检 / 用户），独立滚动区域，每类最多 10 条
+- **活动时间线**（左侧）：从审计日志实时拉取，支持分类筛选（全部 / 告警 / 工单 / 资产 / 巡检 / 用户），独立滚动区域
 - **图表区**（右侧）：
   - 告警趋势面积图（近 7 天 SVG 面积图 + 数据点）
   - 资产类型分布（横向条形图 + 百分比）
@@ -277,15 +282,12 @@ docker run -d -p 9001:9001 \
 
 统一的应用部署管理模块，支持 Jenkins 触发、SSH 文件上传部署、Docker 容器部署（规划中）、Kubernetes 部署（规划中）。
 
-**发布看板：**
-- 应用×环境状态矩阵：行=应用，列=环境，单元格=当前版本+状态
-- 概览统计：应用总数、构建中数量、成功率、待审批数
-- 快捷发布按钮，空状态引导
-
 **应用管理：**
+- 顶部统计卡片：应用总数 / 活跃应用 / 归档应用 / 当前筛选结果
 - 应用注册：名称、类型（后端/前端/服务/其他）、部署方式、仓库地址
 - 环境配置：每个应用在每个环境独立配置（Jenkins Job / SSH 主机 / Docker 镜像 / K8s 集群）
 - 支持 Jenkins、SSH 部署、Docker、Kubernetes 四种部署方式
+- 搜索 + 类型/策略/状态筛选，信息密度更高的列表体验
 
 **Jenkins 触发发布：**
 - 填版本号，平台调用 Jenkins API 触发构建
@@ -293,10 +295,11 @@ docker run -d -p 9001:9001 \
 - Jenkins 配置通过系统配置中心管理
 
 **SSH 文件上传部署：**
-- 拖拽或选择文件上传（jar、zip、tar.gz 等，最大 500MB）
+- 在应用详情/发布流程中直接上传（jar、zip、tar.gz 等，最大 500MB）
 - SFTP 上传到目标服务器指定目录
 - 自动执行配置的部署脚本
 - 记录执行日志
+- 已移除独立“文件上传”菜单页，统一收敛到应用发布流程
 
 **审批流程：**
 - 生产环境发布自动进入待审批状态
@@ -312,7 +315,7 @@ docker run -d -p 9001:9001 \
 
 > 详细文档见 [DEPLOY.md](./DEPLOY.md)
 
-### 19. AI 助手
+### 19. 智能中心（AI 助手 + 模型配置）
 
 基于 **OpenAI 兼容 API** 的智能运维助手，支持 SSE 流式对话 + function calling 工具调用。
 
@@ -321,7 +324,17 @@ docker run -d -p 9001:9001 \
 - **运维工具调用**：自动识别运维意图，调用 10 种内置工具
 - **写操作确认**：执行命令、巡检、创建工单等写操作需用户确认后执行
 - **SSE 流式响应**：实时返回 LLM 文本和工具执行状态
+- **会话持久化**：对话与消息写入 MySQL，支持删除会话并持久化生效
+- **自动标题**：助手首次有效回复后自动生成会话标题，避免重复刷新
+- **工具轨迹**：保留工具推理轨迹，并在最终回答前正确合并展示
 - **Markdown 渲染**：支持代码高亮、表格、列表等格式
+
+**模型配置（多配置档案）：**
+- 支持多套 LLM Profile 切换（OpenAI / DeepSeek / Qwen / Ollama 等预设）
+- 可配置 `base_url` / `api_key` / `model` / `temperature` / `max_tokens` / `top_p` / `system_prompt`
+- 支持 **Chat Completions** 与 **Responses** 两种接口模式
+- Responses 模式下可配置推理强度 `reasoning_effort`（low / medium / high）
+- 提供连接测试与快速试聊，激活配置会同步回写兼容旧字段
 
 **内置工具：**
 
@@ -330,7 +343,7 @@ docker run -d -p 9001:9001 \
 | query_assets | 只读 | 查询服务器/资产列表 |
 | query_host_metrics | 只读 | 查询主机实时指标（CPU/内存/磁盘/网络/负载） |
 | query_alerts | 只读 | 查询告警事件 |
-| query_containers | 只读 | 查询 Docker 容器状态 |
+| query_containers | 只读 | 查询 Docker 容器状态（支持 host_id / host_ip） |
 | query_k8s | 只读 | 查询 K8s 集群状态 |
 | query_tickets | 只读 | 查询工单列表 |
 | get_patrol_reports | 只读 | 查询巡检报告 |
@@ -338,12 +351,12 @@ docker run -d -p 9001:9001 \
 | run_patrol | 写操作 | 执行全量巡检 |
 | create_ticket | 写操作 | 创建新工单 |
 
-**配置方式：** 系统管理 → 配置中心 → AI 模型配置（API 地址 + API Key + 模型名称），支持连接测试。
+**入口：** 智能中心 → 智能助手 / 模型配置。
 
-### 19. 配置中心
+### 20. 配置中心
 
-- 通过 UI 管理 Prometheus / Alertmanager 服务地址，无需改代码重启
-- **连接测试**：一键测试 Prometheus / Alertmanager 是否可达
+- 通过 UI 管理 Prometheus / Alertmanager / Jenkins 服务地址，无需改代码重启
+- **连接测试**：一键测试 Prometheus / Alertmanager / LLM 是否可达
 - DB 优先读取，fallback 到 `config.py` 常量，无缝升级
 - 配置变更自动写入审计日志
 
@@ -352,16 +365,16 @@ docker run -d -p 9001:9001 \
 ## UI 设计
 
 - 深色海军蓝侧边栏 + 白色内容区，蓝色主色调（#3b82f6）
-- 登录页：暗色渐变背景 + 玻璃拟态卡片 + 浮动几何装饰动画
-- SSH 终端：Tokyo Night 暗色主题，工具栏 + 文件管理器
+- 登录页：指挥中心风格（暗色渐变 + 玻璃拟态卡片 + 校验提示优化）
+- 仪表盘：值班指挥风格，突出事件与资源健康
+- 巡检态势大屏：沉浸式暗色可视化，适合投屏值班
+- SSH 终端：Tokyo Night 暗色工作台，工具栏 + SFTP 文件管理器
 - 弹窗表单、圆形进度条、药丸形状态标签、迷你进度条
 - 响应式：1100px / 860px / 600px 三档断点
-- **图标按需加载**：只打包实际使用的 Element Plus 图标（26 个 vs 300+），减小打包体积
-- **设计 token 体系**：CSS 自定义属性（`--primary-color`、`--success-color`、`--warning-color`、`--danger-color`、`--bg-color`、`--surface-color`、`--border-color`、`--text-primary/secondary/muted`），全部页面统一使用，不使用 Element Plus `--el-color-*` token
+- **图标按需加载**：只打包实际使用的 Element Plus 图标，减小打包体积
+- **设计 token 体系**：CSS 自定义属性（`--primary-color`、`--success-color`、`--warning-color`、`--danger-color`、`--bg-color`、`--surface-color`、`--border-color`、`--text-primary/secondary/muted`），全部页面统一使用
 - **可访问性**：WCAG 2.1 AA 基线，交互元素含 `tabindex`/`role`/`aria-*`，键盘焦点指示器（`:focus-visible`），`prefers-reduced-motion` 支持
-- **无障碍标签**：所有 `el-descriptions` 和 `el-progress` 组件添加 `aria-label`
-- **质量审计**：使用 `/impeccable audit` 进行技术质量检查（A11y/Performance/Theming/Responsive/Anti-Patterns），`/impeccable critique` 进行 UX 设计评审
-- **设计优化工具**：使用 `/impeccable layout`、`/impeccable polish`、`/impeccable clarify`、`/impeccable quieter`、`/impeccable harden` 等命令进行逐步优化
+- **无障碍标签**：关键描述列表与进度组件补充 `aria-label`
 
 ---
 
@@ -386,7 +399,9 @@ docker run -d -p 9001:9001 \
 | 部署 | Docker Compose（一键部署 MySQL + 后端 + 前端） |
 | SSH | xterm.js + paramiko + WebSocket（终端 + SFTP 文件管理） |
 | 认证 | JWT (pbkdf2_sha256) + 图形验证码 (captcha) |
-| AI | OpenAI 兼容 LLM API（SSE 流式 + function calling） |
+| AI | OpenAI 兼容 LLM API（SSE 流式 + function calling + Chat Completions/Responses 双模式） |
+| 调度 | APScheduler（Cron 定时巡检） |
+| 发布 | Jenkins REST API + SSH/SFTP 部署 |
 
 ---
 
@@ -442,7 +457,7 @@ my-project/
 │           │   ├── llm_client.py   # OpenAI 兼容 LLM 客户端（SSE 流式 + function calling）
 │           │   ├── tools.py        # 工具定义 + handler 函数（10 种工具）
 │           │   ├── dispatcher.py   # 工具调度器（动态导入 + async/sync 自动检测）
-│           │   └── conversations.py # 对话历史管理（内存存储）
+│           │   └── conversations.py # 对话历史管理（MySQL 持久化）
 │           ├── deploy/         # 应用发布服务
 │           │   ├── apps.py     # 应用 CRUD
 │           │   ├── envs.py     # 环境 CRUD
@@ -465,6 +480,7 @@ my-project/
 │       ├── api/                # API 请求层
 │       │   ├── request.ts      # Axios 封装
 │       │   ├── ai.ts           # AI 助手 API（SSE 流式）
+│       │   ├── settings.ts     # 配置中心 + LLM Profile
 │       │   ├── sshKeys.ts      # SSH 密钥 API
 │       │   ├── sftp.ts         # SFTP 文件管理 API
 │       │   ├── batch_presets.ts # 命令预设 API
@@ -474,19 +490,21 @@ my-project/
 │       ├── router/             # 路由 + 守卫
 │       ├── stores/             # Pinia 状态管理
 │       ├── utils/
-│       │   └── icons.ts        # Element Plus 图标按需注册
+│       │   ├── icons.ts        # Element Plus 图标按需注册
+│       │   ├── time.ts         # 相对时间 / 完整时间格式化
+│       │   └── dockerAgentSetup.ts # Docker Agent 部署命令生成
 │       └── views/
-│           ├── login/          # 登录页（玻璃拟态）
-│           ├── dashboard/      # 仪表盘（数据驱动风格）
+│           ├── login/          # 登录页（指挥中心风格）
+│           ├── dashboard/      # 仪表盘（值班指挥风格）
 │           ├── assets/         # 资产管理 + 主机密钥
-│           ├── monitoring/     # 监控告警 + SSH 终端（含 SFTP）
-│           ├── containers/     # 容器（集群列表 + 资源详情 + Docker 监控 + 主机详情）
+│           ├── monitoring/     # 主机监控工作台 + SSH 终端（含 SFTP）
+│           ├── containers/     # K8s 集群 + Docker 监控 + 日志/操作
 │           ├── batch/          # 批量执行
-│           ├── patrol/         # 巡检中心
+│           ├── patrol/         # 巡检指挥台 + 态势大屏 + 阈值配置
 │           ├── tickets/        # 工单
 │           ├── reports/        # 报表
-│           ├── ai/             # AI 助手
-│           ├── deploy/         # 应用发布（看板/应用管理/发布记录/详情）
+│           ├── ai/             # 智能助手 + 模型配置
+│           ├── deploy/         # 应用发布（应用管理/发布记录/审批）
 │           ├── settings/       # 配置中心
 │           ├── users/          # 用户
 │           ├── roles/          # 角色
@@ -500,6 +518,7 @@ my-project/
 ├── docker/                   # Docker 部署
 │   ├── docker-compose.yml    # 一键部署编排
 │   └── .env.example          # 环境变量模板
+├── docs/                     # 设计文档、计划与系统评估
 ├── .dockerignore
 └── README.md
 ```
@@ -768,12 +787,14 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | 定时任务 | `POST /scheduler/tasks/{id}/run` | 立即执行一次 |
 | 定时任务 | `GET /scheduler/tasks/{id}/logs` | 查看执行日志 |
 | 配置 | `GET/PUT /settings/` | 系统配置 |
+| 配置 | `GET/PUT /settings/llm-profiles` | LLM 多配置档案 |
 | 配置 | `POST /settings/test-connection/{service}` | 测试 Prometheus/Alertmanager |
-| 配置 | `POST /settings/test-connection/llm` | 测试 LLM 连通性 |
+| 配置 | `POST /settings/test-connection/llm` | 测试 LLM 连通性（支持 Chat Completions / Responses） |
 | AI 助手 | `GET /ai/info` | 获取 AI 模型信息 |
 | AI 助手 | `POST /ai/chat` | SSE 流式对话 |
 | AI 助手 | `POST /ai/chat/confirm` | 确认执行写操作 |
 | AI 助手 | `POST /ai/chat/reject` | 拒绝写操作 |
+| AI 助手 | `GET/DELETE /ai/conversations*` | 会话列表/删除（持久化） |
 | 报表 | `GET/POST /reports/` | 报表管理 |
 | 用户 | `GET/POST/PUT/DELETE /users/` | 用户 CRUD |
 | 角色 | `GET/POST/PUT/DELETE /roles/` | 角色 CRUD |
