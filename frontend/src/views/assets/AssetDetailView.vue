@@ -222,7 +222,7 @@
       destroy-on-close
       class="asset-drawer"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="86px" label-position="left">
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <div class="form-group">
           <div class="form-group-title"><span class="form-group-number">1</span> 基础信息</div>
           <div class="form-row">
@@ -234,7 +234,7 @@
             </el-form-item>
           </div>
           <div class="form-row">
-            <el-form-item label="IP" prop="ip_address"><el-input v-model="form.ip_address" /></el-form-item>
+            <el-form-item label="IP 地址" prop="ip_address"><el-input v-model="form.ip_address" /></el-form-item>
             <el-form-item label="状态" prop="status">
               <el-select v-model="form.status" class="form-control">
                 <el-option v-for="s in statusList" :key="s.value" :label="s.label" :value="s.value" />
@@ -242,16 +242,28 @@
             </el-form-item>
           </div>
         </div>
+
+        <el-divider class="form-divider" />
+
         <div class="form-group">
           <div class="form-group-title"><span class="form-group-number">2</span> 规格与系统</div>
           <div class="form-row">
             <el-form-item label="规格"><el-input v-model="form.spec" placeholder="如 4C8G" /></el-form-item>
-            <el-form-item label="系统"><el-input v-model="form.os" placeholder="如 Ubuntu 22.04" /></el-form-item>
+            <el-form-item label="操作系统"><el-input v-model="form.os" placeholder="如 Ubuntu 22.04" /></el-form-item>
           </div>
-          <el-form-item label="负责人"><el-input v-model="form.owner" /></el-form-item>
+          <el-form-item label="负责人"><el-autocomplete
+              v-model="form.owner"
+              :fetch-suggestions="fetchOwnerSuggestions"
+              placeholder="输入姓名搜索，或直接填写"
+              clearable
+              class="form-control"
+            /></el-form-item>
           <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
         </div>
-        <div class="form-group">
+
+        <el-divider class="form-divider" />
+
+        <div class="form-group form-group--last">
           <div class="form-group-title">
             <span class="form-group-number">3</span> SSH 连接配置
             <span class="form-group-hint">可选，可稍后补齐</span>
@@ -308,6 +320,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { ArrowLeft, EditPen, Monitor } from '@element-plus/icons-vue'
 import { getAsset, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
+import { getUsers } from '@/api/users'
 import {
   buildAssetPayload,
   createAssetForm,
@@ -435,6 +448,18 @@ async function fetchSSHKeys() {
     const res: any = await getSSHKeys({ page_size: 100 })
     sshKeys.value = res.data?.items || []
   } catch { /* ignore */ }
+}
+
+async function fetchOwnerSuggestions(query: string, cb: (suggestions: { value: string }[]) => void) {
+  try {
+    const res: any = await getUsers({ keyword: query })
+    const items: { value: string }[] = (res.data?.items || []).map((u: any) => ({
+      value: u.full_name,
+    }))
+    cb(items)
+  } catch {
+    cb([])
+  }
 }
 
 function openEdit() {
@@ -753,6 +778,14 @@ onActivated(() => {
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.form-divider {
+  margin: 4px 0 16px;
+}
+
+.form-group--last {
+  margin-bottom: 0;
 }
 
 .form-group {

@@ -27,3 +27,5 @@ frontend/dist/
 
 # Backup files
 *.bak
+.worktrees/
+worktrees/

@@ -8,6 +8,8 @@ export interface LLMProfile {
   base_url: string
   api_key: string
   model: string
+  api_mode?: 'chat_completions' | 'responses'
+  reasoning_effort?: '' | 'low' | 'medium' | 'high'
   temperature: number
   max_tokens: number
   top_p: number
@@ -34,7 +36,13 @@ export function testConnection(service: string, url: string, credentials?: { use
   })
 }
 
-export function testLLMConnection(data: { base_url: string; api_key: string; model: string }) {
+export function testLLMConnection(data: {
+  base_url: string
+  api_key: string
+  model: string
+  api_mode: 'chat_completions' | 'responses'
+  reasoning_effort: '' | 'low' | 'medium' | 'high'
+}) {
   return request.post('/settings/test-connection/llm', data)
 }
 

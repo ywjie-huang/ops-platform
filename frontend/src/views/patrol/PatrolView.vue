@@ -3,7 +3,7 @@
     <div class="page-header command-header">
       <div>
         <h2 class="page-title">巡检指挥台</h2>
-        <p class="page-subtitle">异常对象优先，按处置路径组织巡检结果。</p>
+        <p class="page-subtitle">异常对象优先 · 按主机 / K8s / 资产分泳道 · 右侧直接进入处置路径</p>
       </div>
       <div class="header-actions">
         <el-button @click="goCockpit">
@@ -96,8 +96,18 @@
             <div>
               <h3>{{ selectedReport ? '本次巡检结论' : '等待选择巡检批次' }}</h3>
               <p>{{ selectedReport?.summary || '从左侧选择一份巡检报告，查看异常对象和处置建议。' }}</p>
+              <div v-if="selectedReport" class="summary-meta">
+                <span>{{ selectedReport.operator || '系统任务' }}</span>
+                <span>{{ relativeTime(selectedReport.created_at) }}</span>
+                <span>{{ overview.total }} 项检查</span>
+              </div>
             </div>
-            <span class="status-pill large" :class="statusTone(overview.status)">{{ overview.priorityLabel }}</span>
+            <div class="summary-side">
+              <div class="score-ring" :class="statusTone(overview.status)" :title="'健康分 ' + overview.healthScore">
+                <strong>{{ overview.healthScore }}</strong>
+              </div>
+              <span class="status-pill large" :class="statusTone(overview.status)">{{ overview.priorityLabel }}</span>
+            </div>
           </article>
           <article class="summary-card metric danger">
             <span>严重项</span>
@@ -113,6 +123,11 @@
             <span>健康分</span>
             <strong>{{ overview.healthScore }}</strong>
             <small>{{ overview.normal }} / {{ overview.total }} 正常</small>
+          </article>
+          <article class="summary-card metric info">
+            <span>覆盖对象</span>
+            <strong>{{ riskObjects.length }}</strong>
+            <small>主机 / K8s / 资产</small>
           </article>
         </div>
 
@@ -221,6 +236,16 @@
                 </dl>
               </article>
             </div>
+          </section>
+
+          <section class="playbook" v-if="selectedObject">
+            <h4 class="section-title">建议处置剧本</h4>
+            <ol class="playbook-steps">
+              <li>打开对象详情，确认影响范围与最近变更</li>
+              <li>通过 Web 终端处理磁盘、负载或进程异常</li>
+              <li>观察 30 分钟关键指标是否回落</li>
+              <li>无法短期恢复时创建工单并转交对应负责人</li>
+            </ol>
           </section>
 
           <section>
@@ -536,6 +561,20 @@ onActivated(fetchReports)
 
 .run-item,
 .object-card,
+.playbook {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 5%, #fff), #fff);
+  padding: 12px;
+}
+.playbook-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .action-row {
   width: 100%;
   border: 1px solid var(--border-color);
@@ -664,7 +703,7 @@ onActivated(fetchReports)
 
 .summary-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(120px, 0.45fr));
+  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(110px, 0.4fr));
   gap: 10px;
 }
 
@@ -677,7 +716,58 @@ onActivated(fetchReports)
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(229, 72, 77, 0.08), transparent 36%),
+    linear-gradient(180deg, #fff, #fbfcfe);
 }
+.summary-side {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  text-align: right;
+}
+.score-ring {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: conic-gradient(var(--danger-color) 0 28%, var(--warning-color) 28% 48%, var(--success-color) 48% 100%);
+}
+.score-ring::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border-color);
+}
+.score-ring strong {
+  position: relative;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.summary-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.metric.info strong { color: var(--primary-color); }
 
 .summary-hero h3 {
   margin: 0 0 6px;
@@ -764,7 +854,8 @@ onActivated(fetchReports)
 
 .object-card.selected {
   border-color: color-mix(in srgb, var(--danger-color) 42%, var(--border-color));
-  background: color-mix(in srgb, var(--danger-color) 5%, #fff);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--danger-color) 6%, #fff), #fff);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--danger-color) 10%, transparent);
 }
 
 .object-counts {
@@ -1034,7 +1125,7 @@ onActivated(fetchReports)
   }
 
   .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .summary-hero {

@@ -1,5 +1,11 @@
 <template>
   <div class="patrol-cockpit bigscreen-shell">
+    <span class="corner tl" aria-hidden="true"></span>
+    <span class="corner tr" aria-hidden="true"></span>
+    <span class="corner bl" aria-hidden="true"></span>
+    <span class="corner br" aria-hidden="true"></span>
+    <div class="scanline" aria-hidden="true"></div>
+
     <header class="bigscreen-topbar">
       <div class="topbar-meta">
         <button class="return-link" type="button" aria-label="返回巡检指挥台" @click="router.push('/patrol')">
@@ -8,6 +14,7 @@
         </button>
         <span class="report-meta">{{ latestReport?.operator || '系统任务' }}</span>
         <span class="report-meta">{{ relativeTime(latestReport?.created_at) }}</span>
+        <span class="live-pill">LIVE</span>
       </div>
 
       <div class="topbar-title" aria-label="巡检态势大屏">
@@ -20,6 +27,7 @@
       </div>
 
       <div class="topbar-actions">
+        <span class="clock">{{ clockText }}</span>
         <el-button class="screen-action" :loading="running" @click="handleRun">
           <el-icon><VideoPlay /></el-icon>
           立即巡检
@@ -29,10 +37,19 @@
 
     <main v-loading="loading" class="bigscreen-dashboard">
       <section class="metric-rail" aria-label="巡检核心指标">
-        <article v-for="stat in cockpitStats" :key="stat.key" class="metric-tile" :class="stat.tone">
-          <span>{{ stat.label }}</span>
+        <article
+          v-for="stat in cockpitStats"
+          :key="stat.key"
+          class="metric-tile"
+          :class="[stat.tone, { hero: stat.key === 'health' }]"
+        >
+          <span class="label">{{ stat.label }}</span>
           <strong>{{ stat.value }}</strong>
+          <div v-if="stat.key === 'health'" class="ring-mini" aria-hidden="true">
+            <span>{{ stat.value }}</span>
+          </div>
           <small>{{ stat.helper }}</small>
+          <div class="glow" aria-hidden="true"></div>
         </article>
       </section>
 
@@ -46,16 +63,24 @@
         </div>
 
         <div class="queue-list">
-          <article v-for="object in priorityObjects" :key="object.key" class="queue-item" :class="object.tone">
-            <div class="queue-top">
-              <span class="object-type">{{ object.categoryLabel }}</span>
-              <span class="status-chip" :class="object.tone">{{ object.priority }}</span>
-            </div>
-            <strong>{{ object.targetName }}</strong>
-            <p>{{ object.headline }}</p>
-            <div class="queue-foot">
-              <span>{{ object.critical }} 严重</span>
-              <span>{{ object.warning }} 警告</span>
+          <article
+            v-for="(object, index) in priorityObjects"
+            :key="object.key"
+            class="queue-item"
+            :class="object.tone"
+          >
+            <div class="q-no">{{ String(index + 1).padStart(2, '0') }}</div>
+            <div class="q-body">
+              <div class="queue-top">
+                <span class="object-type">{{ object.categoryLabel }}</span>
+                <span class="status-chip" :class="object.tone">{{ object.priority }}</span>
+              </div>
+              <strong>{{ object.targetName }}</strong>
+              <p>{{ object.headline }}</p>
+              <div class="queue-foot">
+                <span>{{ object.critical }} 严重</span>
+                <span>{{ object.warning }} 警告</span>
+              </div>
             </div>
           </article>
 
@@ -79,6 +104,9 @@
           <span class="radar-axis axis-x"></span>
           <span class="radar-axis axis-y"></span>
           <span class="radar-sweep"></span>
+          <span class="radar-sector-label host">HOST</span>
+          <span class="radar-sector-label k8s">K8S</span>
+          <span class="radar-sector-label asset">ASSET</span>
 
           <span
             v-for="object in radarObjects"
@@ -151,14 +179,37 @@
             <span><i class="legend-normal"></i>正常</span>
           </div>
 
-          <svg class="trend-chart" viewBox="0 0 360 128" role="img" aria-label="最近巡检异常趋势">
-            <line x1="0" y1="104" x2="360" y2="104" />
-            <line x1="0" y1="68" x2="360" y2="68" />
-            <line x1="0" y1="32" x2="360" y2="32" />
-            <polyline :points="trendPoints('critical_count')" class="trend-critical" />
-            <polyline :points="trendPoints('warning_count')" class="trend-warning" />
-            <polyline :points="trendPoints('normal_count')" class="trend-normal" />
-          </svg>
+          <div class="trend-wrap">
+            <svg class="trend-chart" viewBox="0 0 360 128" role="img" aria-label="最近巡检异常趋势">
+              <defs>
+                <linearGradient id="critFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(255,93,108,.28)" />
+                  <stop offset="100%" stop-color="rgba(255,93,108,0)" />
+                </linearGradient>
+                <linearGradient id="warnFill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(245,166,35,.18)" />
+                  <stop offset="100%" stop-color="rgba(245,166,35,0)" />
+                </linearGradient>
+              </defs>
+              <line class="grid" x1="0" y1="104" x2="360" y2="104" />
+              <line class="grid" x1="0" y1="68" x2="360" y2="68" />
+              <line class="grid" x1="0" y1="32" x2="360" y2="32" />
+              <path class="area-critical" :d="trendArea('critical_count')" />
+              <path class="area-warning" :d="trendArea('warning_count')" />
+              <path class="line-critical" :d="trendPath('critical_count')" />
+              <path class="line-warning" :d="trendPath('warning_count')" />
+              <path class="line-normal" :d="trendPath('normal_count')" />
+              <circle
+                v-for="point in trendEndPoints"
+                :key="point.key"
+                class="dot"
+                :cx="point.x"
+                :cy="point.y"
+                :r="point.r"
+                :fill="point.fill"
+              />
+            </svg>
+          </div>
         </section>
       </aside>
 
@@ -167,17 +218,19 @@
           <span>Battle Ticker</span>
           <strong>巡检战报</strong>
         </div>
-        <div class="ticker-track" :class="{ still: !tickerItems.length }">
-          <article v-for="item in tickerItems" :key="item.key" class="ticker-item" :class="item.tone">
-            <span class="status-chip" :class="item.tone">{{ item.meta }}</span>
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.detail }}</p>
-          </article>
-          <article v-if="!tickerItems.length" class="ticker-item success">
-            <span class="status-chip success">正常</span>
-            <strong>暂无风险战报</strong>
-            <p>执行巡检后，这里会展示重点对象和最近批次摘要。</p>
-          </article>
+        <div class="ticker-viewport">
+          <div class="ticker-track" :class="{ still: !tickerItems.length }">
+            <article v-for="item in tickerItems" :key="item.key" class="ticker-item" :class="item.tone">
+              <span class="status-chip" :class="item.tone">{{ item.meta }}</span>
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.detail }}</p>
+            </article>
+            <article v-if="!tickerItems.length" class="ticker-item success">
+              <span class="status-chip success">正常</span>
+              <strong>暂无风险战报</strong>
+              <p>执行巡检后，这里会展示重点对象和最近批次摘要。</p>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -191,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, VideoPlay } from '@element-plus/icons-vue'
@@ -217,6 +270,8 @@ const reports = ref<PatrolReportLike[]>([])
 const latestReport = ref<PatrolReportLike | null>(null)
 const detailItems = ref<PatrolItemLike[]>([])
 const errorMessage = ref('')
+const clockText = ref('--:--:--')
+let clockTimer: number | undefined
 
 const overview = computed(() => buildPatrolOverview(latestReport.value))
 const riskObjects = computed(() => buildRiskObjects(detailItems.value))
@@ -281,15 +336,29 @@ function severityWidth(value: number) {
   return Math.max(value > 0 ? 8 : 0, Math.round((value / max) * 100))
 }
 
-function trendPoints(field: 'normal_count' | 'warning_count' | 'critical_count') {
+function buildTrendCoords(field: 'normal_count' | 'warning_count' | 'critical_count') {
   const list = [...reports.value].reverse()
-  if (!list.length) return '0,104 360,104'
+  if (!list.length) return [{ x: 10, y: 104 }, { x: 350, y: 104 }]
   const max = Math.max(...list.map((item) => item[field] || 0), 1)
   return list.map((item, index) => {
     const x = list.length === 1 ? 180 : Math.round((index / (list.length - 1)) * 340 + 10)
     const y = Math.round(108 - (((item[field] || 0) / max) * 84))
-    return `${x},${y}`
-  }).join(' ')
+    return { x, y }
+  })
+}
+
+function trendPath(field: 'normal_count' | 'warning_count' | 'critical_count') {
+  const points = buildTrendCoords(field)
+  return points.map((point, index) => (index === 0 ? 'M' : 'L') + point.x + ',' + point.y).join(' ')
+}
+
+function trendArea(field: 'normal_count' | 'warning_count' | 'critical_count') {
+  const points = buildTrendCoords(field)
+  if (!points.length) return 'M10,104 L350,104 Z'
+  const line = points.map((point, index) => (index === 0 ? 'M' : 'L') + point.x + ',' + point.y).join(' ')
+  const last = points[points.length - 1]
+  const first = points[0]
+  return line + ' L' + last.x + ',104 L' + first.x + ',104 Z'
 }
 
 function radarPointStyle(object: RadarObject) {
@@ -320,30 +389,104 @@ function relativeTime(value?: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
+
+function tickClock() {
+  clockText.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+onMounted(() => {
+  tickClock()
+  clockTimer = window.setInterval(tickClock, 1000)
+})
+
+onBeforeUnmount(() => {
+  if (clockTimer) window.clearInterval(clockTimer)
+})
+
 onActivated(fetchCockpit)
 </script>
 
 <style scoped>
 .bigscreen-shell {
-  --cockpit-bg: #060a12;
-  --cockpit-panel: #0c1320;
-  --cockpit-panel-strong: #111a2a;
-  --cockpit-border: #26344b;
+  --cockpit-bg: #050914;
+  --cockpit-panel: rgba(10, 16, 30, 0.78);
+  --cockpit-panel-strong: rgba(14, 22, 40, 0.88);
+  --cockpit-border: rgba(120, 146, 196, 0.22);
   --cockpit-border-hot: color-mix(in srgb, var(--primary-color) 48%, var(--cockpit-border));
   --cockpit-text: #eef5ff;
-  --cockpit-soft: #a8b5cc;
-  --cockpit-muted: #7f8da6;
+  --cockpit-soft: #a9b7d0;
+  --cockpit-muted: #7f8eab;
+  position: relative;
   min-height: calc(100vh - var(--header-height));
-  margin: -4px 0 0;
-  padding: 12px;
+  margin: 0;
+  padding: 14px;
   color: var(--cockpit-text);
   background:
-    radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--primary-color) 22%, transparent), transparent 38%),
-    radial-gradient(circle at 78% 16%, color-mix(in srgb, #06b6d4 18%, transparent), transparent 28%),
-    radial-gradient(circle at 20% 84%, color-mix(in srgb, var(--success-color) 8%, transparent), transparent 26%),
-    linear-gradient(180deg, #08101c 0%, var(--cockpit-bg) 100%);
-  border-radius: 8px;
+    radial-gradient(circle at 50% 18%, rgba(109, 124, 255, 0.26), transparent 30%),
+    radial-gradient(circle at 78% 10%, rgba(34, 211, 238, 0.16), transparent 22%),
+    radial-gradient(circle at 18% 88%, rgba(34, 197, 94, 0.09), transparent 20%),
+    radial-gradient(circle at 50% 70%, rgba(255, 93, 108, 0.05), transparent 28%),
+    linear-gradient(180deg, #091321 0%, #050914 48%, #03060d 100%);
+  border-radius: 12px;
   overflow: hidden;
+}
+.bigscreen-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(circle at 50% 38%, #000 18%, transparent 78%);
+}
+.bigscreen-shell::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(125, 160, 220, 0.14);
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 60px rgba(109, 124, 255, 0.04);
+}
+.corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.corner::before,
+.corner::after {
+  content: "";
+  position: absolute;
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.9), rgba(109, 124, 255, 0.2));
+}
+.corner::before { width: 18px; height: 1px; }
+.corner::after { width: 1px; height: 18px; }
+.corner.tl { top: 12px; left: 12px; }
+.corner.tr { top: 12px; right: 12px; transform: scaleX(-1); }
+.corner.bl { bottom: 12px; left: 12px; transform: scaleY(-1); }
+.corner.br { bottom: 12px; right: 12px; transform: scale(-1); }
+.scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 110px;
+  top: -110px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.1;
+  background: linear-gradient(180deg, transparent, rgba(125, 211, 252, 0.4), transparent);
+  animation: scan-move 9s linear infinite;
+}
+.bigscreen-topbar,
+.bigscreen-dashboard {
+  position: relative;
+  z-index: 2;
 }
 
 .bigscreen-topbar {
@@ -402,6 +545,30 @@ onActivated(fetchCockpit)
   color: var(--cockpit-soft);
   font-size: 12px;
 }
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #9df3bf;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.live-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success-color);
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45);
+  animation: pulse-green 1.8s ease-out infinite;
+}
+.clock {
+  color: var(--cockpit-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
 
 .topbar-title {
   justify-content: center;
@@ -418,9 +585,10 @@ onActivated(fetchCockpit)
 
 .topbar-title h2 {
   margin: 0;
-  font-size: 23px;
-  line-height: 1.1;
-  letter-spacing: 0;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 18px rgba(125, 211, 252, 0.22), 0 0 42px rgba(109, 124, 255, 0.18);
 }
 
 .title-line {
@@ -447,7 +615,7 @@ onActivated(fetchCockpit)
   width: 100%;
   min-width: 0;
   grid-template-columns: minmax(230px, 0.82fr) minmax(420px, 1.55fr) minmax(250px, 0.88fr);
-  grid-template-rows: auto minmax(420px, 1fr) 146px;
+  grid-template-rows: auto minmax(420px, 1fr) 132px;
   grid-template-areas:
     "metrics metrics metrics"
     "queue radar side"
@@ -468,28 +636,78 @@ onActivated(fetchCockpit)
 .battle-ticker,
 .error-banner {
   border: 1px solid var(--cockpit-border);
-  border-radius: 8px;
+  border-radius: 14px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cockpit-panel-strong) 90%, transparent), color-mix(in srgb, var(--cockpit-panel) 94%, transparent));
+    linear-gradient(180deg, rgba(20, 30, 52, 0.78), rgba(10, 16, 30, 0.72)),
+    radial-gradient(circle at 0% 0%, rgba(109, 124, 255, 0.08), transparent 40%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 36px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(10px);
 }
 
 .metric-tile {
   min-width: 0;
-  min-height: 88px;
-  padding: 12px;
+  min-height: 96px;
+  padding: 14px 16px;
   display: grid;
-  gap: 5px;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
   align-content: center;
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(8px);
 }
-
-.metric-tile::after {
+.metric-tile .label {
+  grid-column: 1 / -1;
+  color: var(--cockpit-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.metric-tile .glow {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(109, 124, 255, 0.8), rgba(34, 211, 238, 0.55), transparent);
+}
+.metric-tile.hero {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 93, 108, 0.2), transparent 42%),
+    radial-gradient(circle at 0% 100%, rgba(109, 124, 255, 0.12), transparent 40%),
+    linear-gradient(180deg, rgba(26, 34, 58, 0.92), rgba(12, 18, 32, 0.84));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 28px rgba(255, 93, 108, 0.08);
+}
+.metric-tile.hero strong {
+  font-size: 34px;
+  text-shadow: 0 0 18px rgba(255, 93, 108, 0.25);
+}
+.metric-tile.danger strong {
+  animation: num-glow 2.4s ease-in-out infinite;
+}
+.ring-mini {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: conic-gradient(#ff5d6c 0 28%, #f5a623 28% 48%, rgba(34, 197, 94, 0.85) 48% 100%);
+  box-shadow: 0 0 18px rgba(255, 93, 108, 0.15);
+}
+.ring-mini::before {
   content: "";
   position: absolute;
-  inset: auto 12px 0;
-  height: 2px;
-  background: var(--cockpit-border-hot);
+  inset: 6px;
+  border-radius: 50%;
+  background: rgba(8, 14, 26, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ring-mini span {
+  position: relative;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .metric-tile span,
@@ -574,20 +792,65 @@ onActivated(fetchCockpit)
 
 .queue-item {
   min-width: 0;
-  padding: 11px;
+  padding: 12px 12px 12px 14px;
   display: grid;
-  gap: 7px;
-  border: 1px solid color-mix(in srgb, var(--cockpit-border) 76%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--cockpit-panel-strong) 80%, transparent);
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid rgba(120, 146, 196, 0.16);
+  border-radius: 12px;
+  background: rgba(8, 14, 26, 0.42);
+  position: relative;
+  overflow: hidden;
 }
-
+.queue-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: rgba(125, 160, 220, 0.25);
+}
 .queue-item.danger {
-  border-color: color-mix(in srgb, var(--danger-color) 44%, var(--cockpit-border));
+  border-color: rgba(255, 93, 108, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(255, 93, 108, 0.08), 0 0 24px rgba(255, 93, 108, 0.1);
 }
-
+.queue-item.danger::before {
+  background: linear-gradient(180deg, #ff8a95, #ff5d6c);
+}
 .queue-item.warning {
-  border-color: color-mix(in srgb, var(--warning-color) 40%, var(--cockpit-border));
+  border-color: rgba(245, 166, 35, 0.32);
+}
+.queue-item.warning::before {
+  background: linear-gradient(180deg, #ffd18a, #f5a623);
+}
+.q-no {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--cockpit-soft);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-variant-numeric: tabular-nums;
+}
+.queue-item.danger .q-no {
+  color: #ffb4bb;
+  border-color: rgba(255, 93, 108, 0.25);
+  background: rgba(255, 93, 108, 0.08);
+}
+.queue-item.warning .q-no {
+  color: #ffd18a;
+  border-color: rgba(245, 166, 35, 0.22);
+  background: rgba(245, 166, 35, 0.08);
+}
+.q-body {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .queue-top,
@@ -662,15 +925,38 @@ onActivated(fetchCockpit)
   position: relative;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 36%, var(--cockpit-border));
-  border-radius: 8px;
+  border: 1px solid rgba(109, 124, 255, 0.38);
+  border-radius: 14px;
   background:
-    linear-gradient(color-mix(in srgb, #ffffff 5%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, #ffffff 5%, transparent) 1px, transparent 1px),
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--primary-color) 18%, transparent), transparent 48%),
-    color-mix(in srgb, var(--cockpit-panel) 92%, #02050a);
-  background-size: 30px 30px, 30px 30px, 100% 100%, 100% 100%;
+    radial-gradient(circle at 50% 50%, rgba(109, 124, 255, 0.22), transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.08), transparent 58%),
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    rgba(5, 10, 20, 0.94);
+  background-size: auto, auto, 28px 28px, 28px 28px, auto;
+  box-shadow: inset 0 0 50px rgba(109, 124, 255, 0.12), 0 0 30px rgba(109, 124, 255, 0.08);
 }
+.radar-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1px dashed rgba(125, 211, 252, 0.12);
+  animation: radar-orbit 18s linear infinite;
+}
+.radar-sector-label {
+  position: absolute;
+  color: rgba(169, 183, 208, 0.72);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(125, 211, 252, 0.25);
+}
+.radar-sector-label.host { left: 18%; top: 18%; }
+.radar-sector-label.k8s { right: 16%; top: 22%; }
+.radar-sector-label.asset { left: 46%; bottom: 12%; }
 
 .radar-ring,
 .radar-axis,
@@ -710,27 +996,31 @@ onActivated(fetchCockpit)
 }
 
 .radar-sweep {
-  inset: 9%;
+  inset: 8%;
   border-radius: 50%;
-  background: conic-gradient(from -24deg, color-mix(in srgb, #22d3ee 24%, transparent), transparent 72deg);
-  animation: radar-sweep 8s linear infinite;
+  background: conic-gradient(from -20deg, rgba(34, 211, 238, 0.38), rgba(109, 124, 255, 0.12), transparent 78deg);
+  animation: radar-sweep 6.8s linear infinite;
+  filter: blur(0.15px);
+  mix-blend-mode: screen;
 }
 
 .radar-core {
   left: 50%;
   top: 50%;
-  width: min(260px, 46%);
-  min-height: 154px;
-  padding: 18px;
+  width: min(290px, 50%);
+  min-height: 176px;
+  padding: 18px 16px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 7px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 44%, var(--cockpit-border));
-  border-radius: 8px;
+  gap: 8px;
+  border: 1px solid rgba(109, 124, 255, 0.5);
+  border-radius: 20px;
   text-align: center;
-  background: color-mix(in srgb, var(--cockpit-panel) 86%, transparent);
+  background: linear-gradient(180deg, rgba(16, 26, 48, 0.94), rgba(8, 14, 26, 0.88));
   transform: translate(-50%, -50%);
+  box-shadow: 0 0 50px rgba(109, 124, 255, 0.2), 0 0 24px rgba(255, 93, 108, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
 }
 
 .radar-core span {
@@ -739,7 +1029,9 @@ onActivated(fetchCockpit)
 }
 
 .radar-core strong {
-  font-size: 30px;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 18px rgba(255, 93, 108, 0.28);
 }
 
 .radar-core small {
@@ -869,9 +1161,9 @@ onActivated(fetchCockpit)
   border-radius: inherit;
 }
 
-.severity-row.danger b { background: var(--danger-color); }
-.severity-row.warning b { background: var(--warning-color); }
-.severity-row.success b { background: var(--success-color); }
+.severity-row.danger b { background: linear-gradient(90deg, #ff8a95, #ff5d6c); box-shadow: 0 0 12px rgba(255, 93, 108, 0.35); }
+.severity-row.warning b { background: linear-gradient(90deg, #ffd18a, #f5a623); box-shadow: 0 0 12px rgba(245, 166, 35, 0.28); }
+.severity-row.success b { background: linear-gradient(90deg, #86efac, #22c55e); box-shadow: 0 0 12px rgba(34, 197, 94, 0.22); }
 
 .legend {
   gap: 10px;
@@ -895,72 +1187,126 @@ onActivated(fetchCockpit)
 .legend-warning { background: var(--warning-color); }
 .legend-normal { background: var(--success-color); }
 
+.trend-wrap { min-height: 0; }
 .trend-chart {
   width: 100%;
   min-height: 118px;
+  display: block;
 }
-
-.trend-chart line {
-  stroke: color-mix(in srgb, var(--cockpit-border) 86%, transparent);
+.trend-chart .grid {
+  stroke: rgba(120, 146, 196, 0.14);
 }
-
-.trend-chart polyline {
+.trend-chart .area-critical { fill: url(#critFill); }
+.trend-chart .area-warning { fill: url(#warnFill); }
+.trend-chart .line-critical,
+.trend-chart .line-warning,
+.trend-chart .line-normal {
   fill: none;
-  stroke-width: 3;
+  stroke-width: 2.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
-.trend-critical { stroke: var(--danger-color); }
-.trend-warning { stroke: var(--warning-color); }
-.trend-normal { stroke: var(--success-color); }
+.trend-chart .line-critical {
+  stroke: var(--danger-color);
+  filter: drop-shadow(0 0 4px rgba(255, 93, 108, 0.45));
+}
+.trend-chart .line-warning {
+  stroke: var(--warning-color);
+  filter: drop-shadow(0 0 3px rgba(245, 166, 35, 0.35));
+}
+.trend-chart .line-normal {
+  stroke: var(--success-color);
+  opacity: 0.9;
+}
+.trend-chart .dot {
+  stroke: #fff;
+  stroke-width: 1.2;
+}
 
 .battle-ticker {
   grid-area: ticker;
   min-width: 0;
-  padding: 12px;
+  min-height: 0;
+  height: 100%;
+  padding: 8px 12px;
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-columns: 158px minmax(0, 1fr);
   align-items: stretch;
-  gap: 12px;
+  gap: 0;
   overflow: hidden;
 }
-
 .ticker-label {
   display: grid;
   align-content: center;
+  align-self: stretch;
   gap: 4px;
+  padding: 0 14px 0 2px;
   border-right: 1px solid var(--cockpit-border);
+  position: relative;
+  z-index: 5;
+  background: linear-gradient(90deg, rgba(14, 22, 40, 0.98), rgba(14, 22, 40, 0.94));
+  box-shadow: 12px 0 18px rgba(8, 14, 26, 0.55);
+  isolation: isolate;
 }
-
 .ticker-label strong {
   font-size: 17px;
 }
-
+.ticker-viewport {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  padding-left: 12px;
+  display: flex;
+  align-items: stretch;
+  mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 18px), transparent);
+}
 .ticker-track {
   min-width: 0;
+  min-height: 100%;
+  height: 100%;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(220px, 1fr);
+  grid-auto-columns: minmax(240px, 1fr);
+  grid-auto-rows: 100%;
+  align-items: stretch;
   gap: 10px;
-  animation: ticker-drift 24s linear infinite;
+  animation: ticker-drift 28s linear infinite;
+  position: relative;
+  width: max-content;
 }
-
 .ticker-track:hover,
 .ticker-track.still {
   animation-play-state: paused;
 }
-
 .ticker-item {
   min-width: 0;
-  padding: 10px;
+  min-height: 100%;
+  height: 100%;
+  padding: 10px 12px;
   display: grid;
   align-content: center;
   gap: 5px;
-  border: 1px solid color-mix(in srgb, var(--cockpit-border) 80%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--cockpit-panel-strong) 72%, transparent);
+  border: 1px solid rgba(120, 146, 196, 0.16);
+  border-radius: 12px;
+  background: rgba(8, 14, 26, 0.42);
+  position: relative;
+  overflow: hidden;
 }
+.ticker-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: rgba(125, 160, 220, 0.25);
+}
+.ticker-item.danger::before { background: linear-gradient(180deg, #ff8a95, #ff5d6c); }
+.ticker-item.warning::before { background: linear-gradient(180deg, #ffd18a, #f5a623); }
+.ticker-item.success::before { background: linear-gradient(180deg, #86efac, #22c55e); }
 
 .ticker-item.danger {
   border-color: color-mix(in srgb, var(--danger-color) 42%, var(--cockpit-border));
@@ -1113,11 +1459,25 @@ onActivated(fetchCockpit)
     border-right: 0;
     border-bottom: 1px solid var(--cockpit-border);
     padding-bottom: 8px;
+    margin-bottom: 10px;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .ticker-viewport {
+    mask-image: none;
   }
 
   .ticker-track {
     grid-auto-flow: row;
     animation: none;
+    width: auto;
+    height: auto;
+  }
+
+  .ticker-item {
+    height: auto;
+    min-height: 0;
   }
 }
 
@@ -1140,8 +1500,12 @@ onActivated(fetchCockpit)
     transition-duration: 0.01ms !important;
   }
 
-  .ticker-track {
+  .ticker-track,
+  .scanline,
+  .radar-canvas::after,
+  .radar-sweep {
     transform: none !important;
+    animation: none !important;
   }
 }
 </style>

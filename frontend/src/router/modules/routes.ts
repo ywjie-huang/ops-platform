@@ -202,12 +202,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/deploy/ApprovalView.vue'),
         meta: { title: '部署审批', icon: 'Stamp', permission: 'deploy.approve' },
       },
-      {
-        path: 'upload',
-        name: 'DeployUpload',
-        component: () => import('@/views/deploy/UploadView.vue'),
-        meta: { title: '文件上传', icon: 'Upload' },
-      },
     ],
   },
   {

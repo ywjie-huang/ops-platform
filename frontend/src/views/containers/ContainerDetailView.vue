@@ -539,15 +539,15 @@ const resourcesError = ref('')
 
 const activeTab = ref((route.query.tab as string) || 'pods')
 const nsPage = ref(Number(route.query.nsp) || 1)
-const nsPageSize = ref(Number(route.query.nss) || 20)
+const nsPageSize = ref(Number(route.query.nss) || 10)
 const nodePage = ref(Number(route.query.ndp) || 1)
-const nodePageSize = ref(Number(route.query.nds) || 20)
+const nodePageSize = ref(Number(route.query.nds) || 10)
 const podPage = ref(Number(route.query.pp) || 1)
-const podPageSize = ref(Number(route.query.ps) || 20)
+const podPageSize = ref(Number(route.query.ps) || 10)
 const depPage = ref(Number(route.query.dp) || 1)
-const depPageSize = ref(Number(route.query.ds) || 20)
+const depPageSize = ref(Number(route.query.ds) || 10)
 const svcPage = ref(Number(route.query.sp) || 1)
-const svcPageSize = ref(Number(route.query.ss) || 20)
+const svcPageSize = ref(Number(route.query.ss) || 10)
 
 function syncUrl() {
   router.replace({

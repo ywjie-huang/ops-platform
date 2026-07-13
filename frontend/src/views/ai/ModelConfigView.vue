@@ -106,6 +106,25 @@
                 <div class="provider-desc">{{ p.hint }}</div>
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">接口模式</label>
+                <select class="form-input" v-model="activeProfile.api_mode" @change="handleApiModeChange">
+                  <option value="chat_completions">Chat Completions</option>
+                  <option value="responses">Responses</option>
+                </select>
+                <span class="form-tip">中转站支持 Responses 时可切换到新接口</span>
+              </div>
+              <div class="form-group" v-if="activeProfile.api_mode === 'responses'">
+                <label class="form-label">推理强度</label>
+                <select class="form-input" v-model="activeProfile.reasoning_effort">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+                <span class="form-tip">仅 Responses 模式生效</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -356,9 +375,19 @@ import {
   type LLMProfile,
 } from '@/api/settings'
 import { sendAiMessageStream } from '@/api/ai'
+import { resolveProviderDraft, snapshotProviderDraft } from './providerPreset'
 
 // ── 服务商预设 ──
-const providers = [
+const providers: Array<{
+  id: string
+  name: string
+  icon: string
+  hint: string
+  base_url: string
+  model: string
+  api_mode?: 'chat_completions' | 'responses'
+  reasoning_effort?: '' | 'low' | 'medium' | 'high'
+}> = [
   { id: 'openai', name: 'OpenAI', icon: 'AI', hint: 'GPT-4o / o3', base_url: 'https://api.openai.com/v1', model: 'gpt-4o' },
   { id: 'deepseek', name: 'DeepSeek', icon: 'DS', hint: 'DeepSeek Chat', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { id: 'qwen', name: '通义千问', icon: 'QW', hint: 'Qwen Plus', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
@@ -377,6 +406,7 @@ const showPassword = ref(false)
 
 const profiles = ref<LLMProfile[]>([])
 const activeProfileId = ref<string | null>(null)
+const providerDrafts = reactive<Record<string, ReturnType<typeof snapshotProviderDraft>>>({})
 
 const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value) || null)
 
@@ -548,14 +578,32 @@ async function handleSetActive() {
 // ── 应用服务商预设 ──
 function applyProvider(p: typeof providers[number]) {
   if (!activeProfile.value) return
+  if (activeProfile.value.provider) {
+    providerDrafts[activeProfile.value.provider] = snapshotProviderDraft(activeProfile.value)
+  }
+  const draft = resolveProviderDraft({
+    nextPreset: p,
+    rememberedDraft: providerDrafts[p.id],
+  })
   activeProfile.value.provider = p.id
   activeProfile.value.icon = p.icon
   activeProfile.value.name = p.name
-  activeProfile.value.base_url = p.base_url
-  activeProfile.value.model = p.model
+  activeProfile.value.base_url = draft.base_url
+  activeProfile.value.model = draft.model
+  activeProfile.value.api_mode = draft.api_mode
+  activeProfile.value.reasoning_effort = draft.reasoning_effort
   testResult.value = null
   formErrors.base_url = ''
   formErrors.model = ''
+}
+
+function handleApiModeChange() {
+  if (!activeProfile.value) return
+  if (activeProfile.value.api_mode === 'responses') {
+    activeProfile.value.reasoning_effort = activeProfile.value.reasoning_effort || 'medium'
+  } else {
+    activeProfile.value.reasoning_effort = ''
+  }
 }
 
 // ── 保存按钮 ──
@@ -584,6 +632,8 @@ async function handleTest() {
       base_url: p.base_url.trim(),
       api_key: p.api_key.trim(),
       model: p.model.trim(),
+      api_mode: p.api_mode || 'chat_completions',
+      reasoning_effort: p.reasoning_effort || '',
     })
     testResult.value = res.data?.ok ?? false
     testResultMsg.value = res.msg || ''
