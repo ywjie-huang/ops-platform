@@ -48,10 +48,13 @@
       <div class="card profile-list-card">
         <div class="profile-list-header">
           <span class="profile-list-title">模型配置</span>
-          <button class="btn btn-sm btn-primary" @click="handleAddProfile">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            新增
-          </button>
+          <div class="profile-list-actions">
+            <button class="btn btn-sm" :disabled="!activeProfile" @click="handleCloneProfile">复制</button>
+            <button class="btn btn-sm btn-primary" @click="handleAddProfile">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              新增
+            </button>
+          </div>
         </div>
         <div class="profile-items" v-loading="loadingProfiles">
           <div
@@ -140,6 +143,15 @@
           </div>
           <div class="card-content">
             <div class="form-group">
+              <label class="form-label">配置名称</label>
+              <input
+                class="form-input"
+                v-model="activeProfile.name"
+                placeholder="例如：DeepSeek 生产"
+              />
+              <span class="form-tip">用于左侧列表识别；仅当名称为“新模型”时保存会自动用模型名填充</span>
+            </div>
+            <div class="form-group">
               <label class="form-label"><span class="required">*</span> API 地址</label>
               <input
                 class="form-input"
@@ -152,7 +164,7 @@
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 {{ formErrors.base_url }}
               </span>
-              <span v-else class="form-tip">OpenAI 兼容接口地址，支持 OpenAI / DeepSeek / 通义千问 / Ollama 等</span>
+              <span v-else class="form-tip">OpenAI 兼容接口地址，支持 OpenAI / DeepSeek / 通义千问 / Ollama / 中转站等</span>
             </div>
             <div class="form-row">
               <div class="form-group">
@@ -175,18 +187,37 @@
               </div>
               <div class="form-group">
                 <label class="form-label"><span class="required">*</span> 模型名称</label>
-                <input
-                  class="form-input"
-                  :class="{ error: formErrors.model }"
-                  v-model="activeProfile.model"
-                  placeholder="gpt-4o"
-                  @blur="validateField('model')"
-                />
+                <div class="model-input-row">
+                  <input
+                    class="form-input"
+                    list="llm-model-options"
+                    :class="{ error: formErrors.model }"
+                    v-model="activeProfile.model"
+                    placeholder="gpt-4o"
+                    @blur="validateField('model')"
+                  />
+                  <button
+                    class="btn btn-sm"
+                    type="button"
+                    :class="{ 'is-loading': loadingModels }"
+                    :disabled="loadingModels"
+                    @click="handleRefreshModels"
+                  >
+                    {{ loadingModels ? '拉取中' : '刷新模型' }}
+                  </button>
+                </div>
+                <datalist id="llm-model-options">
+                  <option v-for="m in modelOptions" :key="m.id" :value="m.id">
+                    {{ m.owned_by ? `${m.id} · ${m.owned_by}` : m.id }}
+                  </option>
+                </datalist>
                 <span v-if="formErrors.model" class="form-error">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   {{ formErrors.model }}
                 </span>
-                <span v-else class="form-tip">模型标识符，如 gpt-4o、deepseek-chat、qwen-plus</span>
+                <span v-else class="form-tip">
+                  {{ modelListTip || '可手动输入，或点击“刷新模型”从服务商拉取' }}
+                </span>
               </div>
             </div>
           </div>
@@ -206,10 +237,22 @@
                     <span class="param-label">Temperature</span>
                     <span class="param-tooltip" tabindex="0">
                       <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">控制回复的随机性。低值 (0.1-0.3) 更精确稳定，适合事实查询；高值 (0.7-1.0) 更有创意，适合头脑风暴。运维场景建议 0.3-0.5。</span>
+                      <span class="tooltip-content">控制回复的随机性。低值更精确稳定，高值更有创意。运维场景建议 0.2-0.5。</span>
                     </span>
                   </div>
                   <span class="param-value">{{ activeProfile.temperature.toFixed(1) }}</span>
+                </div>
+                <div class="chip-row">
+                  <button
+                    v-for="item in temperaturePresets"
+                    :key="item.id"
+                    type="button"
+                    class="chip"
+                    :class="{ active: Math.abs(activeProfile.temperature - item.value) < 0.05 }"
+                    @click="activeProfile.temperature = item.value"
+                  >
+                    {{ item.label }} {{ item.value }}
+                  </button>
                 </div>
                 <input
                   type="range"
@@ -228,10 +271,18 @@
                     <span class="param-label">Max Tokens</span>
                     <span class="param-tooltip" tabindex="0">
                       <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">单次回复的最大长度（token 数）。1 个中文字约 1.5 token。4096 约等于 2700 个中文字，足够大多数运维问答。复杂任务可适当增大。</span>
+                      <span class="tooltip-content">单次回复的最大长度（token 数）。可用滑条或右侧输入精确设置。</span>
                     </span>
                   </div>
-                  <span class="param-value">{{ activeProfile.max_tokens }}</span>
+                  <input
+                    class="param-number"
+                    type="number"
+                    min="256"
+                    max="128000"
+                    step="1"
+                    v-model.number="activeProfile.max_tokens"
+                    aria-label="Max Tokens 精确值"
+                  />
                 </div>
                 <input
                   type="range"
@@ -244,13 +295,17 @@
                 />
                 <div class="param-range"><span>256</span><span>32768</span></div>
               </div>
-              <div class="param-card">
+            </div>
+
+            <details class="advanced-block">
+              <summary>高级参数</summary>
+              <div class="param-card" style="margin-top: 12px;">
                 <div class="param-header">
                   <div class="param-label-row">
                     <span class="param-label">Top P</span>
                     <span class="param-tooltip" tabindex="0">
                       <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">核采样参数，与 Temperature 配合使用。1.0 表示不启用，0.9 表示只考虑概率前 90% 的词。通常保持默认 1.0 即可，调低会使回复更保守。</span>
+                      <span class="tooltip-content">核采样参数，与 Temperature 配合使用。通常保持默认 1.0 即可。</span>
                     </span>
                   </div>
                   <span class="param-value">{{ activeProfile.top_p.toFixed(2) }}</span>
@@ -266,9 +321,21 @@
                 />
                 <div class="param-range"><span>0</span><span>1</span></div>
               </div>
-            </div>
+            </details>
+
             <div class="form-group">
               <label class="form-label">系统提示词 <span class="tag tag-default">可选</span></label>
+              <div class="chip-row" style="margin-bottom: 8px;">
+                <button
+                  v-for="tpl in promptTemplates"
+                  :key="tpl.id"
+                  type="button"
+                  class="chip"
+                  @click="applyPromptTemplate(tpl.content)"
+                >
+                  {{ tpl.name }}
+                </button>
+              </div>
               <textarea
                 class="form-input"
                 v-model="activeProfile.system_prompt"
@@ -339,14 +406,19 @@
 
         <!-- 操作栏 -->
         <div class="action-bar">
-          <button
-            v-if="profiles.length > 1"
-            class="btn btn-danger"
-            @click="handleDeleteProfile"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            删除此配置
-          </button>
+          <div class="action-bar-left">
+            <button class="btn" @click="handleCloneProfile">
+              复制此配置
+            </button>
+            <button
+              v-if="profiles.length > 1"
+              class="btn btn-danger"
+              @click="handleDeleteProfile"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              删除此配置
+            </button>
+          </div>
           <div class="action-bar-right">
             <button
               v-if="!activeProfile.is_active"
@@ -382,33 +454,28 @@ import {
   updateLLMProfiles,
   testLLMConnection,
   testLLMChat,
+  listLLMModels,
   toLLMProfileWritePayload,
   formatLLMTestMessage,
   type LLMProfile,
 } from '@/api/settings'
-import { resolveProviderDraft, snapshotProviderDraft } from './providerPreset'
+import {
+  PROVIDER_PRESETS,
+  SYSTEM_PROMPT_TEMPLATES,
+  TEMPERATURE_PRESETS,
+  resolveProviderDraft,
+  snapshotProviderDraft,
+} from './providerPreset'
 import {
   serializeProfiles,
   normalizeLoadedProfiles,
   isLocalProvider,
 } from './modelConfigState'
 
-// ── 服务商预设 ──
-const providers: Array<{
-  id: string
-  name: string
-  icon: string
-  hint: string
-  base_url: string
-  model: string
-  api_mode?: 'chat_completions' | 'responses'
-  reasoning_effort?: '' | 'low' | 'medium' | 'high'
-}> = [
-  { id: 'openai', name: 'OpenAI', icon: 'AI', hint: 'GPT-4o / o3', base_url: 'https://api.openai.com/v1', model: 'gpt-4o' },
-  { id: 'deepseek', name: 'DeepSeek', icon: 'DS', hint: 'DeepSeek Chat', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  { id: 'qwen', name: '通义千问', icon: 'QW', hint: 'Qwen Plus', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { id: 'ollama', name: 'Ollama', icon: 'OL', hint: '本地部署', base_url: 'http://localhost:11434/v1', model: 'qwen2.5:7b' },
-]
+// ── 服务商预设 / 模板 ──
+const providers = PROVIDER_PRESETS
+const promptTemplates = SYSTEM_PROMPT_TEMPLATES
+const temperaturePresets = TEMPERATURE_PRESETS
 
 // ── 状态 ──
 const loading = ref(false)
@@ -420,6 +487,9 @@ const testResult = ref<boolean | null>(null)
 const testResultMsg = ref('')
 const showPassword = ref(false)
 const savedSnapshot = ref('')
+const loadingModels = ref(false)
+const modelOptions = ref<Array<{ id: string; owned_by: string }>>([])
+const modelListTip = ref('')
 
 const profiles = ref<LLMProfile[]>([])
 const activeProfileId = ref<string | null>(null)
@@ -625,6 +695,8 @@ async function selectProfile(p: LLMProfile) {
   formErrors.base_url = ''
   formErrors.model = ''
   showPassword.value = false
+  modelOptions.value = []
+  modelListTip.value = ''
 }
 
 // ── 新增配置 ──
@@ -646,9 +718,82 @@ function handleAddProfile() {
   }
   profiles.value.push(newProfile)
   activeProfileId.value = newProfile.id
+  modelOptions.value = []
+  modelListTip.value = ''
   testResult.value = null
   testMessages.value = []
   testChatResult.value = null
+}
+
+// ── 复制配置 ──
+function handleCloneProfile() {
+  if (!activeProfile.value) return
+  const src = activeProfile.value
+  const cloned: LLMProfile = {
+    ...src,
+    id: generateId(),
+    name: `${src.name || '配置'} 副本`,
+    api_key: '',
+    is_active: false,
+    // 保存时由后端从源 profile 拷贝真实密钥
+    has_api_key: !!src.has_api_key,
+    api_key_masked: src.api_key_masked || '',
+    copy_api_key_from: src.has_api_key ? src.id : undefined,
+  }
+  profiles.value.push(cloned)
+  activeProfileId.value = cloned.id
+  modelOptions.value = []
+  modelListTip.value = src.has_api_key
+    ? '已复制配置；保存后将沿用源配置密钥'
+    : '已复制配置'
+  testResult.value = null
+  testMessages.value = []
+  testChatResult.value = null
+  ElMessage.success('已复制为新配置（未保存）')
+}
+
+function applyPromptTemplate(content: string) {
+  if (!activeProfile.value) return
+  activeProfile.value.system_prompt = content
+}
+
+async function handleRefreshModels() {
+  if (!activeProfile.value) return
+  const p = activeProfile.value
+  if (!p.base_url.trim()) {
+    ElMessage.warning('请先填写 API 地址')
+    return
+  }
+  if (!(p.api_key || '').trim() && !p.has_api_key && !isLocalProvider(p)) {
+    ElMessage.warning('请先填写 API Key')
+    return
+  }
+  loadingModels.value = true
+  modelListTip.value = ''
+  try {
+    const res: any = await listLLMModels({
+      base_url: p.base_url.trim(),
+      api_key: (p.api_key || '').trim(),
+      provider: p.provider || '',
+      profile_id: p.id,
+    })
+    const items = res.data?.items || []
+    modelOptions.value = items
+    if (res.data?.ok && items.length) {
+      modelListTip.value = `已拉取 ${items.length} 个模型，可输入筛选或点选`
+      if (!p.model && items[0]?.id) {
+        p.model = items[0].id
+      }
+    } else {
+      modelOptions.value = []
+      modelListTip.value = res.msg || '未能拉取模型列表，请手动输入模型名'
+    }
+  } catch (e: any) {
+    modelOptions.value = []
+    modelListTip.value = e?.message || '拉取模型失败，请手动输入'
+  } finally {
+    loadingModels.value = false
+  }
 }
 
 // ── 删除配置 ──
@@ -1453,6 +1598,76 @@ onMounted(fetchProfiles)
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+
+.profile-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.model-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.model-input-row .form-input {
+  flex: 1;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip:hover {
+  border-color: #c0c4cc;
+}
+.chip.active {
+  border-color: var(--primary-color);
+  background: var(--primary-bg);
+  color: var(--primary-color);
+}
+.advanced-block {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg-color);
+}
+.advanced-block summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.param-number {
+  width: 96px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  color: var(--primary-color);
+  font-weight: 700;
+  text-align: right;
+  background: var(--surface-color);
+}
+.action-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.params-grid {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 /* ── Responsive ── */

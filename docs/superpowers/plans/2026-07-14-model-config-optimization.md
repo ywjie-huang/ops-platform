@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-14-model-config-optimization-design.md`
 
-**Progress (2026-07-14):** Phase 1 Tasks 1–7 implemented in code (mask/merge, connection test, test-chat, frontend API, draft chat, dirty guard). Remaining: Phase 2/3.
+**Progress (2026-07-14):** Phase 1 done (commit 1e0400c). Phase 2 Tasks 8–10 implemented (rename/clone, model discovery, presets/templates/param UX). Remaining: Phase 3 optional.
 
 ---
 

@@ -94,6 +94,13 @@ class LLMTestChatBody(BaseModel):
     profile_id: str | None = None
 
 
+class LLMModelsBody(BaseModel):
+    base_url: str
+    api_key: str = ""
+    provider: str = ""
+    profile_id: str | None = None
+
+
 class TestConnectionBody(BaseModel):
     url: str
     username: str = ""
@@ -208,6 +215,103 @@ def _llm_result(
         data["content"] = content
     # 测试类接口统一 code=0，业务成败看 data.ok，避免前端拦截器丢掉结构化错误
     return {"code": 0, "msg": msg, "data": data}
+
+
+@router.post("/llm/models")
+def api_list_llm_models(
+    body: LLMModelsBody,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("settings.view")),
+):
+    """代理查询 OpenAI 兼容 /models 列表；失败时返回空列表，不阻断配置。"""
+    import httpx
+
+    base_url = body.base_url.strip().rstrip("/")
+    provider = (body.provider or "").strip()
+    api_key = resolve_profile_api_key(db, api_key=body.api_key, profile_id=body.profile_id)
+
+    if not base_url:
+        return {
+            "code": 0,
+            "msg": "请填写 API 地址",
+            "data": {"items": [], "ok": False, "error_code": "validation"},
+        }
+    if not api_key and not is_local_llm(base_url, provider):
+        return {
+            "code": 0,
+            "msg": "请填写 API Key",
+            "data": {"items": [], "ok": False, "error_code": "validation"},
+        }
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True) as client:
+            resp = client.get(f"{base_url}/models", headers=headers)
+            if resp.status_code != 200:
+                detail = resp.text[:200]
+                return {
+                    "code": 0,
+                    "msg": f"拉取模型失败: HTTP {resp.status_code}",
+                    "data": {
+                        "items": [],
+                        "ok": False,
+                        "error_code": classify_llm_http_error(resp.status_code, detail),
+                        "status_code": resp.status_code,
+                    },
+                }
+            payload = resp.json()
+            raw_items = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(raw_items, list):
+                raw_items = payload if isinstance(payload, list) else []
+            items = []
+            for item in raw_items:
+                if isinstance(item, str):
+                    items.append({"id": item, "owned_by": ""})
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                model_id = item.get("id") or item.get("name") or item.get("model")
+                if not model_id:
+                    continue
+                items.append({
+                    "id": str(model_id),
+                    "owned_by": str(item.get("owned_by") or item.get("organization") or ""),
+                })
+            # 稳定去重
+            seen: set[str] = set()
+            unique = []
+            for it in items:
+                if it["id"] in seen:
+                    continue
+                seen.add(it["id"])
+                unique.append(it)
+            unique.sort(key=lambda x: x["id"])
+            return {
+                "code": 0,
+                "msg": "ok",
+                "data": {"items": unique, "ok": True, "error_code": None},
+            }
+    except httpx.TimeoutException:
+        return {
+            "code": 0,
+            "msg": "拉取模型超时",
+            "data": {"items": [], "ok": False, "error_code": "timeout"},
+        }
+    except httpx.ConnectError as e:
+        return {
+            "code": 0,
+            "msg": f"无法连接: {e}",
+            "data": {"items": [], "ok": False, "error_code": "connect"},
+        }
+    except Exception as e:
+        return {
+            "code": 0,
+            "msg": f"拉取模型失败: {e}",
+            "data": {"items": [], "ok": False, "error_code": "unknown"},
+        }
 
 
 @router.post("/test-connection/llm")

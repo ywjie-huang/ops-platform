@@ -88,6 +88,16 @@ export function testLLMChat(data: {
   return request.post('/settings/llm/test-chat', data, { timeout: 35000 })
 }
 
+
+export function listLLMModels(data: {
+  base_url: string
+  api_key?: string
+  provider?: string
+  profile_id?: string
+}) {
+  return request.post('/settings/llm/models', data)
+}
+
 export function getLLMProfiles() {
   return request.get('/settings/llm/profiles')
 }
