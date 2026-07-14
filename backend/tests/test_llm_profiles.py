@@ -200,3 +200,85 @@ def test_list_llm_models_allows_local_without_key(monkeypatch):
     result = settings_api.api_list_llm_models(body, db=object(), _=object())
     assert result["data"]["ok"] is True
     assert result["data"]["items"][0]["id"] == "qwen2.5:7b"
+
+
+class _MemDb:
+    """Minimal stand-in for settings helpers that only need get/set_config behavior."""
+
+    def __init__(self, values=None):
+        self.values = dict(values or {})
+
+    def scalar(self, _stmt):
+        return None
+
+
+def test_get_llm_config_prefers_active_profile(monkeypatch):
+    from app.core import settings as core
+
+    profiles = [
+        _profile(id="a", is_active=False, model="m-a", api_key="sk-a"),
+        _profile(id="b", is_active=True, model="m-b", api_key="sk-b", base_url="https://b.example/v1"),
+    ]
+    monkeypatch.setattr(core, "get_llm_profiles", lambda db: profiles)
+    # avoid auto-migration side effects
+    monkeypatch.setattr(core, "ensure_llm_profiles_migrated", lambda db: profiles)
+
+    cfg = core.get_llm_config(object())
+    assert cfg["model"] == "m-b"
+    assert cfg["api_key"] == "sk-b"
+    assert cfg["base_url"] == "https://b.example/v1"
+
+
+def test_ensure_llm_profiles_migrated_from_legacy(monkeypatch):
+    from app.core import settings as core
+
+    store: dict[str, str] = {
+        "llm.base_url": "https://api.deepseek.com/v1",
+        "llm.api_key": "sk-legacy",
+        "llm.model": "deepseek-chat",
+        "llm.api_mode": "chat_completions",
+        "llm.reasoning_effort": "",
+        "llm.temperature": "0.3",
+        "llm.max_tokens": "2048",
+        "llm.top_p": "0.9",
+        "llm.system_prompt": "ops",
+        "llm.profiles": "[]",
+    }
+
+    def fake_get_config(db, key):
+        return store.get(key, core._DEFAULTS.get(key, ""))
+
+    def fake_set_config(db, key, value, description=""):
+        store[key] = value
+        return object()
+
+    monkeypatch.setattr(core, "get_config", fake_get_config)
+    monkeypatch.setattr(core, "set_config", fake_set_config)
+
+    profiles = core.ensure_llm_profiles_migrated(object())
+    assert len(profiles) == 1
+    assert profiles[0]["api_key"] == "sk-legacy"
+    assert profiles[0]["model"] == "deepseek-chat"
+    assert profiles[0]["is_active"] is True
+    assert store["llm.profiles"] != "[]"
+    assert store["llm.api_key"] == "sk-legacy"
+
+
+def test_is_llm_configured_allows_local_without_key():
+    from app.core.settings import is_llm_configured
+
+    assert is_llm_configured({
+        "base_url": "http://localhost:11434/v1",
+        "api_key": "",
+        "model": "qwen2.5:7b",
+    })
+    assert not is_llm_configured({
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "",
+        "model": "deepseek-chat",
+    })
+    assert is_llm_configured({
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "sk-x",
+        "model": "deepseek-chat",
+    })

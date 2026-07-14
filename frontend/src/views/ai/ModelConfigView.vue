@@ -586,12 +586,7 @@ async function fetchProfiles() {
     const res: any = await getLLMProfiles()
     profiles.value = normalizeLoadedProfiles(res.data?.items || [])
 
-    // 迁移：如果没有 profiles，从旧的单一配置创建一个
-    if (!profiles.value.length) {
-      await migrateFromLegacy()
-    }
-
-    // 默认选中激活的
+    // 默认选中激活的（legacy 迁移由后端 ensure_llm_profiles_migrated 处理）
     const active = profiles.value.find(p => p.is_active)
     activeProfileId.value = active?.id || profiles.value[0]?.id || null
     configured.value = !!active
@@ -601,49 +596,7 @@ async function fetchProfiles() {
   }
 }
 
-async function migrateFromLegacy() {
-  // 读取旧的单一配置（llm.api_key 已掩码，无法还原明文；仅迁移非密钥字段）
-  const { getSettings } = await import('@/api/settings')
-  const res: any = await getSettings()
-  const items: Record<string, string> = {}
-  for (const item of res.data.items) {
-    items[item.key] = item.value
-  }
 
-  if (items['llm.base_url'] || items['llm.model']) {
-    const profile: LLMProfile = {
-      id: generateId(),
-      name: items['llm.model'] || '默认模型',
-      provider: guessProvider(items['llm.base_url'] || ''),
-      icon: guessIcon(items['llm.base_url'] || ''),
-      base_url: items['llm.base_url'] || '',
-      api_key: '',
-      has_api_key: false,
-      model: items['llm.model'] || '',
-      temperature: parseFloat(items['llm.temperature'] || '0.7'),
-      max_tokens: parseInt(items['llm.max_tokens'] || '4096'),
-      top_p: parseFloat(items['llm.top_p'] || '1.0'),
-      system_prompt: items['llm.system_prompt'] || '',
-      is_active: true,
-    }
-    profiles.value = [profile]
-    await saveProfiles()
-  }
-}
-
-function guessProvider(url: string): string {
-  if (url.includes('openai')) return 'openai'
-  if (url.includes('deepseek')) return 'deepseek'
-  if (url.includes('dashscope') || url.includes('aliyuncs')) return 'qwen'
-  if (url.includes('localhost:11434') || url.includes('ollama')) return 'ollama'
-  return 'custom'
-}
-
-function guessIcon(url: string): string {
-  const provider = guessProvider(url)
-  const found = providers.find(p => p.id === provider)
-  return found?.icon || '⚡'
-}
 
 // ── 保存 profiles ──
 async function saveProfiles() {

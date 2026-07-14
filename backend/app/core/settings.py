@@ -63,19 +63,131 @@ def get_alertmanager_url(db: Session) -> str:
     return get_config(db, "alertmanager.url")
 
 
-def get_llm_config(db: Session) -> dict[str, str]:
-    """读取 LLM 配置，返回 {base_url, api_key, model, temperature, max_tokens, top_p, system_prompt}。"""
+def _legacy_llm_config(db: Session) -> dict[str, str]:
+    """读取平铺的 llm.* 兼容字段。"""
     return {
         "base_url": get_config(db, "llm.base_url"),
         "api_key": get_config(db, "llm.api_key"),
         "model": get_config(db, "llm.model"),
-        "api_mode": get_config(db, "llm.api_mode"),
+        "api_mode": get_config(db, "llm.api_mode") or "chat_completions",
         "reasoning_effort": get_config(db, "llm.reasoning_effort"),
-        "temperature": get_config(db, "llm.temperature"),
-        "max_tokens": get_config(db, "llm.max_tokens"),
-        "top_p": get_config(db, "llm.top_p"),
+        "temperature": get_config(db, "llm.temperature") or "0.7",
+        "max_tokens": get_config(db, "llm.max_tokens") or "4096",
+        "top_p": get_config(db, "llm.top_p") or "1.0",
         "system_prompt": get_config(db, "llm.system_prompt"),
     }
+
+
+def profile_to_llm_config(profile: dict[str, Any]) -> dict[str, str]:
+    """将 profile 规范化为 AI 运行时配置。"""
+    return {
+        "base_url": str(profile.get("base_url") or "").strip(),
+        "api_key": str(profile.get("api_key") or "").strip(),
+        "model": str(profile.get("model") or "").strip(),
+        "api_mode": str(profile.get("api_mode") or "chat_completions").strip() or "chat_completions",
+        "reasoning_effort": str(profile.get("reasoning_effort") or "").strip(),
+        "temperature": str(profile.get("temperature", "0.7")),
+        "max_tokens": str(profile.get("max_tokens", "4096")),
+        "top_p": str(profile.get("top_p", "1.0")),
+        "system_prompt": str(profile.get("system_prompt") or ""),
+    }
+
+
+def guess_provider_from_url(url: str) -> str:
+    u = (url or "").lower()
+    if "openai" in u:
+        return "openai"
+    if "deepseek" in u:
+        return "deepseek"
+    if "dashscope" in u or "aliyuncs" in u:
+        return "qwen"
+    if "11434" in u or "ollama" in u:
+        return "ollama"
+    return "custom"
+
+
+def get_active_llm_profile(db: Session) -> dict[str, Any] | None:
+    """返回当前激活 profile；无 is_active 时回退第一条。"""
+    profiles = get_llm_profiles(db)
+    if not profiles:
+        return None
+    active = next((p for p in profiles if p.get("is_active")), None)
+    return active or profiles[0]
+
+
+def ensure_llm_profiles_migrated(db: Session) -> list[dict[str, Any]]:
+    """若 profiles 为空但存在 legacy llm.*，自动迁移为单条 active profile。"""
+    profiles = get_llm_profiles(db)
+    if profiles:
+        return profiles
+
+    legacy = _legacy_llm_config(db)
+    if not (legacy["base_url"] or legacy["model"] or legacy["api_key"]):
+        return []
+
+    import time
+
+    provider = guess_provider_from_url(legacy["base_url"])
+    migrated = {
+        "id": f"legacy-{int(time.time())}",
+        "name": legacy["model"] or "默认模型",
+        "provider": provider,
+        "icon": {
+            "openai": "AI",
+            "deepseek": "DS",
+            "qwen": "QW",
+            "ollama": "OL",
+        }.get(provider, "⚡"),
+        "base_url": legacy["base_url"],
+        "api_key": legacy["api_key"],
+        "model": legacy["model"],
+        "api_mode": legacy["api_mode"] or "chat_completions",
+        "reasoning_effort": legacy["reasoning_effort"] or "",
+        "temperature": float(legacy["temperature"] or 0.7),
+        "max_tokens": int(float(legacy["max_tokens"] or 4096)),
+        "top_p": float(legacy["top_p"] or 1.0),
+        "system_prompt": legacy["system_prompt"] or "",
+        "is_active": True,
+    }
+    set_llm_profiles(db, [migrated])
+    # 同步激活字段，保持双写一致
+    sync_active_llm_config(db, migrated)
+    return [migrated]
+
+
+def sync_active_llm_config(db: Session, active: dict[str, Any]) -> None:
+    """将激活 profile 同步回写 llm.* 兼容字段。"""
+    cfg = profile_to_llm_config(active)
+    set_config(db, "llm.base_url", cfg["base_url"], "LLM API 地址（OpenAI 兼容，例：https://api.openai.com/v1）")
+    set_config(db, "llm.api_key", cfg["api_key"], "LLM API Key")
+    set_config(db, "llm.model", cfg["model"], "LLM 模型名称（例：gpt-4o、deepseek-chat、qwen-plus）")
+    set_config(db, "llm.api_mode", cfg["api_mode"], "LLM 接口模式（chat_completions 或 responses）")
+    set_config(db, "llm.reasoning_effort", cfg["reasoning_effort"], "推理强度（low、medium、high，仅 Responses 模式使用）")
+    set_config(db, "llm.temperature", cfg["temperature"], "模型温度（0-2，越低越精确）")
+    set_config(db, "llm.max_tokens", cfg["max_tokens"], "最大输出 Token 数")
+    set_config(db, "llm.top_p", cfg["top_p"], "Top P 采样参数（0-1）")
+    set_config(db, "llm.system_prompt", cfg["system_prompt"], "自定义系统提示词")
+
+
+def get_llm_config(db: Session) -> dict[str, str]:
+    """读取 LLM 配置：优先 active profile，其次 legacy llm.*。"""
+    ensure_llm_profiles_migrated(db)
+    active = get_active_llm_profile(db)
+    if active:
+        return profile_to_llm_config(active)
+    return _legacy_llm_config(db)
+
+
+def is_llm_configured(config: dict[str, str]) -> bool:
+    """判断配置是否足够用于 AI 调用（本地模型允许空 key）。"""
+    base_url = (config.get("base_url") or "").strip()
+    model = (config.get("model") or "").strip()
+    api_key = (config.get("api_key") or "").strip()
+    if not base_url or not model:
+        return False
+    if api_key:
+        return True
+    return is_local_llm(base_url)
 
 
 def get_llm_profiles(db: Session) -> list[dict[str, Any]]:

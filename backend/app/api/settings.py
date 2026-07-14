@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import api_permission_required, get_client_ip
 from app.core.settings import (
     classify_llm_http_error,
+    ensure_llm_profiles_migrated,
     get_config,
     set_config,
     get_llm_profiles,
@@ -16,6 +17,7 @@ from app.core.settings import (
     merge_profile_secrets,
     public_profile,
     resolve_profile_api_key,
+    sync_active_llm_config,
 )
 from app.db.database import get_db
 from app.models.system_config import SystemConfig
@@ -116,7 +118,14 @@ def api_get_llm_profiles(
     _: User = Depends(api_permission_required("settings.view")),
 ):
     """获取 LLM 模型配置列表（API Key 仅返回掩码）。"""
-    profiles = [public_profile(p) for p in get_llm_profiles(db)]
+    raw_profiles = ensure_llm_profiles_migrated(db)
+    # 迁移可能写库，这里提交以持久化（只读权限场景也允许自动升级数据）
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raw_profiles = get_llm_profiles(db)
+    profiles = [public_profile(p) for p in raw_profiles]
     return {"code": 0, "data": {"items": profiles}}
 
 
@@ -141,41 +150,7 @@ def api_update_llm_profiles(
         old_key = (old_active or {}).get("api_key") or ""
         new_key = active.get("api_key") or ""
         key_changed = old_key != new_key
-
-        set_config(db, "llm.base_url", active.get("base_url") or "", _CONFIG_SPECS["llm.base_url"])
-        set_config(db, "llm.api_key", new_key, _CONFIG_SPECS["llm.api_key"])
-        set_config(db, "llm.model", active.get("model") or "", _CONFIG_SPECS["llm.model"])
-        set_config(
-            db,
-            "llm.api_mode",
-            active.get("api_mode") or "chat_completions",
-            _CONFIG_SPECS["llm.api_mode"],
-        )
-        set_config(
-            db,
-            "llm.reasoning_effort",
-            active.get("reasoning_effort") or "",
-            _CONFIG_SPECS["llm.reasoning_effort"],
-        )
-        set_config(
-            db,
-            "llm.temperature",
-            str(active.get("temperature", 0.7)),
-            _CONFIG_SPECS["llm.temperature"],
-        )
-        set_config(
-            db,
-            "llm.max_tokens",
-            str(active.get("max_tokens", 4096)),
-            _CONFIG_SPECS["llm.max_tokens"],
-        )
-        set_config(db, "llm.top_p", str(active.get("top_p", 1.0)), _CONFIG_SPECS["llm.top_p"])
-        set_config(
-            db,
-            "llm.system_prompt",
-            active.get("system_prompt") or "",
-            _CONFIG_SPECS["llm.system_prompt"],
-        )
+        sync_active_llm_config(db, active)
 
     write_log(
         db,

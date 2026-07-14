@@ -236,11 +236,11 @@ async def _generate_llm_title(
     user_message: str,
     assistant_text: str | None = None,
 ) -> str | None:
-    from app.core.settings import get_llm_config
+    from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.llm_client import LLMClient
 
     config = get_llm_config(db)
-    if not config["base_url"] or not config["api_key"] or not config["model"]:
+    if not is_llm_configured(config):
         return None
 
     client = LLMClient(

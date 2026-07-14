@@ -40,10 +40,10 @@ def api_ai_info(
     _: User = Depends(get_current_api_user),
 ):
     """获取 AI 模型配置信息。"""
-    from app.core.settings import get_llm_config
+    from app.core.settings import get_llm_config, is_llm_configured
 
     config = get_llm_config(db)
-    configured = bool(config["base_url"] and config["api_key"] and config["model"])
+    configured = is_llm_configured(config)
     return {
         "code": 0,
         "data": {
@@ -154,7 +154,7 @@ async def api_chat(
     current_user: User = Depends(get_current_api_user),
 ):
     """SSE 流式对话接口。"""
-    from app.core.settings import get_llm_config
+    from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.conversations import (
         add_message,
         build_llm_messages,
@@ -168,7 +168,7 @@ async def api_chat(
     from app.services.ai.tools import TOOL_DEFINITIONS
 
     config = get_llm_config(db)
-    if not config["base_url"] or not config["api_key"] or not config["model"]:
+    if not is_llm_configured(config):
         async def error_stream():
             yield _sse_event({"type": "error", "content": "LLM 未配置，请在系统设置中配置 AI 模型。"})
         return StreamingResponse(error_stream(), media_type="text/event-stream")
@@ -308,7 +308,7 @@ async def api_chat_confirm(
     _: User = Depends(get_current_api_user),
 ):
     """确认执行写操作，继续 LLM 对话。"""
-    from app.core.settings import get_llm_config
+    from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.conversations import (
         add_message,
         build_llm_messages,
@@ -384,7 +384,7 @@ async def api_chat_reject(
     _: User = Depends(get_current_api_user),
 ):
     """拒绝写操作，告知 LLM 用户拒绝了。"""
-    from app.core.settings import get_llm_config
+    from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.conversations import (
         add_message,
         build_llm_messages,
