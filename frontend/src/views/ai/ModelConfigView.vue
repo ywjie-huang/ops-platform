@@ -58,322 +58,35 @@
 
       <!-- RIGHT: 配置面板 -->
       <div class="config-panel" v-if="activeProfile">
-
-        <!-- Section 1: 服务商预设 -->
-        <div class="card">
-          <div class="section-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-            快速选择服务商
-          </div>
-          <div class="card-content">
-            <div class="provider-presets">
-              <div
-                v-for="p in providers"
-                :key="p.id"
-                class="provider-card"
-                :class="{ selected: activeProfile.provider === p.id }"
-                role="radio"
-                :aria-checked="activeProfile.provider === p.id"
-                :aria-label="`${p.name}: ${p.hint}`"
-                tabindex="0"
-                @click="applyProvider(p)"
-                @keydown.enter.space.prevent="applyProvider(p)"
-              >
-                <div class="provider-logo">{{ p.icon }}</div>
-                <div class="provider-name">{{ p.name }}</div>
-                <div class="provider-desc">{{ p.hint }}</div>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">接口模式</label>
-                <select class="form-input" v-model="activeProfile.api_mode" @change="handleApiModeChange">
-                  <option value="chat_completions">Chat Completions</option>
-                  <option value="responses">Responses</option>
-                </select>
-                <span class="form-tip">中转站支持 Responses 时可切换到新接口</span>
-              </div>
-              <div class="form-group" v-if="activeProfile.api_mode === 'responses'">
-                <label class="form-label">推理强度</label>
-                <select class="form-input" v-model="activeProfile.reasoning_effort">
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-                <span class="form-tip">仅 Responses 模式生效</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 2: 连接配置 -->
-        <div class="card">
-          <div class="section-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            连接配置
-          </div>
-          <div class="card-content">
-            <div class="form-group">
-              <label class="form-label">配置名称</label>
-              <input
-                class="form-input"
-                v-model="activeProfile.name"
-                placeholder="例如：DeepSeek 生产"
-              />
-              <span class="form-tip">用于左侧列表识别；仅当名称为“新模型”时保存会自动用模型名填充</span>
-            </div>
-            <div class="form-group">
-              <label class="form-label"><span class="required">*</span> API 地址</label>
-              <input
-                class="form-input"
-                :class="{ error: formErrors.base_url }"
-                v-model="activeProfile.base_url"
-                placeholder="https://api.openai.com/v1"
-                @blur="validateField('base_url')"
-              />
-              <span v-if="formErrors.base_url" class="form-error">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                {{ formErrors.base_url }}
-              </span>
-              <span v-else class="form-tip">OpenAI 兼容接口地址，支持 OpenAI / DeepSeek / 通义千问 / Ollama / 中转站等</span>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">API Key</label>
-                <div class="form-input-password">
-                  <input
-                    class="form-input"
-                    :type="showPassword ? 'text' : 'password'"
-                    v-model="activeProfile.api_key"
-                    :placeholder="apiKeyPlaceholder"
-                  />
-                  <span class="eye-icon" @click="showPassword = !showPassword">
-                    <svg v-if="!showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                  </span>
-                </div>
-                <span class="form-tip">
-                  {{ activeProfile.has_api_key ? '已配置密钥，留空表示不修改' : '部分本地模型（如 Ollama）可留空' }}
-                </span>
-              </div>
-              <div class="form-group">
-                <label class="form-label"><span class="required">*</span> 模型名称</label>
-                <div class="model-input-row">
-                  <input
-                    class="form-input"
-                    list="llm-model-options"
-                    :class="{ error: formErrors.model }"
-                    v-model="activeProfile.model"
-                    placeholder="gpt-4o"
-                    @blur="validateField('model')"
-                  />
-                  <button
-                    class="btn btn-sm"
-                    type="button"
-                    :class="{ 'is-loading': loadingModels }"
-                    :disabled="loadingModels"
-                    @click="handleRefreshModels"
-                  >
-                    {{ loadingModels ? '拉取中' : '刷新模型' }}
-                  </button>
-                </div>
-                <datalist id="llm-model-options">
-                  <option v-for="m in modelOptions" :key="m.id" :value="m.id">
-                    {{ m.owned_by ? `${m.id} · ${m.owned_by}` : m.id }}
-                  </option>
-                </datalist>
-                <span v-if="formErrors.model" class="form-error">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  {{ formErrors.model }}
-                </span>
-                <span v-else class="form-tip">
-                  {{ modelListTip || '可手动输入，或点击“刷新模型”从服务商拉取' }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 3: 模型参数 -->
-        <div class="card">
-          <div class="section-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            模型参数
-          </div>
-          <div class="card-content">
-            <div class="params-grid">
-              <div class="param-card">
-                <div class="param-header">
-                  <div class="param-label-row">
-                    <span class="param-label">Temperature</span>
-                    <span class="param-tooltip" tabindex="0">
-                      <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">控制回复的随机性。低值更精确稳定，高值更有创意。运维场景建议 0.2-0.5。</span>
-                    </span>
-                  </div>
-                  <span class="param-value">{{ activeProfile.temperature.toFixed(1) }}</span>
-                </div>
-                <div class="chip-row">
-                  <button
-                    v-for="item in temperaturePresets"
-                    :key="item.id"
-                    type="button"
-                    class="chip"
-                    :class="{ active: Math.abs(activeProfile.temperature - item.value) < 0.05 }"
-                    @click="activeProfile.temperature = item.value"
-                  >
-                    {{ item.label }} {{ item.value }}
-                  </button>
-                </div>
-                <input
-                  type="range"
-                  class="param-slider"
-                  v-model.number="activeProfile.temperature"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  aria-label="Temperature 值"
-                />
-                <div class="param-range"><span>0 (精确)</span><span>2 (随机)</span></div>
-              </div>
-              <div class="param-card">
-                <div class="param-header">
-                  <div class="param-label-row">
-                    <span class="param-label">Max Tokens</span>
-                    <span class="param-tooltip" tabindex="0">
-                      <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">单次回复的最大长度（token 数）。可用滑条或右侧输入精确设置。</span>
-                    </span>
-                  </div>
-                  <input
-                    class="param-number"
-                    type="number"
-                    min="256"
-                    max="128000"
-                    step="1"
-                    v-model.number="activeProfile.max_tokens"
-                    aria-label="Max Tokens 精确值"
-                  />
-                </div>
-                <input
-                  type="range"
-                  class="param-slider"
-                  v-model.number="activeProfile.max_tokens"
-                  min="256"
-                  max="32768"
-                  step="256"
-                  aria-label="Max Tokens 值"
-                />
-                <div class="param-range"><span>256</span><span>32768</span></div>
-              </div>
-            </div>
-
-            <details class="advanced-block">
-              <summary>高级参数</summary>
-              <div class="param-card" style="margin-top: 12px;">
-                <div class="param-header">
-                  <div class="param-label-row">
-                    <span class="param-label">Top P</span>
-                    <span class="param-tooltip" tabindex="0">
-                      <svg class="tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                      <span class="tooltip-content">核采样参数，与 Temperature 配合使用。通常保持默认 1.0 即可。</span>
-                    </span>
-                  </div>
-                  <span class="param-value">{{ activeProfile.top_p.toFixed(2) }}</span>
-                </div>
-                <input
-                  type="range"
-                  class="param-slider"
-                  v-model.number="activeProfile.top_p"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  aria-label="Top P 值"
-                />
-                <div class="param-range"><span>0</span><span>1</span></div>
-              </div>
-            </details>
-
-            <div class="form-group">
-              <label class="form-label">系统提示词 <span class="tag tag-default">可选</span></label>
-              <div class="chip-row" style="margin-bottom: 8px;">
-                <button
-                  v-for="tpl in promptTemplates"
-                  :key="tpl.id"
-                  type="button"
-                  class="chip"
-                  @click="applyPromptTemplate(tpl.content)"
-                >
-                  {{ tpl.name }}
-                </button>
-              </div>
-              <textarea
-                class="form-input"
-                v-model="activeProfile.system_prompt"
-                rows="3"
-                placeholder="你是一个专业的运维助手，擅长 Linux 系统管理、Docker 容器编排和 Kubernetes 运维..."
-                style="resize: vertical; min-height: 72px;"
-              ></textarea>
-              <span class="form-tip">自定义 AI 助手的角色和行为。留空使用默认提示词。</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 4: 快速测试 -->
-        <div class="card">
-          <div class="section-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            快速测试
-          </div>
-          <div class="card-content">
-            <div class="test-area">
-              <div class="test-messages" ref="testMessagesRef" aria-live="polite">
-                <div
-                  v-for="(msg, idx) in testMessages"
-                  :key="idx"
-                  class="test-msg"
-                  :class="msg.role"
-                >
-                  <div class="test-msg-avatar">
-                    <svg v-if="msg.role === 'user'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                  </div>
-                  <div class="test-msg-bubble">{{ msg.content }}</div>
-                </div>
-                <div v-if="testSending" class="test-msg assistant">
-                  <div class="test-msg-avatar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                  </div>
-                  <div class="test-msg-bubble" style="color: var(--text-muted); font-style: italic;">思考中...</div>
-                </div>
-              </div>
-              <div class="test-input-row">
-                <input
-                  class="form-input"
-                  v-model="testInput"
-                  placeholder="输入测试消息，按 Enter 发送..."
-                  @keydown.enter.prevent="handleTestChat"
-                  :disabled="testSending"
-                />
-                <button
-                  class="btn btn-primary"
-                  :disabled="!testInput.trim() || testSending"
-                  :class="{ 'is-loading': testSending }"
-                  @click="handleTestChat"
-                >
-                  <svg v-if="!testSending" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                  <div v-else class="spinner"></div>
-                  发送
-                </button>
-              </div>
-              <div v-if="testChatResult" class="test-result" :class="testChatResult.ok ? 'success' : 'error'">
-                <svg v-if="testChatResult.ok" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                {{ testChatResult.ok ? '✓' : '✗' }} {{ testChatResult.msg }}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ProviderPresetGrid
+          :profile="activeProfile"
+          :providers="providers"
+          @select="applyProvider"
+          @api-mode-change="handleApiModeChange"
+        />
+        <ConnectionForm
+          :profile="activeProfile"
+          :form-errors="formErrors"
+          :api-key-placeholder="apiKeyPlaceholder"
+          :loading-models="loadingModels"
+          :model-options="modelOptions"
+          :model-list-tip="modelListTip"
+          @validate="validateField"
+          @refresh-models="handleRefreshModels"
+        />
+        <ModelParamsForm
+          :profile="activeProfile"
+          :temperature-presets="temperaturePresets"
+          :prompt-templates="promptTemplates"
+          @apply-prompt="applyPromptTemplate"
+        />
+        <QuickTestPanel
+          v-model="testInput"
+          :messages="testMessages"
+          :sending="testSending"
+          :result="testChatResult"
+          @send="handleTestChat"
+        />
 
         <!-- 操作栏 -->
         <div class="action-bar">
@@ -417,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -443,6 +156,10 @@ import {
   isLocalProvider,
 } from './modelConfigState'
 import ProfileList from './model-config/components/ProfileList.vue'
+import ProviderPresetGrid from './model-config/components/ProviderPresetGrid.vue'
+import ConnectionForm from './model-config/components/ConnectionForm.vue'
+import ModelParamsForm from './model-config/components/ModelParamsForm.vue'
+import QuickTestPanel from './model-config/components/QuickTestPanel.vue'
 
 // ── 服务商预设 / 模板 ──
 const providers = PROVIDER_PRESETS
@@ -457,7 +174,6 @@ const testing = ref(false)
 const configured = ref(false)
 const testResult = ref<boolean | null>(null)
 const testResultMsg = ref('')
-const showPassword = ref(false)
 const savedSnapshot = ref('')
 const loadingModels = ref(false)
 const modelOptions = ref<Array<{ id: string; owned_by: string }>>([])
@@ -505,7 +221,6 @@ function validateForm(): boolean {
 const testInput = ref('')
 const testSending = ref(false)
 const testMessages = ref<Array<{ role: string; content: string }>>([])
-const testMessagesRef = ref<HTMLElement | null>(null)
 const testChatResult = ref<{ ok: boolean; msg: string } | null>(null)
 
 // ── 工具函数 ──
@@ -612,7 +327,6 @@ async function selectProfile(p: LLMProfile) {
   testChatResult.value = null
   formErrors.base_url = ''
   formErrors.model = ''
-  showPassword.value = false
   modelOptions.value = []
   modelListTip.value = ''
 }
@@ -845,8 +559,7 @@ async function handleTestChat() {
   testMessages.value.push({ role: 'user', content: msg })
   testSending.value = true
   testChatResult.value = null
-  await nextTick()
-  scrollTestMessages()
+
 
   try {
     const res: any = await testLLMChat({
@@ -884,19 +597,10 @@ async function handleTestChat() {
     testChatResult.value = { ok: false, msg: e?.message || '请求失败' }
   } finally {
     testSending.value = false
-    await nextTick()
-    scrollTestMessages()
+
   }
 }
 
-function scrollTestMessages() {
-  if (testMessagesRef.value) {
-    testMessagesRef.value.scrollTo({
-      top: testMessagesRef.value.scrollHeight,
-      behavior: 'smooth'
-    })
-  }
-}
 
 onBeforeRouteLeave(async (_to, _from, next) => {
   if (!isDirty.value) {
@@ -1070,64 +774,6 @@ onMounted(fetchProfiles)
   margin-top: 12px;
 }
 
-/* ── Provider Presets ── */
-.provider-presets {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-}
-.provider-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition: all 0.15s;
-  background: var(--surface-color);
-}
-.provider-card:hover {
-  border-color: #c0c4cc;
-  background: #fafafa;
-}
-.provider-card:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-.provider-card.selected {
-  border-color: var(--primary-color);
-  background: var(--primary-bg);
-  box-shadow: 0 0 0 1px var(--primary-color);
-}
-.provider-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f5f5;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-.provider-card.selected .provider-logo {
-  background: rgba(94, 106, 210, 0.12);
-  color: var(--primary-color);
-}
-.provider-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.provider-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
 /* ── Form Styles ── */
 .form-row {
   display: grid;
@@ -1172,21 +818,6 @@ onMounted(fetchProfiles)
   border-color: var(--error-color, #dc2626);
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
 }
-.form-input-password {
-  position: relative;
-}
-.form-input-password .form-input { padding-right: 36px; width: 100%; }
-.form-input-password .eye-icon {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 .form-tip {
   font-size: 12px;
   color: var(--text-muted);
@@ -1199,114 +830,6 @@ onMounted(fetchProfiles)
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-/* ── Advanced Params ── */
-.params-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.param-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-color);
-}
-.param-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.param-label-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.param-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.param-tooltip {
-  position: relative;
-  display: inline-flex;
-  cursor: help;
-}
-.param-tooltip .tooltip-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--text-muted);
-  opacity: 0.7;
-}
-.param-tooltip .tooltip-content {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1a1a1a;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 400;
-  padding: 8px 10px;
-  border-radius: 6px;
-  line-height: 1.4;
-  white-space: normal;
-  width: 220px;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-.param-tooltip .tooltip-content::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: #1a1a1a;
-}
-.param-tooltip:hover .tooltip-content,
-.param-tooltip:focus-within .tooltip-content {
-  display: block;
-}
-.param-value {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--primary-color);
-  font-family: 'SF Mono', 'Consolas', monospace;
-}
-.param-slider {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e8e8e8;
-  border-radius: 2px;
-  outline: none;
-}
-.param-slider:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 4px;
-  border-radius: 2px;
-}
-.param-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--primary-color);
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(94, 106, 210, 0.3);
-}
-.param-range {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-muted);
 }
 
 /* ── Inline Tag ── */
@@ -1337,77 +860,6 @@ onMounted(fetchProfiles)
 .alert-success { background: var(--success-bg, #f0fdf4); color: var(--success-color, #16a34a); border: 1px solid var(--success-border, #bbf7d0); }
 .alert-error { background: var(--error-bg, #fef2f2); color: var(--error-color, #dc2626); border: 1px solid var(--error-border, #fecaca); }
 
-/* ── Test Area ── */
-.test-area {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.test-messages {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 12px;
-  background: var(--bg-color);
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-}
-.test-msg {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-.test-msg.user { flex-direction: row-reverse; }
-.test-msg-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: #f0f0f0;
-}
-.test-msg.user .test-msg-avatar { background: var(--primary-bg); color: var(--primary-color); }
-.test-msg.assistant .test-msg-avatar { background: #e8f5e9; color: #4caf50; }
-.test-msg-bubble {
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  max-width: 80%;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.test-msg.user .test-msg-bubble {
-  background: var(--primary-color);
-  color: white;
-  border-bottom-right-radius: 2px;
-}
-.test-msg.assistant .test-msg-bubble {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-bottom-left-radius: 2px;
-}
-.test-input-row {
-  display: flex;
-  gap: 8px;
-}
-.test-input-row .form-input { flex: 1; }
-.test-result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-.test-result svg { flex-shrink: 0; }
-.test-result.success { background: var(--success-bg, #f0fdf4); color: var(--success-color, #16a34a); border: 1px solid var(--success-border, #bbf7d0); }
-.test-result.error { background: var(--error-bg, #fef2f2); color: var(--error-color, #dc2626); border: 1px solid var(--error-border, #fecaca); }
-
 /* ── Loading Spinner ── */
 .spinner {
   width: 14px;
@@ -1437,75 +889,14 @@ onMounted(fetchProfiles)
   align-items: center;
   gap: 6px;
 }
-.model-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.model-input-row .form-input {
-  flex: 1;
-}
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.chip {
-  border: 1px solid var(--border-color);
-  background: var(--surface-color);
-  color: var(--text-secondary);
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.chip:hover {
-  border-color: #c0c4cc;
-}
-.chip.active {
-  border-color: var(--primary-color);
-  background: var(--primary-bg);
-  color: var(--primary-color);
-}
-.advanced-block {
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: var(--bg-color);
-}
-.advanced-block summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.param-number {
-  width: 96px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Consolas', monospace;
-  color: var(--primary-color);
-  font-weight: 700;
-  text-align: right;
-  background: var(--surface-color);
-}
 .action-bar-left {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.params-grid {
-  grid-template-columns: repeat(2, 1fr);
-}
-
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .main-layout { grid-template-columns: 1fr; }
-  .provider-presets { grid-template-columns: repeat(2, 1fr); }
-  .params-grid { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
 }
 
