@@ -1,10 +1,15 @@
 """系统配置读取工具 — DB 优先，fallback 到 config.py 常量。"""
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.system_config import SystemConfig
+
+# 前端/调用方用该标记表示“不修改已有密钥”
+UNCHANGED_SECRET = "__UNCHANGED__"
 
 # 默认值（来自原 config.py）
 _DEFAULTS: dict[str, str] = {
@@ -73,20 +78,131 @@ def get_llm_config(db: Session) -> dict[str, str]:
     }
 
 
-def get_llm_profiles(db: Session) -> list[dict[str, str]]:
+def get_llm_profiles(db: Session) -> list[dict[str, Any]]:
     """读取 LLM 配置列表。"""
     import json
     raw = get_config(db, "llm.profiles")
     try:
-        return json.loads(raw) if raw else []
+        data = json.loads(raw) if raw else []
+        return data if isinstance(data, list) else []
     except (json.JSONDecodeError, TypeError):
         return []
 
 
-def set_llm_profiles(db: Session, profiles: list[dict[str, str]]) -> None:
+def set_llm_profiles(db: Session, profiles: list[dict[str, Any]]) -> None:
     """写入 LLM 配置列表。"""
     import json
     set_config(db, "llm.profiles", json.dumps(profiles, ensure_ascii=False), "LLM 模型配置列表")
+
+
+def mask_api_key(api_key: str) -> str:
+    """将 API Key 中间部分打码，供前端展示。"""
+    key = (api_key or "").strip()
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return f"{key[:3]}****{key[-4:]}"
+
+
+def public_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """对外返回的 profile：去掉明文 key，附带掩码字段。"""
+    raw_key = str(profile.get("api_key") or "")
+    data = dict(profile)
+    data["api_key"] = ""
+    data["has_api_key"] = bool(raw_key.strip())
+    data["api_key_masked"] = mask_api_key(raw_key)
+    data.pop("copy_api_key_from", None)
+    return data
+
+
+def merge_profile_secrets(
+    old_profiles: list[dict[str, Any]],
+    new_profiles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """合并写入：空 / __UNCHANGED__ 表示保留旧密钥；支持 copy_api_key_from。"""
+    old_by_id = {
+        str(p.get("id")): p
+        for p in old_profiles
+        if p.get("id") is not None and str(p.get("id"))
+    }
+    merged: list[dict[str, Any]] = []
+    for raw in new_profiles:
+        item = dict(raw)
+        profile_id = str(item.get("id") or "")
+        incoming = str(item.get("api_key") or "").strip()
+        copy_from = str(item.pop("copy_api_key_from", "") or "").strip()
+
+        if incoming and incoming != UNCHANGED_SECRET:
+            item["api_key"] = incoming
+        else:
+            prev = old_by_id.get(profile_id) or {}
+            kept = str(prev.get("api_key") or "")
+            if not kept and copy_from:
+                source = old_by_id.get(copy_from) or {}
+                # 也允许从本批次已处理项拷贝（同次提交内复制）
+                if not source.get("api_key"):
+                    for done in merged:
+                        if str(done.get("id")) == copy_from:
+                            source = done
+                            break
+                kept = str(source.get("api_key") or "")
+            item["api_key"] = kept
+
+        merged.append(item)
+    return merged
+
+
+def is_local_llm(base_url: str, provider: str = "") -> bool:
+    """判断是否为本地/Ollama 类模型（允许空 API Key）。"""
+    u = (base_url or "").lower()
+    p = (provider or "").lower()
+    if p == "ollama":
+        return True
+    return any(
+        token in u
+        for token in (
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            ":11434",
+            "host.docker.internal",
+        )
+    )
+
+
+def classify_llm_http_error(status_code: int, body: str = "") -> str:
+    """将 HTTP 状态码/响应体粗分类为前端可引导的 error_code。"""
+    text = (body or "").lower()
+    if status_code in (401, 403):
+        return "auth"
+    if status_code == 404 or "model" in text and (
+        "not found" in text or "does not exist" in text or "unknown model" in text
+    ):
+        return "model_not_found"
+    if status_code in (400, 422) and "model" in text:
+        return "model_not_found"
+    if status_code >= 500:
+        return "protocol"
+    return "protocol"
+
+
+def resolve_profile_api_key(
+    db: Session,
+    *,
+    api_key: str = "",
+    profile_id: str | None = None,
+) -> str:
+    """解析测试/试聊用的真实 key：显式传入优先，否则按 profile_id 回查。"""
+    incoming = (api_key or "").strip()
+    if incoming and incoming != UNCHANGED_SECRET:
+        return incoming
+    if not profile_id:
+        return ""
+    for p in get_llm_profiles(db):
+        if str(p.get("id")) == str(profile_id):
+            return str(p.get("api_key") or "")
+    return ""
 
 
 def set_config(db: Session, key: str, value: str, description: str = "") -> SystemConfig:

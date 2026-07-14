@@ -12,6 +12,7 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           未配置
         </span>
+        <span v-if="isDirty" class="status-tag info">未保存</span>
       </div>
       <div class="header-right">
         <button class="btn" :class="{ 'is-loading': testing }" :disabled="testing" @click="handleTest">
@@ -66,7 +67,10 @@
           >
             <div class="profile-icon">{{ p.icon }}</div>
             <div class="profile-info">
-              <div class="profile-name">{{ p.name }}</div>
+              <div class="profile-name">
+                {{ p.name }}
+                <span v-if="isDirty && p.id === activeProfileId" class="tag tag-default" style="margin-left: 4px;">未保存</span>
+              </div>
               <div class="profile-meta">{{ p.provider }} · {{ extractHost(p.base_url) }}</div>
             </div>
             <span class="profile-status" :class="p.is_active ? 'active' : 'inactive'" :title="p.is_active ? '当前使用中' : '未启用'"></span>
@@ -158,14 +162,16 @@
                     class="form-input"
                     :type="showPassword ? 'text' : 'password'"
                     v-model="activeProfile.api_key"
-                    placeholder="sk-xxxxxxxxxxxxxxxx"
+                    :placeholder="apiKeyPlaceholder"
                   />
                   <span class="eye-icon" @click="showPassword = !showPassword">
                     <svg v-if="!showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                   </span>
                 </div>
-                <span class="form-tip">部分本地模型（如 Ollama）可留空</span>
+                <span class="form-tip">
+                  {{ activeProfile.has_api_key ? '已配置密钥，留空表示不修改' : '部分本地模型（如 Ollama）可留空' }}
+                </span>
               </div>
               <div class="form-group">
                 <label class="form-label"><span class="required">*</span> 模型名称</label>
@@ -369,13 +375,23 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  getLLMProfiles, updateLLMProfiles, testLLMConnection,
+  getLLMProfiles,
+  updateLLMProfiles,
+  testLLMConnection,
+  testLLMChat,
+  toLLMProfileWritePayload,
+  formatLLMTestMessage,
   type LLMProfile,
 } from '@/api/settings'
-import { sendAiMessageStream } from '@/api/ai'
 import { resolveProviderDraft, snapshotProviderDraft } from './providerPreset'
+import {
+  serializeProfiles,
+  normalizeLoadedProfiles,
+  isLocalProvider,
+} from './modelConfigState'
 
 // ── 服务商预设 ──
 const providers: Array<{
@@ -403,12 +419,25 @@ const configured = ref(false)
 const testResult = ref<boolean | null>(null)
 const testResultMsg = ref('')
 const showPassword = ref(false)
+const savedSnapshot = ref('')
 
 const profiles = ref<LLMProfile[]>([])
 const activeProfileId = ref<string | null>(null)
 const providerDrafts = reactive<Record<string, ReturnType<typeof snapshotProviderDraft>>>({})
 
 const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value) || null)
+const isDirty = computed(() => serializeProfiles(profiles.value) !== savedSnapshot.value)
+
+const apiKeyPlaceholder = computed(() => {
+  const p = activeProfile.value
+  if (!p) return 'sk-xxxxxxxxxxxxxxxx'
+  if (p.has_api_key) {
+    return p.api_key_masked
+      ? `已配置 ${p.api_key_masked}，留空表示不修改`
+      : '已配置，留空表示不修改'
+  }
+  return 'sk-xxxxxxxxxxxxxxxx'
+})
 
 // ── 表单验证 ──
 const formErrors = reactive<Record<string, string>>({
@@ -450,12 +479,42 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
+function markSaved() {
+  savedSnapshot.value = serializeProfiles(profiles.value)
+}
+
+async function confirmDiscardIfDirty(actionLabel = '切换'): Promise<boolean> {
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm(
+      `当前配置尚未保存，确认${actionLabel}并丢弃修改？`,
+      '未保存的更改',
+      { type: 'warning', confirmButtonText: '丢弃修改', cancelButtonText: '继续编辑' },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+function draftCredentialPayload(p: LLMProfile) {
+  return {
+    base_url: p.base_url.trim(),
+    api_key: (p.api_key || '').trim(),
+    model: p.model.trim(),
+    api_mode: p.api_mode || 'chat_completions',
+    reasoning_effort: p.reasoning_effort || '',
+    provider: p.provider || '',
+    profile_id: p.id,
+  }
+}
+
 // ── 数据加载 ──
 async function fetchProfiles() {
   loadingProfiles.value = true
   try {
     const res: any = await getLLMProfiles()
-    profiles.value = res.data?.items || []
+    profiles.value = normalizeLoadedProfiles(res.data?.items || [])
 
     // 迁移：如果没有 profiles，从旧的单一配置创建一个
     if (!profiles.value.length) {
@@ -466,13 +525,14 @@ async function fetchProfiles() {
     const active = profiles.value.find(p => p.is_active)
     activeProfileId.value = active?.id || profiles.value[0]?.id || null
     configured.value = !!active
+    markSaved()
   } finally {
     loadingProfiles.value = false
   }
 }
 
 async function migrateFromLegacy() {
-  // 读取旧的单一配置
+  // 读取旧的单一配置（llm.api_key 已掩码，无法还原明文；仅迁移非密钥字段）
   const { getSettings } = await import('@/api/settings')
   const res: any = await getSettings()
   const items: Record<string, string> = {}
@@ -487,7 +547,8 @@ async function migrateFromLegacy() {
       provider: guessProvider(items['llm.base_url'] || ''),
       icon: guessIcon(items['llm.base_url'] || ''),
       base_url: items['llm.base_url'] || '',
-      api_key: items['llm.api_key'] || '',
+      api_key: '',
+      has_api_key: false,
       model: items['llm.model'] || '',
       temperature: parseFloat(items['llm.temperature'] || '0.7'),
       max_tokens: parseInt(items['llm.max_tokens'] || '4096'),
@@ -518,8 +579,27 @@ function guessIcon(url: string): string {
 async function saveProfiles() {
   saving.value = true
   try {
-    await updateLLMProfiles(profiles.value)
+    const res: any = await updateLLMProfiles(toLLMProfileWritePayload(profiles.value))
+    const items = res.data?.items
+    if (Array.isArray(items) && items.length) {
+      const selectedId = activeProfileId.value
+      profiles.value = normalizeLoadedProfiles(items)
+      activeProfileId.value =
+        profiles.value.find(p => p.id === selectedId)?.id ||
+        profiles.value.find(p => p.is_active)?.id ||
+        profiles.value[0]?.id ||
+        null
+    } else {
+      // 兼容旧响应：保存后本地清空输入的 key，并标记 has_api_key
+      profiles.value = profiles.value.map((p) => ({
+        ...p,
+        has_api_key: !!(p.api_key || '').trim() || !!p.has_api_key,
+        api_key: '',
+        copy_api_key_from: undefined,
+      }))
+    }
     configured.value = profiles.value.some(p => p.is_active)
+    markSaved()
     ElMessage.success('配置已保存')
   } finally {
     saving.value = false
@@ -527,13 +607,24 @@ async function saveProfiles() {
 }
 
 // ── 选择配置 ──
-function selectProfile(p: LLMProfile) {
-  activeProfileId.value = p.id
+async function selectProfile(p: LLMProfile) {
+  if (p.id === activeProfileId.value) return
+  if (!(await confirmDiscardIfDirty('切换配置'))) return
+  const targetId = p.id
+  if (isDirty.value) {
+    // 用户确认丢弃后，重新加载已保存状态
+    await fetchProfiles()
+  }
+  activeProfileId.value =
+    profiles.value.find(item => item.id === targetId)?.id ||
+    profiles.value[0]?.id ||
+    null
   testResult.value = null
   testMessages.value = []
   testChatResult.value = null
   formErrors.base_url = ''
   formErrors.model = ''
+  showPassword.value = false
 }
 
 // ── 新增配置 ──
@@ -545,6 +636,7 @@ function handleAddProfile() {
     icon: '⚡',
     base_url: '',
     api_key: '',
+    has_api_key: false,
     model: '',
     temperature: 0.7,
     max_tokens: 4096,
@@ -554,6 +646,9 @@ function handleAddProfile() {
   }
   profiles.value.push(newProfile)
   activeProfileId.value = newProfile.id
+  testResult.value = null
+  testMessages.value = []
+  testChatResult.value = null
 }
 
 // ── 删除配置 ──
@@ -562,15 +657,28 @@ async function handleDeleteProfile() {
   await ElMessageBox.confirm(`确定删除配置「${activeProfile.value.name}」？`, '确认删除', {
     type: 'warning',
   })
+  const deleting = activeProfile.value
   const idx = profiles.value.findIndex(p => p.id === activeProfileId.value)
   profiles.value.splice(idx, 1)
-  activeProfileId.value = profiles.value[Math.min(idx, profiles.value.length - 1)]?.id || null
+  const next = profiles.value[Math.min(idx, profiles.value.length - 1)] || null
+  activeProfileId.value = next?.id || null
+  if (deleting.is_active && next && !next.is_active) {
+    profiles.value.forEach(p => { p.is_active = p.id === next.id })
+    ElMessage.info(`已自动将「${next.name}」设为当前使用`)
+  }
   await saveProfiles()
 }
 
 // ── 设为当前使用 ──
 async function handleSetActive() {
   if (!activeProfile.value) return
+  if (isDirty.value) {
+    // 激活前先保存当前草稿，避免激活的是旧值
+    if (!validateForm()) return
+    profiles.value.forEach(p => { p.is_active = p.id === activeProfileId.value })
+    await saveProfiles()
+    return
+  }
   profiles.value.forEach(p => { p.is_active = p.id === activeProfileId.value })
   await saveProfiles()
 }
@@ -587,7 +695,10 @@ function applyProvider(p: typeof providers[number]) {
   })
   activeProfile.value.provider = p.id
   activeProfile.value.icon = p.icon
-  activeProfile.value.name = p.name
+  // 仅默认名时跟随预设名，避免覆盖用户自定义名称
+  if (!activeProfile.value.name || activeProfile.value.name === '新模型' || providers.some(x => x.name === activeProfile.value?.name)) {
+    activeProfile.value.name = p.name
+  }
   activeProfile.value.base_url = draft.base_url
   activeProfile.value.model = draft.model
   activeProfile.value.api_mode = draft.api_mode
@@ -625,18 +736,26 @@ async function handleTest() {
     ElMessage.warning('请至少填写 API 地址和模型名称')
     return
   }
+  if (!(p.api_key || '').trim() && !p.has_api_key && !isLocalProvider(p)) {
+    ElMessage.warning('请填写 API Key')
+    return
+  }
   testing.value = true
   testResult.value = null
   try {
-    const res: any = await testLLMConnection({
-      base_url: p.base_url.trim(),
-      api_key: p.api_key.trim(),
-      model: p.model.trim(),
-      api_mode: p.api_mode || 'chat_completions',
-      reasoning_effort: p.reasoning_effort || '',
-    })
+    const res: any = await testLLMConnection(draftCredentialPayload(p))
     testResult.value = res.data?.ok ?? false
-    testResultMsg.value = res.msg || ''
+    if (res.data) {
+      testResultMsg.value = formatLLMTestMessage(
+        { ...res.data, msg: res.msg },
+        res.msg || (testResult.value ? '连接成功' : '连接失败'),
+      )
+      if (!testResult.value && res.msg && !String(testResultMsg.value).includes(res.msg)) {
+        testResultMsg.value = `${testResultMsg.value}${res.msg ? `（${res.msg}）` : ''}`
+      }
+    } else {
+      testResultMsg.value = res.msg || ''
+    }
   } catch {
     testResult.value = false
     testResultMsg.value = '请求失败，请检查网络或配置'
@@ -645,9 +764,19 @@ async function handleTest() {
   }
 }
 
-// ── 快速测试聊天 ──
+// ── 快速测试聊天（草稿配置） ──
 async function handleTestChat() {
-  if (!testInput.value.trim() || testSending.value) return
+  if (!testInput.value.trim() || testSending.value || !activeProfile.value) return
+  const p = activeProfile.value
+  if (!p.base_url.trim() || !p.model.trim()) {
+    ElMessage.warning('请至少填写 API 地址和模型名称')
+    return
+  }
+  if (!(p.api_key || '').trim() && !p.has_api_key && !isLocalProvider(p)) {
+    ElMessage.warning('请填写 API Key')
+    return
+  }
+
   const msg = testInput.value.trim()
   testInput.value = ''
   testMessages.value.push({ role: 'user', content: msg })
@@ -656,29 +785,40 @@ async function handleTestChat() {
   await nextTick()
   scrollTestMessages()
 
-  const startTime = Date.now()
   try {
-    let fullText = ''
-    for await (const event of sendAiMessageStream(msg)) {
-      if (event.type === 'text') {
-        fullText += event.content
-      } else if (event.type === 'error') {
-        testChatResult.value = { ok: false, msg: event.content || '请求失败' }
-        break
-      } else if (event.type === 'done') {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-        testChatResult.value = {
-          ok: true,
-          msg: `连接成功 · 响应时间 ${elapsed}s · 模型: ${activeProfile.value?.model}`,
-        }
-        break
+    const res: any = await testLLMChat({
+      ...draftCredentialPayload(p),
+      temperature: p.temperature,
+      max_tokens: Math.min(p.max_tokens || 256, 512),
+      top_p: p.top_p,
+      system_prompt: p.system_prompt || '',
+      message: msg,
+    })
+    const ok = !!res.data?.ok
+    const content = res.data?.content || ''
+    const latency = res.data?.latency_ms
+    const tags: string[] = []
+    if (isDirty.value) tags.push('未保存草稿')
+    if (!p.is_active) tags.push('未设为当前使用')
+    if (ok && content) {
+      testMessages.value.push({ role: 'assistant', content })
+      testChatResult.value = {
+        ok: true,
+        msg: [
+          '试聊成功',
+          latency != null ? `${latency}ms` : null,
+          `model=${p.model}`,
+          ...tags,
+        ].filter(Boolean).join(' · '),
+      }
+    } else {
+      testChatResult.value = {
+        ok: false,
+        msg: formatLLMTestMessage(res.data, res.msg || '试聊失败') + (tags.length ? ` · ${tags.join(' · ')}` : ''),
       }
     }
-    if (fullText) {
-      testMessages.value.push({ role: 'assistant', content: fullText })
-    }
   } catch (e: any) {
-    testChatResult.value = { ok: false, msg: e.message || '请求失败' }
+    testChatResult.value = { ok: false, msg: e?.message || '请求失败' }
   } finally {
     testSending.value = false
     await nextTick()
@@ -695,7 +835,17 @@ function scrollTestMessages() {
   }
 }
 
+onBeforeRouteLeave(async (_to, _from, next) => {
+  if (!isDirty.value) {
+    next()
+    return
+  }
+  const ok = await confirmDiscardIfDirty('离开页面')
+  next(ok)
+})
+
 onMounted(fetchProfiles)
+
 </script>
 
 <style scoped>
