@@ -45,45 +45,16 @@
     <div class="main-layout">
 
       <!-- LEFT: 模型列表 -->
-      <div class="card profile-list-card">
-        <div class="profile-list-header">
-          <span class="profile-list-title">模型配置</span>
-          <div class="profile-list-actions">
-            <button class="btn btn-sm" :disabled="!activeProfile" @click="handleCloneProfile">复制</button>
-            <button class="btn btn-sm btn-primary" @click="handleAddProfile">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              新增
-            </button>
-          </div>
-        </div>
-        <div class="profile-items" v-loading="loadingProfiles">
-          <div
-            v-for="p in profiles"
-            :key="p.id"
-            class="profile-item"
-            :class="{ active: activeProfileId === p.id }"
-            role="option"
-            :aria-selected="activeProfileId === p.id"
-            tabindex="0"
-            @click="selectProfile(p)"
-            @keydown.enter.space.prevent="selectProfile(p)"
-          >
-            <div class="profile-icon">{{ p.icon }}</div>
-            <div class="profile-info">
-              <div class="profile-name">
-                {{ p.name }}
-                <span v-if="isDirty && p.id === activeProfileId" class="tag tag-default" style="margin-left: 4px;">未保存</span>
-              </div>
-              <div class="profile-meta">{{ p.provider }} · {{ extractHost(p.base_url) }}</div>
-            </div>
-            <span class="profile-status" :class="p.is_active ? 'active' : 'inactive'" :title="p.is_active ? '当前使用中' : '未启用'"></span>
-          </div>
-          <div v-if="!profiles.length && !loadingProfiles" class="empty-state">
-            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            <span class="empty-state-text">暂无配置，点击"新增"开始</span>
-          </div>
-        </div>
-      </div>
+      <ProfileList
+        :profiles="profiles"
+        :active-profile-id="activeProfileId"
+        :loading="loadingProfiles"
+        :is-dirty="isDirty"
+        :has-active="!!activeProfile"
+        @select="selectProfile"
+        @add="handleAddProfile"
+        @clone="handleCloneProfile"
+      />
 
       <!-- RIGHT: 配置面板 -->
       <div class="config-panel" v-if="activeProfile">
@@ -471,6 +442,7 @@ import {
   normalizeLoadedProfiles,
   isLocalProvider,
 } from './modelConfigState'
+import ProfileList from './model-config/components/ProfileList.vue'
 
 // ── 服务商预设 / 模板 ──
 const providers = PROVIDER_PRESETS
@@ -537,13 +509,6 @@ const testMessagesRef = ref<HTMLElement | null>(null)
 const testChatResult = ref<{ ok: boolean; msg: string } | null>(null)
 
 // ── 工具函数 ──
-function extractHost(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url || '—'
-  }
-}
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -1043,93 +1008,6 @@ onMounted(fetchProfiles)
   gap: 16px;
   align-items: start;
 }
-
-/* ── Profile List ── */
-.profile-list-card {
-  padding: 0;
-  overflow: hidden;
-}
-.profile-list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-.profile-list-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.profile-items {
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 120px;
-}
-.profile-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s;
-  border: 1px solid transparent;
-}
-.profile-item:hover { background: var(--bg-color); }
-.profile-item:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-.profile-item.active {
-  background: var(--primary-bg);
-  border-color: rgba(94, 106, 210, 0.2);
-}
-.profile-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: #f5f5f5;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-.profile-item.active .profile-icon {
-  background: rgba(94, 106, 210, 0.12);
-  color: var(--primary-color);
-}
-.profile-info { flex: 1; min-width: 0; }
-.profile-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.profile-meta {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.profile-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.profile-status.active { background: var(--success-color, #16a34a); }
-.profile-status.inactive { background: #d9d9d9; }
 
 /* ── Empty State ── */
 .empty-state {

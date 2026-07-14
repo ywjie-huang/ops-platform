@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-14-model-config-optimization-design.md`
 
-**Progress (2026-07-14):** Phase 1 done (commit 1e0400c). Phase 2 Tasks 8–10 implemented (rename/clone, model discovery, presets/templates/param UX). Remaining: Phase 3 optional.
+**Progress (2026-07-14):** Phase 1 (1e0400c), Phase 2 (efaccce), Phase 3 Task 11 (145c8fc) done; Task 12 started with ProfileList extraction. Task 13 deferred.
 
 ---
 
