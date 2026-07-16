@@ -4,6 +4,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.asset import Asset
+from app.models.asset import generate_asset_public_id
 
 
 def list_assets(
@@ -55,6 +56,18 @@ def get_asset(db: Session, asset_id: int) -> Asset | None:
     return db.get(Asset, asset_id)
 
 
+def get_asset_by_public_id(db: Session, public_id: str) -> Asset | None:
+    return db.scalar(select(Asset).where(Asset.public_id == public_id))
+
+
+def allocate_asset_public_id(db: Session) -> str:
+    for _ in range(5):
+        public_id = generate_asset_public_id()
+        if get_asset_by_public_id(db, public_id) is None:
+            return public_id
+    raise RuntimeError("Unable to allocate a unique asset public ID")
+
+
 def create_asset(
     db: Session,
     *,
@@ -72,6 +85,7 @@ def create_asset(
     ssh_key_id: Optional[int] = None,
 ) -> Asset:
     asset = Asset(
+        public_id=allocate_asset_public_id(db),
         name=name,
         asset_type=asset_type,
         ip_address=ip_address,
