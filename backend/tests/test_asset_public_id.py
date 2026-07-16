@@ -1,6 +1,6 @@
 from datetime import datetime
-from string import hexdigits
 from pathlib import Path
+from string import hexdigits
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -73,7 +73,8 @@ def test_allocate_asset_public_id_retries_a_detected_collision(monkeypatch):
 
 
 def test_asset_public_id_migration_adds_backfills_and_indexes_column():
-    source = Path("app/db/init_db.py").read_text(encoding="utf-8")
+    init_db_path = Path(__file__).parents[1] / "app" / "db" / "init_db.py"
+    source = init_db_path.read_text(encoding="utf-8")
 
     assert "def _ensure_asset_public_ids()" in source
     assert "ADD COLUMN public_id VARCHAR(36) NULL" in source
