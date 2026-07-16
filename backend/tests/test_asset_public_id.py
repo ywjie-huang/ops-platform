@@ -1,4 +1,5 @@
 from string import hexdigits
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -67,3 +68,14 @@ def test_allocate_asset_public_id_retries_a_detected_collision(monkeypatch):
     finally:
         db.close()
         engine.dispose()
+
+
+def test_asset_public_id_migration_adds_backfills_and_indexes_column():
+    source = Path("app/db/init_db.py").read_text(encoding="utf-8")
+
+    assert "def _ensure_asset_public_ids()" in source
+    assert "ADD COLUMN public_id VARCHAR(36) NULL" in source
+    assert "UPDATE assets SET public_id = %s WHERE id = %s" in source
+    assert "MODIFY COLUMN public_id VARCHAR(36) NOT NULL" in source
+    assert "CREATE UNIQUE INDEX ux_assets_public_id" in source
+    assert "_ensure_asset_public_ids()" in source

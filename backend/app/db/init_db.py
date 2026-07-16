@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import DEMO_PASSWORD, DEMO_USERNAME, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_USER
 from app.db.database import Base, engine
 from app.models.alert import Alert
-from app.models.asset import Asset
+from app.models.asset import Asset, generate_asset_public_id
 from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployBuild, DeployConfig, DeployEnvironment, DeployRecord
 from app.models.rbac import Permission, Role
 from app.models.ticket import Ticket
@@ -91,6 +91,39 @@ def _ensure_asset_ssh_columns() -> None:
                 except Exception as e:
                     logger.debug('FK alter skipped: %s', e)
             conn.commit()
+    finally:
+        conn.close()
+
+
+def _ensure_asset_public_ids() -> None:
+    """Backfill stable public identifiers for assets created by older versions."""
+    conn = pymysql.connect(
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
+        user=MYSQL_USER,
+        password=MYSQL_PASSWORD,
+        database=MYSQL_DATABASE,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SHOW COLUMNS FROM assets LIKE 'public_id'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE assets ADD COLUMN public_id VARCHAR(36) NULL")
+
+            cur.execute("SELECT id FROM assets WHERE public_id IS NULL OR public_id = ''")
+            for (asset_id,) in cur.fetchall():
+                cur.execute(
+                    "UPDATE assets SET public_id = %s WHERE id = %s",
+                    (generate_asset_public_id(), asset_id),
+                )
+
+            cur.execute("ALTER TABLE assets MODIFY COLUMN public_id VARCHAR(36) NOT NULL")
+            cur.execute("SHOW INDEX FROM assets WHERE Column_name = 'public_id'")
+            if cur.fetchone() is None:
+                cur.execute(
+                    "CREATE UNIQUE INDEX ux_assets_public_id ON assets (public_id)"
+                )
+        conn.commit()
     finally:
         conn.close()
 
@@ -427,6 +460,7 @@ def _seed_deploy_environments(db: Session) -> None:
 def init_db() -> None:
     _ensure_database()
     Base.metadata.create_all(bind=engine)
+    _ensure_asset_public_ids()
     _ensure_asset_ssh_columns()
     _ensure_container_token_column()
     _ensure_docker_columns()
