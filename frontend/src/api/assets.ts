@@ -8,6 +8,10 @@ export function getAsset(id: number) {
   return request.get(`/assets/${id}`)
 }
 
+export function getAssetByPublicId(publicId: string) {
+  return request.get(`/assets/public/${publicId}`)
+}
+
 export function createAsset(data: any) {
   return request.post('/assets/', data)
 }

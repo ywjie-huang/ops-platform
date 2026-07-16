@@ -38,11 +38,11 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/assets',
     component: Layout,
-    redirect: '/assets/list',
+    redirect: '/assets/hosts',
     meta: { title: '资产管理', icon: 'Monitor' },
     children: [
       {
-        path: 'list',
+        path: 'hosts',
         name: 'AssetList',
         component: () => import('@/views/assets/AssetListView.vue'),
         meta: { title: '主机管理', icon: 'Platform', permission: 'assets.view' },
@@ -78,10 +78,21 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '主机详情', hidden: true, permission: 'containers.view', parentTitle: 'Docker 监控', activeMenu: '/assets/docker' },
       },
       {
-        path: ':id',
+        path: 'hosts/:publicId',
         name: 'AssetDetail',
         component: () => import('@/views/assets/AssetDetailView.vue'),
-        meta: { title: '资产详情', hidden: true, permission: 'assets.view', parentTitle: '主机管理', activeMenu: '/assets/list' },
+        meta: { title: '资产详情', hidden: true, permission: 'assets.view', parentTitle: '主机管理', activeMenu: '/assets/hosts' },
+      },
+      {
+        path: 'list',
+        redirect: '/assets/hosts',
+        meta: { hidden: true },
+      },
+      {
+        path: ':legacyId(\\d+)',
+        name: 'LegacyAssetDetail',
+        component: () => import('@/views/assets/AssetDetailView.vue'),
+        meta: { title: '资产详情', hidden: true, permission: 'assets.view', parentTitle: '主机管理', activeMenu: '/assets/hosts' },
       },
     ],
   },

@@ -203,7 +203,7 @@ function buildFocusEntry(
     detail: normalizeText(item.detail),
     tone: mapTone(item.tone),
     primaryActionLabel: '查看资产列表',
-    primaryActionPath: '/assets/list',
+    primaryActionPath: '/assets/hosts',
     secondaryActionLabel: '打开主机监控',
     secondaryActionPath: '/monitoring/hosts',
     summaryTag: normalizeText(item.tag, '资产'),

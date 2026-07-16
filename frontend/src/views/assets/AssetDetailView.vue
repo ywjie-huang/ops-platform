@@ -29,7 +29,7 @@
           </div>
         </div>
         <div class="detail-actions">
-          <el-button :icon="ArrowLeft" @click="$router.push('/assets/list')">返回列表</el-button>
+          <el-button :icon="ArrowLeft" @click="$router.push('/assets/hosts')">返回列表</el-button>
           <el-button :icon="EditPen" @click="openEdit">编辑</el-button>
           <el-button type="primary" :icon="Monitor" @click="$router.push(`/monitoring/hosts/${assetId}`)">
             查看监控
@@ -318,7 +318,7 @@ import { computed, onActivated, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { ArrowLeft, EditPen, Monitor } from '@element-plus/icons-vue'
-import { getAsset, updateAsset } from '@/api/assets'
+import { getAsset, getAssetByPublicId, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
 import { getUsers } from '@/api/users'
 import {
@@ -338,6 +338,7 @@ import {
 
 type AssetDetail = AssetLike & {
   id: number
+  public_id: string
   name: string
   asset_type: string
   ip_address: string
@@ -352,8 +353,8 @@ type SuggestedAction = {
 
 const route = useRoute()
 const router = useRouter()
-const assetId = computed(() => Number(route.params.id))
 const asset = ref<AssetDetail | null>(null)
+const assetId = computed(() => asset.value?.id ?? Number(route.params.legacyId))
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
@@ -436,8 +437,14 @@ const rules: FormRules<AssetForm> = {
 async function fetchAsset() {
   loading.value = true
   try {
-    const res: any = await getAsset(assetId.value)
+    const publicId = route.params.publicId
+    const res: any = typeof publicId === 'string'
+      ? await getAssetByPublicId(publicId)
+      : await getAsset(Number(route.params.legacyId))
     asset.value = res.data
+    if (typeof publicId !== 'string' && asset.value?.public_id) {
+      await router.replace(`/assets/hosts/${asset.value.public_id}`)
+    }
   } finally {
     loading.value = false
   }
@@ -470,11 +477,12 @@ function openEdit() {
 }
 
 async function handleSave(keepOpen = false) {
+  if (!asset.value) return
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   saving.value = true
   try {
-    await updateAsset(assetId.value, buildAssetPayload(form))
+    await updateAsset(asset.value.id, buildAssetPayload(form))
     ElMessage.success(keepOpen ? '已保存，可继续编辑' : '更新成功')
     if (!keepOpen) {
       dialogVisible.value = false

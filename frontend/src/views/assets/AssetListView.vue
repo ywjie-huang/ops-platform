@@ -168,7 +168,7 @@
           <el-table-column label="操作" width="150" fixed="right" align="center">
             <template #default="{ row }">
               <div class="action-cell">
-                <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/${row.id}`)">详情</el-button>
+                <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/hosts/${row.public_id}`)">详情</el-button>
                 <el-popconfirm title="确认删除该资产？" @confirm="handleDelete(row.id)">
                   <template #reference>
                     <el-button size="small" type="danger" link :aria-label="`删除 ${row.name}`">删除</el-button>
@@ -344,6 +344,7 @@ import {
 
 type AssetItem = AssetLike & {
   id: number
+  public_id: string
   name: string
   asset_type: string
   ip_address: string
