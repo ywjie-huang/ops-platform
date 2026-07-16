@@ -13,6 +13,7 @@ from app.services.assets import (
     create_asset as create_asset_record,
     delete_asset,
     get_asset,
+    get_asset_by_public_id,
     list_assets,
     update_asset,
 )
@@ -39,6 +40,7 @@ class AssetCreate(BaseModel):
 def _asset_dict(a) -> dict:
     return {
         "id": a.id,
+        "public_id": a.public_id,
         "name": a.name,
         "asset_type": a.asset_type,
         "ip_address": a.ip_address,
@@ -122,6 +124,18 @@ def api_create_asset(
     write_log(db, user=current_user, action="create", target_type="asset", target_id=asset.id, target_name=asset.name, ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "创建成功", "data": _asset_dict(asset)}
+
+
+@router.get("/public/{public_id}")
+def api_get_asset_by_public_id(
+    public_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("assets.view")),
+):
+    asset = get_asset_by_public_id(db, public_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    return {"code": 0, "data": _asset_dict(asset)}
 
 
 @router.get("/{asset_id}")

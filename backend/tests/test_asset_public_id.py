@@ -1,9 +1,11 @@
+from datetime import datetime
 from string import hexdigits
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.api.assets import _asset_dict, router
 from app.models.asset import Asset, generate_asset_public_id
 from app.models.container import ContainerCluster  # noqa: F401
 from app.models.ssh_key import SSHKey
@@ -79,3 +81,25 @@ def test_asset_public_id_migration_adds_backfills_and_indexes_column():
     assert "MODIFY COLUMN public_id VARCHAR(36) NOT NULL" in source
     assert "CREATE UNIQUE INDEX ux_assets_public_id" in source
     assert "_ensure_asset_public_ids()" in source
+
+
+def test_asset_response_exposes_public_id():
+    asset = Asset(
+        id=16,
+        public_id="ast_" + "a" * 32,
+        name="web-01",
+        asset_type="host",
+        ip_address="10.0.0.1",
+        created_at=datetime(2026, 7, 16, 10, 0, 0),
+    )
+
+    assert _asset_dict(asset)["public_id"] == asset.public_id
+
+
+def test_public_asset_route_is_registered_before_integer_route():
+    paths = [route.path for route in router.routes]
+
+    assert "/assets/public/{public_id}" in paths
+    assert paths.index("/assets/public/{public_id}") < paths.index(
+        "/assets/{asset_id}"
+    )
