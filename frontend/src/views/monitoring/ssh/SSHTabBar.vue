@@ -4,13 +4,11 @@
       v-for="tab in tabs"
       :key="tab.id"
       class="ssh-tab-shell"
-      :class="{
-        'is-active': tab.id === activeTabId,
-      }"
+      :class="{ 'is-active': tab.id === activeTabId }"
     >
       <template v-if="editingTabId === tab.id">
         <div class="ssh-tab ssh-tab-editing">
-          <span class="tab-status" :class="`is-${tab.status}`" aria-hidden="true" />
+          <span class="tab-status" :class="statusClass(tab.status)" aria-hidden="true" />
           <input
             ref="renameInputRef"
             v-model="draftTitle"
@@ -32,12 +30,10 @@
         @click="$emit('activate-tab', tab.id)"
         @dblclick="startRename(tab)"
       >
-        <span class="tab-status" :class="`is-${tab.status}`" aria-hidden="true" />
-        <span class="tab-copy">
-          <span class="tab-title">{{ tab.title }}</span>
-          <span v-if="tab.layout !== 'single'" class="tab-hint">
-            {{ tab.layout === 'vertical' ? '左右分屏' : '上下分屏' }}
-          </span>
+        <span class="tab-status" :class="statusClass(tab.status)" aria-hidden="true" />
+        <span class="tab-title">{{ tab.title }}</span>
+        <span v-if="tab.layout !== 'single'" class="tab-hint">
+          {{ tab.layout === 'vertical' ? 'split' : 'stack' }}
         </span>
       </button>
 
@@ -52,7 +48,7 @@
       </button>
     </div>
 
-    <button type="button" class="add-tab" aria-label="新建会话" @click="$emit('add-tab')">
+    <button type="button" class="add-tab" aria-label="新建会话" title="新建会话" @click="$emit('add-tab')">
       +
     </button>
   </div>
@@ -60,7 +56,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import type { SSHTabState } from './types'
+import type { SSHConnectionStatus, SSHTabState } from './types'
 
 const emit = defineEmits<{
   'activate-tab': [tabId: string]
@@ -77,6 +73,10 @@ defineProps<{
 const editingTabId = ref<string | null>(null)
 const draftTitle = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
+
+function statusClass(status: SSHConnectionStatus) {
+  return `is-${status}`
+}
 
 function startRename(tab: SSHTabState) {
   editingTabId.value = tab.id
@@ -101,73 +101,55 @@ function cancelRename() {
 <style scoped lang="scss">
 .ssh-tab-bar {
   display: flex;
-  align-items: stretch;
-  gap: 6px;
-  min-height: 42px;
-  padding: 7px 10px 0;
-  background: #121725;
-  border-bottom: 1px solid #27304d;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .ssh-tab-shell {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  max-width: 240px;
-  padding-right: 4px;
+  max-width: 160px;
   border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: 7px 7px 0 0;
-  background: #171d2f;
-  transition: background-color 0.18s ease-out, border-color 0.18s ease-out;
+  border-radius: 4px;
+  background: transparent;
+}
 
-  &::after {
-    position: absolute;
-    right: 10px;
-    bottom: 0;
-    left: 10px;
-    height: 2px;
-    content: '';
-    background: transparent;
-    border-radius: 999px 999px 0 0;
-  }
-
-  &.is-active {
-    background: #1f263a;
-    border-color: #344164;
-
-    &::after {
-      background: #6ea8fe;
-    }
-  }
+.ssh-tab-shell.is-active {
+  background: var(--ssh-surface);
+  border-color: var(--ssh-border);
 }
 
 .ssh-tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
   flex: 1 1 auto;
-  min-height: 34px;
+  height: 26px;
   padding: 0 8px 0 10px;
   border: 0;
-  border-radius: 7px 7px 0 0;
+  border-radius: 4px;
   background: transparent;
-  color: #aeb8d8;
+  color: var(--ssh-muted);
   cursor: pointer;
-  transition: background-color 0.18s ease-out, border-color 0.18s ease-out, color 0.18s ease-out;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .ssh-tab:hover,
 .ssh-tab:focus-visible {
-  color: #eef3ff;
+  color: var(--ssh-text);
   outline: none;
 }
 
 .ssh-tab-shell.is-active .ssh-tab {
-  color: #f4f7ff;
+  color: var(--ssh-text);
 }
 
 .ssh-tab-editing {
@@ -175,29 +157,23 @@ function cancelRename() {
 }
 
 .tab-status {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #565f89;
+  background: var(--ssh-faint);
 
   &.is-connected {
-    background: #4ade80;
-    box-shadow: 0 0 0 3px rgb(74 222 128 / 12%);
+    background: var(--ssh-ok);
   }
 
   &.is-connecting {
-    background: #f6c177;
-    box-shadow: 0 0 0 3px rgb(246 193 119 / 12%);
+    background: var(--ssh-warn);
   }
 
-  &.is-error {
-    background: #ff7b93;
-    box-shadow: 0 0 0 3px rgb(255 123 147 / 12%);
-  }
-
+  &.is-error,
   &.is-disconnected {
-    background: #6ea8fe;
+    background: var(--ssh-danger);
   }
 }
 
@@ -205,29 +181,21 @@ function cancelRename() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-}
-
-.tab-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
 }
 
 .tab-hint {
   flex: 0 0 auto;
-  font-size: 11px;
-  color: #7f8aaa;
+  color: var(--ssh-faint);
+  font-size: 10px;
 }
 
 .rename-input {
   width: 100%;
-  min-width: 88px;
+  min-width: 72px;
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
 }
 
@@ -236,43 +204,45 @@ function cancelRename() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
-  color: #7f8aaa;
+  color: var(--ssh-muted);
   cursor: pointer;
-  transition: background-color 0.18s ease-out, color 0.18s ease-out;
-
-  &:hover,
-  &:focus-visible {
-    background: #2a314b;
-    color: #f4f7ff;
-    outline: none;
-  }
 }
 
 .tab-close {
   flex: 0 0 auto;
+  margin-right: 4px;
+  opacity: 0;
+}
+
+.ssh-tab-shell:hover .tab-close,
+.ssh-tab-shell.is-active .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover,
+.add-tab:hover,
+.tab-close:focus-visible,
+.add-tab:focus-visible {
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+  outline: none;
 }
 
 .add-tab {
-  align-self: flex-start;
-  margin-top: 4px;
-  border: 1px solid #303a5c;
-  background: #171d2f;
+  width: 26px;
+  height: 26px;
+  border: 1px dashed var(--ssh-border-strong);
+  color: var(--ssh-muted);
+  font-size: 14px;
 }
 
-@media (max-width: 768px) {
-  .ssh-tab-bar {
-    overflow-x: auto;
-    padding: 6px 8px;
-  }
-
-  .ssh-tab-shell {
-    min-width: 132px;
-  }
+.add-tab:hover {
+  border-color: var(--ssh-muted);
 }
 </style>

@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from app.api import (
     ai,
     alertmanager,
-    alerts,
     assets,
     audit,
     auth,
@@ -44,7 +43,6 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
 
     # 业务模块
     api_router.include_router(tickets.router)
-    api_router.include_router(alerts.router)
     api_router.include_router(containers.router)
     api_router.include_router(monitoring.router)
     api_router.include_router(reports.router)
@@ -58,6 +56,9 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
     api_router.include_router(ai.router)
     api_router.include_router(docker_mgmt.router)
 
+    # SSH 密钥管理（已接入 JWT + RBAC，始终注册）
+    api_router.include_router(ssh_keys.router)
+
     # 紧急止血：以下高风险入口默认不注册，必须通过环境变量显式开启。
     if controls.ssh_terminal:
         api_router.include_router(ssh_terminal.router)
@@ -65,8 +66,6 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
         api_router.include_router(sftp.router)
     if controls.batch_exec:
         api_router.include_router(batch_exec.websocket_router)
-    if controls.ssh_key_management:
-        api_router.include_router(ssh_keys.router)
 
     # 定时任务
     api_router.include_router(scheduler.router)

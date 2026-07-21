@@ -20,7 +20,6 @@ from app.models.dashboard import (
     DashboardTypeBreakdown,
 )
 from app.models.ticket import Ticket
-from app.services.alerts import count_pending_alerts, list_alerts
 from app.services.assets import (
     count_assets_by_status,
     count_assets_by_type,
@@ -30,6 +29,17 @@ from app.services.assets import (
 from app.services.roles import count_users_by_role, list_roles
 from app.services.tickets import count_open_tickets, list_tickets
 from app.services.users import count_new_users_since, list_recent_users, list_users
+
+
+def _count_open_alert_events(db: Session) -> int:
+    """统计当前未恢复的 Prometheus 告警事件。"""
+    stmt = select(func.count(AlertEvent.id)).where(AlertEvent.status == "firing")
+    return db.scalar(stmt) or 0
+
+
+def _list_recent_alert_events(db: Session, limit: int = 5) -> list[AlertEvent]:
+    stmt = select(AlertEvent).order_by(AlertEvent.received_at.desc(), AlertEvent.id.desc()).limit(limit)
+    return list(db.scalars(stmt).all())
 
 
 def _format_ratio(numerator: int, denominator: int) -> str:
@@ -181,7 +191,7 @@ def build_dashboard_stats(db: Session) -> DashboardStats:
     return DashboardStats(
         asset_total=len(assets),
         online_hosts=status_counts.get("使用中", 0),
-        open_alerts=count_pending_alerts(db),
+        open_alerts=_count_open_alert_events(db),
         pending_tickets=count_open_tickets(db),
         user_total=len(users),
         role_total=len(roles),
@@ -200,12 +210,12 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
     total_assets = len(list_assets(db))
 
     open_tickets = count_open_tickets(db)
-    pending_alerts = count_pending_alerts(db)
+    pending_alerts = _count_open_alert_events(db)
 
     quick_stats = [
         DashboardQuickStat("在线率", _format_ratio(status_counts.get("使用中", 0), total_assets), "按资产状态实时统计", "green"),
         DashboardQuickStat("待处理工单", str(open_tickets), "包含 open 和 in_progress 状态", "blue" if open_tickets == 0 else "orange"),
-        DashboardQuickStat("待处理告警", str(pending_alerts), "包含待确认和已确认告警", "green" if pending_alerts == 0 else "red"),
+        DashboardQuickStat("未恢复告警", str(pending_alerts), "来自 Alertmanager 的 firing 事件", "green" if pending_alerts == 0 else "red"),
     ]
 
     TYPE_COLORS = {
@@ -265,13 +275,13 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         for t in recent_tickets
     ]
 
-    recent_alerts_list = list_alerts(db)[:5]
-    ALERT_TONES = {"pending": "red", "confirmed": "orange", "resolved": "green", "ignored": "default"}
+    recent_alerts_list = _list_recent_alert_events(db, limit=5)
+    ALERT_TONES = {"firing": "red", "resolved": "green"}
     alert_items = [
         DashboardActivityItem(
-            title=a.title,
-            meta=f"{a.level} · {a.source or '未知来源'} · {a.created_at.strftime('%Y-%m-%d %H:%M')}",
-            detail=a.description[:80] + "..." if len(a.description) > 80 else a.description,
+            title=a.alert_name or a.summary or "未命名告警",
+            meta=f"{a.severity} · {a.instance or a.job or '未知实例'} · {a.received_at.strftime('%Y-%m-%d %H:%M') if a.received_at else '-'}",
+            detail=(a.summary or a.description or "")[:80],
             tag=a.status,
             tone=ALERT_TONES.get(a.status, "default"),
         )

@@ -51,7 +51,7 @@ test('builds duty-first focus items from summary alerts, tickets, and asset chan
       tone: item.tone,
     })),
     [
-      { source: 'alert', badge: '高优告警', title: 'API 网关 5xx 告警', action: '/monitoring/alerts', tone: 'danger' },
+      { source: 'alert', badge: '高优告警', title: 'API 网关 5xx 告警', action: '/monitoring/events', tone: 'danger' },
       { source: 'ticket', badge: '待办工单', title: '支付链路工单待确认', action: '/tickets', tone: 'warning' },
       { source: 'asset', badge: '资产变更', title: 'db-replica-02 进入维护', action: '/assets/hosts', tone: 'info' },
     ],

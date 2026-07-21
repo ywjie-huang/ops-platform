@@ -51,7 +51,7 @@ const routes: RouteRecordRaw[] = [
         path: 'ssh-keys',
         name: 'SSHKeyList',
         component: () => import('@/views/assets/SSHKeyListView.vue'),
-        meta: { title: '主机密钥', icon: 'Key', permission: 'assets.view' },
+        meta: { title: '主机密钥', icon: 'Key', permission: 'ssh_keys.view' },
       },
       {
         path: 'containers',
@@ -112,25 +112,13 @@ const routes: RouteRecordRaw[] = [
         path: 'rules',
         name: 'AlertRuleList',
         component: () => import('@/views/monitoring/AlertRuleListView.vue'),
-        meta: { title: '告警规则', icon: 'Warning', permission: 'alerts.view' },
+        meta: { title: '告警规则', icon: 'Warning', permission: 'monitoring.view' },
       },
       {
         path: 'events',
         name: 'AlertEventList',
         component: () => import('@/views/alerts/AlertEventListView.vue'),
-        meta: { title: '告警事件', icon: 'Bell', permission: 'alerts.view' },
-      },
-      {
-        path: 'alerts',
-        name: 'AlertList',
-        component: () => import('@/views/alerts/AlertListView.vue'),
-        meta: { title: '告警管理', icon: 'BellFilled', permission: 'alerts.view' },
-      },
-      {
-        path: 'alerts/:id',
-        name: 'AlertDetail',
-        component: () => import('@/views/alerts/AlertDetailView.vue'),
-        meta: { title: '告警详情', hidden: true, permission: 'alerts.view', parentTitle: '告警管理', activeMenu: '/monitoring/alerts' },
+        meta: { title: '告警事件', icon: 'Bell', permission: 'monitoring.view' },
       },
       {
         path: 'hosts/:id/ssh',
@@ -267,8 +255,15 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'settings',
         name: 'PatrolSettings',
-        component: () => import('@/views/patrol/PatrolSettingsView.vue'),
-        meta: { title: '阈值配置', icon: 'Setting', permission: 'patrol.view' },
+        redirect: '/patrol',
+        meta: {
+          title: '校准阈值',
+          icon: 'Setting',
+          permission: 'patrol.view',
+          hidden: true,
+          parentTitle: '巡检指挥台',
+          activeMenu: '/patrol',
+        },
       },
       {
         path: 'scheduler',

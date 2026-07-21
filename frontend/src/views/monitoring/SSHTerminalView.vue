@@ -7,9 +7,6 @@
       :font-size="activePaneMeta.fontSize"
       :show-file-panel="workbench.rightPanelOpen"
       :can-split="canSplit"
-      @copy="activePaneGrid?.copyActivePane()"
-      @paste="activePaneGrid?.pasteActivePane()"
-      @clear="activePaneGrid?.clearActivePane()"
       @change-font-size="activePaneGrid?.changeActivePaneFontSize($event)"
       @toggle-fullscreen="toggleFullscreen"
       @split-vertical="handleSplit('vertical')"
@@ -17,10 +14,8 @@
       @toggle-file-panel="toggleFilePanel"
       @disconnect="activePaneGrid?.disconnectActivePane()"
       @reconnect="activePaneGrid?.reconnectActivePane()"
-    />
-
-    <div class="ssh-body">
-      <div class="terminal-area">
+    >
+      <template #tabs>
         <SSHTabBar
           :tabs="workbench.tabs"
           :active-tab-id="workbench.activeTabId"
@@ -29,7 +24,13 @@
           @close-tab="handleCloseTab"
           @rename-tab="handleRenameTab"
         />
+      </template>
+    </SSHTerminalToolbar>
 
+    <div class="ssh-body">
+      <SSHLeftRail @select="handleRailSelect" />
+
+      <div class="terminal-area">
         <SSHPaneGrid
           v-for="tab in workbench.tabs"
           v-show="tab.id === workbench.activeTabId"
@@ -88,11 +89,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onDeactivated, reactive, ref, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, type ComponentPublicInstance } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
 import FileEditDialog from './ssh/FileEditDialog.vue'
+import SSHLeftRail from './ssh/SSHLeftRail.vue'
 import SSHPaneGrid from './ssh/SSHPaneGrid.vue'
 import type { SSHPaneMeta } from './ssh/SSHPane.vue'
 import SSHTabBar from './ssh/SSHTabBar.vue'
@@ -152,10 +154,11 @@ const activePaneMeta = computed<SSHPaneMeta>(() => {
   }
 })
 const layoutText = computed(() => {
-  if (activeTab.value?.layout === 'vertical') return '左右分屏'
-  if (activeTab.value?.layout === 'horizontal') return '上下分屏'
-  return '单终端'
+  if (activeTab.value?.layout === 'vertical') return 'vertical'
+  if (activeTab.value?.layout === 'horizontal') return 'horizontal'
+  return 'single'
 })
+
 function toggleFullscreen() {
   const page = document.querySelector('.ssh-page')
   if (!page) {
@@ -304,12 +307,59 @@ function openEditDialog(path: string) {
   editDialogVisible.value = true
 }
 
+function handleRailSelect(key: 'sessions' | 'snippets' | 'paths') {
+  if (key === 'paths') {
+    workbench.rightPanelOpen = true
+    workbench.rightPanelTab = 'files'
+    handleRefitTerminal()
+    return
+  }
+
+  if (key === 'snippets') {
+    workbench.rightPanelOpen = true
+    workbench.rightPanelTab = 'actions'
+    handleRefitTerminal()
+  }
+}
+
 function cleanup() {
   paneGridRefs.forEach((grid) => grid.disconnectAllPanes())
   Object.keys(paneMeta).forEach((key) => {
     delete paneMeta[key]
   })
 }
+
+function onKeydown(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey)) {
+    return
+  }
+
+  const key = event.key.toLowerCase()
+  if (key === 'b') {
+    event.preventDefault()
+    toggleFilePanel()
+    return
+  }
+
+  if (event.key === '\\') {
+    event.preventDefault()
+    handleSplit('vertical')
+    return
+  }
+
+  if (event.shiftKey && key === 't') {
+    event.preventDefault()
+    handleAddTab()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 
 onActivated(async () => {
   try {
@@ -338,70 +388,76 @@ onDeactivated(cleanup)
 
 <style lang="scss" scoped>
 .ssh-page {
-  --ssh-bg: #0d111c;
-  --ssh-shell: #121725;
-  --ssh-surface: #171c2c;
-  --ssh-surface-strong: #1d2436;
-  --ssh-border: #303a5c;
-  --ssh-border-soft: #232b45;
-  --ssh-text: #d7def7;
-  --ssh-muted: #7f8aaa;
-  --ssh-accent: #6ea8fe;
-  --ssh-success: #4ade80;
-  --ssh-warning: #f6c177;
-  --ssh-danger: #ff7b93;
+  --ssh-bg: #0b0f14;
+  --ssh-panel: #0f141b;
+  --ssh-surface: #141a22;
+  --ssh-hover: #1a222d;
+  --ssh-border: #1c2430;
+  --ssh-border-strong: #2a3544;
+  --ssh-text: #d8dee9;
+  --ssh-muted: #6b7785;
+  --ssh-faint: #3d4754;
+  --ssh-accent: #5b9fd4;
+  --ssh-accent-dim: rgba(91, 159, 212, 0.12);
+  --ssh-ok: #3dd68c;
+  --ssh-ok-dim: rgba(61, 214, 140, 0.12);
+  --ssh-warn: #e0b44e;
+  --ssh-warn-dim: rgba(224, 180, 78, 0.12);
+  --ssh-danger: #e86c7a;
+  --ssh-danger-dim: rgba(232, 108, 122, 0.12);
+  --ssh-term: #0a0e12;
+  --ssh-font-ui: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --ssh-font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", ui-monospace, monospace;
 
   display: flex;
   flex-direction: column;
   height: calc(100vh - 56px);
   margin: -20px;
-  padding: 10px;
-  background:
-    linear-gradient(180deg, rgb(19 25 41 / 96%), rgb(11 15 25 / 98%)),
-    var(--ssh-bg);
-  border-radius: 0;
   overflow: hidden;
+  color: var(--ssh-text);
+  background: var(--ssh-bg);
+  font-family: var(--ssh-font-ui);
 }
 
 .ssh-body {
+  display: grid;
   flex: 1;
-  display: flex;
-  gap: 10px;
+  grid-template-columns: 48px minmax(0, 1fr);
   min-height: 0;
-  padding-top: 10px;
+  background: var(--ssh-bg);
+}
+
+.ssh-page.right-panel-open .ssh-body {
+  grid-template-columns: 48px minmax(0, 1fr) 320px;
 }
 
 .terminal-area {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
-  position: relative;
+  min-height: 0;
   overflow: hidden;
-  background: var(--ssh-shell);
-  border: 1px solid var(--ssh-border-soft);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  position: relative;
+  background: var(--ssh-term);
 }
 
 :deep(.el-loading-mask) {
-  background: rgb(26 27 38 / 70%);
+  background: rgba(8, 11, 15, 0.72);
 }
 
 :deep(.el-loading-spinner .circular circle) {
-  stroke: #7aa2f7;
+  stroke: var(--ssh-accent);
 }
 
 @media (max-width: 900px) {
   .ssh-page {
     height: calc(100vh - 48px);
-    padding: 7px;
   }
 
-  .ssh-body {
-    flex-direction: column;
-    gap: 7px;
-    padding-top: 7px;
+  .ssh-body,
+  .ssh-page.right-panel-open .ssh-body {
+    grid-template-columns: 48px minmax(0, 1fr);
   }
 }
 </style>

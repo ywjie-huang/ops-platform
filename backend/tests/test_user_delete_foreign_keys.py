@@ -1,4 +1,3 @@
-from app.models.alert import Alert
 from app.models.audit import AuditLog
 from app.models.conversation import Conversation
 from app.models.deploy import DeployApplication, DeployApproval, DeployRecord
@@ -15,7 +14,6 @@ def _single_fk_ondelete(table, column_name: str) -> str | None:
 def test_user_history_foreign_keys_set_null_when_user_is_deleted():
     history_references = [
         (AuditLog.__table__, "user_id"),
-        (Alert.__table__, "handler_id"),
         (Conversation.__table__, "user_id"),
         (DeployApplication.__table__, "creator_id"),
         (DeployRecord.__table__, "trigger_user_id"),
@@ -36,7 +34,6 @@ def test_startup_migration_covers_user_delete_foreign_keys():
 
     assert {(table.name, column) for table, column in [
         (AuditLog.__table__, "user_id"),
-        (Alert.__table__, "handler_id"),
         (Conversation.__table__, "user_id"),
         (DeployApplication.__table__, "creator_id"),
         (DeployRecord.__table__, "trigger_user_id"),

@@ -32,7 +32,6 @@ def test_controls_load_from_explicit_environment_values():
         "ENABLE_SSH_TERMINAL": "true",
         "ENABLE_SFTP": "1",
         "ENABLE_BATCH_EXEC": "yes",
-        "ENABLE_SSH_KEY_MANAGEMENT": "on",
         "ENABLE_DEPLOY_WEBHOOK": "TRUE",
     })
 
@@ -40,7 +39,6 @@ def test_controls_load_from_explicit_environment_values():
         ssh_terminal=True,
         sftp=True,
         batch_exec=True,
-        ssh_key_management=True,
         deploy_webhook=True,
     )
 
@@ -53,7 +51,8 @@ def test_high_risk_routes_are_disabled_by_default():
     assert not any("/sftp/" in path for path in paths)
     assert "/api/v1/batch-exec/ws/exec" not in paths
     assert "/api/v1/batch-exec/history" in paths
-    assert not any(path.startswith("/api/v1/ssh-keys") for path in paths)
+    # SSH 密钥管理已接入 JWT + RBAC，始终注册
+    assert any(path.startswith("/api/v1/ssh-keys") for path in paths)
     assert controls.deploy_webhook is False
 
 
@@ -63,7 +62,6 @@ def test_high_risk_routes_require_explicit_individual_enablement():
         ssh_terminal=True,
         sftp=True,
         batch_exec=True,
-        ssh_key_management=True,
     )
     paths = route_paths(controls)
 

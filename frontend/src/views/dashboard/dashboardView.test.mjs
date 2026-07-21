@@ -29,7 +29,7 @@ test('dashboard view consumes the resource-health endpoint without blocking core
 test('dashboard view provides truthful incident inspection and navigation actions', () => {
   assert.match(dashboardView, /eventDrawerOpen/)
   assert.match(dashboardView, /事件详情/)
-  assert.match(dashboardView, /查看告警列表/)
+  assert.match(dashboardView, /查看告警事件/)
   assert.match(dashboardView, /进入工单队列/)
   assert.doesNotMatch(dashboardView, /认领事件/)
 })

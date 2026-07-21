@@ -89,7 +89,7 @@ def api_alert_events(
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("alerts.view")),
+    _: User = Depends(api_permission_required("monitoring.view")),
 ):
     """查询告警事件历史。"""
     offset = (max(page, 1) - 1) * page_size

@@ -124,43 +124,43 @@ defineExpose({ setDefaults, setAuthMode, clearPassword, loginForm })
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  background:
-    linear-gradient(180deg, rgb(12 17 28 / 84%), rgb(12 17 28 / 94%)),
-    rgb(12 17 28 / 92%);
+  padding: 20px;
+  background: rgba(8, 11, 15, 0.72);
+  backdrop-filter: blur(2px);
 }
 
 .login-card {
-  width: min(420px, calc(100% - 32px));
-  background: #171d2f;
-  border: 1px solid #344164;
-  border-radius: 8px;
-  box-shadow: 0 18px 42px rgb(0 0 0 / 28%);
+  width: min(400px, calc(100% - 32px));
+  background: var(--ssh-panel, #0f141b);
+  border: 1px solid var(--ssh-border-strong, #2a3544);
+  border-radius: 0;
+  box-shadow: none;
 
   :deep(.el-card__header) {
-    border-bottom: 1px solid #27304d;
+    border-bottom: 1px solid var(--ssh-border, #1c2430);
+    padding: 16px 20px 12px;
   }
 
   :deep(.el-card__body) {
-    padding: 20px 24px;
+    padding: 16px 20px 18px;
   }
 
   :deep(.el-form-item__label) {
-    color: #aeb8d8;
+    color: var(--ssh-muted, #6b7785);
   }
 
   :deep(.el-input__wrapper),
   :deep(.el-select__wrapper) {
-    background: #101624;
-    border: 1px solid #293352;
-    border-radius: 6px;
+    background: var(--ssh-bg, #0b0f14);
+    border: 1px solid var(--ssh-border-strong, #2a3544);
+    border-radius: 0;
     box-shadow: none;
   }
 
   :deep(.el-input__inner),
   :deep(.el-select__placeholder),
   :deep(.el-select__selected-item) {
-    color: #e8edff;
+    color: var(--ssh-text, #d8dee9);
   }
 }
 
@@ -169,12 +169,13 @@ defineExpose({ setDefaults, setAuthMode, clearPassword, loginForm })
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #e8edff;
+  color: var(--ssh-text, #d8dee9);
 }
 
 .login-subtitle {
   margin-top: 2px;
-  color: #7f8aaa;
+  color: var(--ssh-muted, #6b7785);
+  font-family: var(--ssh-font-mono, ui-monospace, monospace);
   font-size: 12px;
 }
 
@@ -184,7 +185,7 @@ defineExpose({ setDefaults, setAuthMode, clearPassword, loginForm })
 }
 
 .credential-hint {
-  color: #aeb8d8;
+  color: var(--ssh-muted, #6b7785);
   font-size: 13px;
 }
 </style>

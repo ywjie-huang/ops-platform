@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import DEMO_PASSWORD, DEMO_USERNAME, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_USER
 from app.db.database import Base, engine
-from app.models.alert import Alert
 from app.models.asset import Asset, generate_asset_public_id
 from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployBuild, DeployConfig, DeployEnvironment, DeployRecord
 from app.models.rbac import Permission, Role
@@ -21,7 +20,6 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 USER_DELETE_SET_NULL_FOREIGN_KEYS = (
     ("audit_logs", "user_id", "users", "id"),
-    ("alerts", "handler_id", "users", "id"),
     ("conversations", "user_id", "users", "id"),
     ("deploy_applications", "creator_id", "users", "id"),
     ("deploy_records", "trigger_user_id", "users", "id"),
@@ -475,7 +473,6 @@ def init_db() -> None:
         _seed_admin_permissions(db)
         _seed_assets(db)
         _seed_tickets(db)
-        _seed_alerts(db)
         _seed_deploy_environments(db)
         from app.services.roles import sync_default_roles
 
@@ -532,6 +529,10 @@ def _seed_permissions(db: Session) -> None:
         ("新增资产", "assets.create", "assets", "新增资产"),
         ("编辑资产", "assets.update", "assets", "编辑资产"),
         ("删除资产", "assets.delete", "assets", "删除资产"),
+        ("查看主机密钥", "ssh_keys.view", "ssh_keys", "查看主机密钥列表"),
+        ("新增主机密钥", "ssh_keys.create", "ssh_keys", "新增主机密钥"),
+        ("编辑主机密钥", "ssh_keys.update", "ssh_keys", "编辑主机密钥"),
+        ("删除主机密钥", "ssh_keys.delete", "ssh_keys", "删除主机密钥"),
         ("查看用户", "users.view", "users", "查看用户列表"),
         ("新增用户", "users.create", "users", "新增用户"),
         ("编辑用户", "users.update", "users", "编辑用户"),
@@ -544,10 +545,6 @@ def _seed_permissions(db: Session) -> None:
         ("新增工单", "tickets.create", "tickets", "新增工单"),
         ("编辑工单", "tickets.update", "tickets", "编辑工单"),
         ("删除工单", "tickets.delete", "tickets", "删除工单"),
-        ("查看告警", "alerts.view", "alerts", "查看告警列表"),
-        ("新增告警", "alerts.create", "alerts", "新增告警"),
-        ("编辑告警", "alerts.update", "alerts", "编辑告警"),
-        ("删除告警", "alerts.delete", "alerts", "删除告警"),
         ("查看审计日志", "audit.view", "audit", "查看审计日志"),
         ("查看报表", "reports.view", "reports", "查看报表中心"),
         ("创建报表", "reports.create", "reports", "创建自定义报表"),
@@ -669,43 +666,6 @@ def _seed_tickets(db: Session) -> None:
                 assignee="王五",
                 asset_id=None,
                 creator_id=admin.id if admin else None,
-            ),
-        ]
-    )
-
-
-def _seed_alerts(db: Session) -> None:
-    existing = db.scalar(select(Alert).limit(1))
-    if existing:
-        return
-
-    assets = list(db.scalars(select(Asset)).all())
-
-    db.add_all(
-        [
-            Alert(
-                title="CPU 使用率过高",
-                description="web-prod-01 CPU 使用率持续超过 90%，已持续 15 分钟",
-                level="high",
-                status="confirmed",
-                source="监控系统",
-                asset_id=assets[0].id if assets else None,
-            ),
-            Alert(
-                title="磁盘空间不足",
-                description="db-prod-01 /data 分区使用率已达 92%",
-                level="medium",
-                status="pending",
-                source="监控系统",
-                asset_id=assets[1].id if len(assets) > 1 else None,
-            ),
-            Alert(
-                title="SSL 证书即将到期",
-                description="api.example.com 的 SSL 证书将在 7 天后到期",
-                level="low",
-                status="pending",
-                source="证书巡检",
-                asset_id=None,
             ),
         ]
     )

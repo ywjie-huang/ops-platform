@@ -385,7 +385,7 @@
           <button type="button" class="primary-action" @click="navigate(activeFocusItem.primaryActionPath)">
             {{ activeFocusItem.primaryActionLabel }}
           </button>
-          <button type="button" class="secondary-action" @click="navigate('/monitoring/alerts')">查看告警列表</button>
+          <button type="button" class="secondary-action" @click="navigate('/monitoring/events')">查看告警事件</button>
           <button type="button" class="secondary-action" @click="navigate('/tickets')">进入工单队列</button>
         </div>
       </div>

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.asset import Asset
 from app.models.ticket import Ticket
-from app.models.alert import Alert
+from app.models.alert_event import AlertEvent
 from app.models.user import User
 from app.models.audit import AuditLog
 
@@ -56,14 +56,14 @@ PRESET_REPORTS = [
     {
         "id": "alert_summary",
         "name": "告警统计报表",
-        "description": "按级别、状态统计告警分布",
+        "description": "按严重级别、状态统计 Prometheus 告警事件",
         "icon": "🔔",
         "category": "告警",
     },
     {
         "id": "alert_trend",
         "name": "告警趋势分析",
-        "description": "近 30 天告警数量变化趋势",
+        "description": "近 30 天 Alertmanager 告警事件数量变化趋势",
         "icon": "📊",
         "category": "告警",
     },
@@ -130,7 +130,7 @@ def query_report_data(db: Session, report_id: str, days: int = 30) -> dict[str, 
 DATA_SOURCES = [
     {"id": "assets", "name": "资产", "model": "Asset"},
     {"id": "tickets", "name": "工单", "model": "Ticket"},
-    {"id": "alerts", "name": "告警", "model": "Alert"},
+    {"id": "alert_events", "name": "告警事件", "model": "AlertEvent"},
     {"id": "users", "name": "用户", "model": "User"},
     {"id": "audit_logs", "name": "审计日志", "model": "AuditLog"},
 ]
@@ -146,10 +146,10 @@ DIMENSIONS = {
         {"id": "priority", "name": "优先级"},
         {"id": "assignee", "name": "负责人"},
     ],
-    "alerts": [
-        {"id": "level", "name": "级别"},
+    "alert_events": [
+        {"id": "severity", "name": "严重级别"},
         {"id": "status", "name": "状态"},
-        {"id": "source", "name": "来源"},
+        {"id": "alert_name", "name": "告警名称"},
     ],
     "users": [
         {"id": "username", "name": "用户名"},
@@ -183,8 +183,8 @@ def query_custom_report(
         return _custom_assets(db, dimension)
     elif source_id == "tickets":
         return _custom_tickets(db, dimension, since)
-    elif source_id == "alerts":
-        return _custom_alerts(db, dimension, since)
+    elif source_id == "alert_events":
+        return _custom_alert_events(db, dimension, since)
     elif source_id == "users":
         return _custom_users(db, dimension)
     elif source_id == "audit_logs":
@@ -299,33 +299,36 @@ def _ticket_efficiency(db: Session, since: datetime) -> dict[str, Any]:
 
 
 def _alert_summary(db: Session) -> dict[str, Any]:
-    """告警按级别和状态统计。"""
+    """告警事件按严重级别和状态统计。"""
     level_rows = db.execute(
-        select(Alert.level, func.count(Alert.id)).group_by(Alert.level)
+        select(AlertEvent.severity, func.count(AlertEvent.id)).group_by(AlertEvent.severity)
     ).all()
 
     status_rows = db.execute(
-        select(Alert.status, func.count(Alert.id)).group_by(Alert.status)
+        select(AlertEvent.status, func.count(AlertEvent.id)).group_by(AlertEvent.status)
     ).all()
 
     return {
         "title": "告警统计报表",
-        "by_level": {"columns": ["级别", "数量"], "rows": [[r[0], r[1]] for r in level_rows]},
+        "by_level": {"columns": ["严重级别", "数量"], "rows": [[r[0], r[1]] for r in level_rows]},
         "by_status": {"columns": ["状态", "数量"], "rows": [[r[0], r[1]] for r in status_rows]},
-        "total": db.scalar(select(func.count(Alert.id))) or 0,
+        "total": db.scalar(select(func.count(AlertEvent.id))) or 0,
     }
 
 
 def _alert_trend(db: Session, since: datetime) -> dict[str, Any]:
-    """告警趋势（当前快照）。"""
+    """近 N 天告警事件趋势（按接收日期聚合）。"""
     rows = db.execute(
-        select(Alert.level, func.count(Alert.id)).group_by(Alert.level)
+        select(func.date(AlertEvent.received_at), func.count(AlertEvent.id))
+        .where(AlertEvent.received_at >= since)
+        .group_by(func.date(AlertEvent.received_at))
+        .order_by(func.date(AlertEvent.received_at))
     ).all()
 
     return {
         "title": "告警趋势分析",
-        "current": {"columns": ["级别", "数量"], "rows": [[r[0], r[1]] for r in rows]},
-        "note": "当前为快照数据，需历史表支持完整趋势",
+        "columns": ["日期", "数量"],
+        "rows": [[str(r[0]), r[1]] for r in rows],
     }
 
 
@@ -416,25 +419,25 @@ def _custom_tickets(db: Session, dimension: str, since: datetime) -> dict[str, A
     }
 
 
-def _custom_alerts(db: Session, dimension: str, since: datetime) -> dict[str, Any]:
-    if dimension == "level":
-        col = Alert.level
+def _custom_alert_events(db: Session, dimension: str, since: datetime) -> dict[str, Any]:
+    if dimension == "severity":
+        col = AlertEvent.severity
     elif dimension == "status":
-        col = Alert.status
-    elif dimension == "source":
-        col = Alert.source
+        col = AlertEvent.status
+    elif dimension == "alert_name":
+        col = AlertEvent.alert_name
     else:
         return {"error": f"不支持的维度: {dimension}"}
 
     rows = db.execute(
-        select(col, func.count(Alert.id))
-        .where(Alert.created_at >= since)
+        select(col, func.count(AlertEvent.id))
+        .where(AlertEvent.received_at >= since)
         .group_by(col)
-        .order_by(func.count(Alert.id).desc())
+        .order_by(func.count(AlertEvent.id).desc())
     ).all()
 
     return {
-        "title": f"告警按{dimension}统计",
+        "title": f"告警事件按{dimension}统计",
         "columns": [dimension, "数量"],
         "rows": [[str(r[0]) if r[0] else "未设置", r[1]] for r in rows],
     }

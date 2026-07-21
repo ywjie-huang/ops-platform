@@ -122,11 +122,9 @@ defineExpose({
   display: grid;
   min-width: 0;
   min-height: 0;
-  gap: 10px;
-  padding: 10px;
-  background:
-    radial-gradient(circle at 20% 0, rgb(65 86 135 / 18%), transparent 260px),
-    #101522;
+  gap: 0;
+  padding: 0;
+  background: var(--ssh-term, #0a0e12);
 }
 
 .is-hidden {
@@ -141,22 +139,25 @@ defineExpose({
 .layout-vertical {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+
+  :deep(.ssh-pane + .ssh-pane) {
+    border-left: 1px solid var(--ssh-border, #1c2430);
+  }
 }
 
 .layout-horizontal {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+
+  :deep(.ssh-pane + .ssh-pane) {
+    border-top: 1px solid var(--ssh-border, #1c2430);
+  }
 }
 
 @media (max-width: 768px) {
   .layout-vertical {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .ssh-pane-grid {
-    gap: 8px;
-    padding: 8px;
   }
 }
 </style>

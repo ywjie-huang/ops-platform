@@ -29,3 +29,23 @@ frontend/dist/
 *.bak
 .worktrees/
 worktrees/
+
+# Local AI assistant configuration and scratch work
+.agents/
+.claude/
+.codex/
+.superpowers/
+
+# Local UI explorations and development artifacts
+frontend/preview/
+frontend/.vite-*.log
+frontend/nul
+tmp_captcha.png
+
+# Design prototypes are not production documentation
+docs/prototypes/
+docs/design/*.html
+
+# Local repository instructions and one-off helper scripts
+AGENTS.md
+_mkdoc.py

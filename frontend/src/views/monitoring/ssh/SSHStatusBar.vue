@@ -1,14 +1,16 @@
 <template>
   <footer class="ssh-status-bar" aria-label="SSH 会话状态">
-    <span class="status-item is-host">{{ hostIp || '-' }}</span>
-    <span class="status-item" :class="`is-${pane.status}`">{{ statusLabel }}</span>
-    <span class="status-item">{{ authLabel }}</span>
-    <span class="status-item">{{ terminalSize || '-' }}</span>
-    <span class="status-item">{{ connectionLabel }}</span>
-    <span class="status-item">{{ layoutLabel }}</span>
-    <span class="status-item is-path">{{ pane.currentPath || '/' }}</span>
-    <span v-if="pane.dirtyFilePath" class="is-warning">未保存 {{ pane.dirtyFilePath }}</span>
-    <span v-else-if="pane.lastError" class="is-danger">{{ pane.lastError }}</span>
+    <span class="item" :class="statusClass">{{ statusLabel }}</span>
+    <span class="item">{{ loginUsername }}@{{ loginPort }}</span>
+    <span class="item">{{ authLabel }}</span>
+    <span class="item">{{ terminalSize || '-' }}</span>
+    <span class="item">{{ connectionLabel }}</span>
+    <span class="item path">{{ pane.currentPath || '/' }}</span>
+    <span class="item">{{ layoutLabel }}</span>
+    <span v-if="pane.dirtyFilePath" class="item warn">未保存 {{ pane.dirtyFilePath }}</span>
+    <span v-else-if="pane.lastError" class="item err">{{ pane.lastError }}</span>
+    <span class="spacer" />
+    <span class="hint">Ctrl+B 文件 · Ctrl+\ 分屏 · Ctrl+Shift+T 新会话</span>
   </footer>
 </template>
 
@@ -27,92 +29,75 @@ const props = defineProps<{
 }>()
 
 const statusLabel = computed(() => {
-  if (props.pane.status === 'connected') return `${props.loginUsername}:${props.loginPort}`
-  if (props.pane.status === 'connecting') return '连接中'
-  if (props.pane.status === 'error') return '连接出错'
-  if (props.pane.status === 'disconnected') return '已断开'
-  return '未连接'
+  if (props.pane.status === 'connected') return '● connected'
+  if (props.pane.status === 'connecting') return '● connecting'
+  if (props.pane.status === 'error') return '● error'
+  if (props.pane.status === 'disconnected') return '● disconnected'
+  return '● idle'
 })
 
-const authLabel = computed(() => props.pane.authMode || 'asset')
-const connectionLabel = computed(() => props.connectionTime ? `已连接 ${props.connectionTime}` : `${props.pane.connectionSeconds}s`)
+const statusClass = computed(() => {
+  if (props.pane.status === 'connected') return 'ok'
+  if (props.pane.status === 'connecting') return 'warn'
+  if (props.pane.status === 'error' || props.pane.status === 'disconnected') return 'err'
+  return ''
+})
+
+const authLabel = computed(() => {
+  const mode = props.pane.authMode || 'asset'
+  if (mode === 'asset') return 'asset'
+  if (String(mode).startsWith('key-')) return 'key'
+  return String(mode)
+})
+
+const connectionLabel = computed(() => {
+  if (props.connectionTime) return props.connectionTime
+  return `${props.pane.connectionSeconds}s`
+})
 </script>
 
 <style scoped lang="scss">
 .ssh-status-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   align-items: center;
-  min-height: 32px;
-  padding: 5px 8px;
-  color: #7f8aaa;
-  background: #121725;
-  border-top: 1px solid #27304d;
+  height: 26px;
+  padding: 0 10px;
+  overflow: hidden;
+  color: var(--ssh-muted);
+  background: var(--ssh-panel);
+  border-top: 1px solid var(--ssh-border);
+  font-family: var(--ssh-font-mono);
   font-size: 11px;
+  user-select: none;
 }
 
-.status-item,
-.is-warning {
+.item {
   display: inline-flex;
   align-items: center;
-  min-height: 20px;
-  padding: 0 7px;
-  background: #171d2f;
-  border: 1px solid #26314f;
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
-
-.status-item.is-host {
-  color: #d7def7;
-}
-
-.status-item.is-connected {
-  color: #91f2b5;
-  border-color: rgb(74 222 128 / 28%);
-  background: rgb(74 222 128 / 9%);
-}
-
-.status-item.is-connecting {
-  color: #f6c177;
-  border-color: rgb(246 193 119 / 28%);
-  background: rgb(246 193 119 / 9%);
-}
-
-.status-item.is-error {
-  color: #ff9bad;
-  border-color: rgb(255 123 147 / 28%);
-  background: rgb(255 123 147 / 9%);
-}
-
-.status-item.is-path {
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.is-warning {
-  color: #f6c177;
-  border-color: rgb(246 193 119 / 28%);
-  background: rgb(246 193 119 / 9%);
+.item + .item::before {
+  content: '·';
+  margin: 0 8px;
+  color: var(--ssh-faint);
 }
 
-.is-danger {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 0 7px;
-  color: #ff9bad;
-  background: rgb(255 123 147 / 9%);
-  border: 1px solid rgb(255 123 147 / 28%);
-  border-radius: 999px;
+.item.ok { color: var(--ssh-ok); }
+.item.warn { color: var(--ssh-warn); }
+.item.err { color: var(--ssh-danger); }
+.item.path { color: var(--ssh-text); }
+
+.spacer { flex: 1; }
+
+.hint {
+  color: var(--ssh-faint);
+  font-family: var(--ssh-font-ui);
+  font-size: 11px;
 }
 
-@media (max-width: 768px) {
-  .status-item.is-path {
-    max-width: 140px;
-  }
+@media (max-width: 900px) {
+  .hint { display: none; }
+  .item.path { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 }
 </style>

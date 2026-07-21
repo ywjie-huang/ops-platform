@@ -8,7 +8,8 @@ Complete phase-one item one from the system assessment: default-close the unauth
 
 ## Approved Scope
 
-- Default-disable SSH Terminal WebSocket, SFTP, Batch Exec WebSocket, and SSH Key CRUD route registration.
+- Default-disable SSH Terminal WebSocket, SFTP, and Batch Exec WebSocket route registration.
+- SSH Key CRUD is always registered, but requires JWT authentication and `ssh_keys.*` RBAC permissions; responses never return secret plaintext.
 - Default-disable the deployment artifact Webhook through an explicit environment feature switch.
 - Do not change Docker Agent network behavior in application code in this task.
 - Replace the two-step Docker host registration wizard with three steps:
@@ -26,7 +27,6 @@ Environment variables:
 - `ENABLE_SSH_TERMINAL`
 - `ENABLE_SFTP`
 - `ENABLE_BATCH_EXEC`
-- `ENABLE_SSH_KEY_MANAGEMENT`
 - `ENABLE_DEPLOY_WEBHOOK`
 
 ## Frontend Design

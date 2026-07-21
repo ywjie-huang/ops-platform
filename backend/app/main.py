@@ -1,7 +1,14 @@
 """FastAPI application entry point — 纯 API 模式。"""
+from pathlib import Path
 import logging
 import threading
 import time
+
+from dotenv import load_dotenv
+
+# Load backend/.env before importing routers so emergency access flags
+# (ENABLE_SSH_TERMINAL / ENABLE_SFTP / ...) take effect at route registration time.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import router as api_router
 from app.db.database import SessionLocal
 from app.db.init_db import init_db
-from app.models import alert, alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key, scheduled_task  # noqa: F401
+from app.models import alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key, scheduled_task  # noqa: F401
 from app.services.docker_agent import sync_all_hosts
 
 logger = logging.getLogger(__name__)

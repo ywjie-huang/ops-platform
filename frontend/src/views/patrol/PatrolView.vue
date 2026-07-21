@@ -9,8 +9,8 @@
         <el-button @click="goCockpit">
           <el-icon><DataAnalysis /></el-icon> 态势大屏
         </el-button>
-        <el-button @click="$router.push('/patrol/settings')">
-          <el-icon><Setting /></el-icon> 阈值配置
+        <el-button @click="thresholdDrawerOpen = true">
+          <el-icon><Setting /></el-icon> 校准阈值
         </el-button>
         <el-button type="primary" :loading="running" @click="handleRun">
           <el-icon><VideoPlay /></el-icon> 立即巡检
@@ -285,6 +285,8 @@
         </div>
       </aside>
     </div>
+
+    <PatrolThresholdDrawer v-model="thresholdDrawerOpen" />
   </div>
 </template>
 
@@ -294,6 +296,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DataAnalysis, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { deletePatrolReport, exportPatrolReport, getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
+import PatrolThresholdDrawer from './components/PatrolThresholdDrawer.vue'
 import { formatRelativeTime } from '@/utils/time'
 import {
   buildCockpitRouteLocation,
@@ -312,6 +315,7 @@ import {
 } from '@/utils/patrolCommand'
 
 const router = useRouter()
+const thresholdDrawerOpen = ref(false)
 const running = ref(false)
 const loading = ref(false)
 const reports = ref<PatrolReportLike[]>([])

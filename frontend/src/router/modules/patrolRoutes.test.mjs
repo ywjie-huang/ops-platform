@@ -23,4 +23,12 @@ test('patrol routes expose command center as default and cockpit as hidden secon
   assert.equal(cockpitRoute.meta.hidden, true)
   assert.equal(cockpitRoute.meta.activeMenu, '/patrol')
   assert.equal(cockpitRoute.meta.permission, 'patrol.view')
+
+  const settingsRoute = patrolRoute.children.find((route) => route.path === 'settings')
+  assert.ok(settingsRoute, 'expected /patrol/settings compatibility route to exist')
+  assert.equal(settingsRoute.name, 'PatrolSettings')
+  assert.equal(settingsRoute.redirect, '/patrol')
+  assert.equal(settingsRoute.meta.hidden, true)
+  assert.equal(settingsRoute.meta.activeMenu, '/patrol')
+  assert.equal(settingsRoute.meta.permission, 'patrol.view')
 })

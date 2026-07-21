@@ -1,8 +1,155 @@
 <template>
   <main class="login-page">
-    <div class="shell-grid">
-      <section class="login-panel" aria-labelledby="login-title">
-        <div class="login-panel-top">
+    <div class="shell">
+      <section class="brand-pane" aria-labelledby="brand-title">
+        <div class="brand-intro">
+          <div class="brand-kicker">
+            <span class="brand-mark" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 5h16v10H4z" />
+                  <path d="M8 19h8" />
+                  <path d="M12 15v4" />
+                </svg>
+              </span>
+            </span>
+            Ops Platform
+          </div>
+          <h1 id="brand-title" class="brand-title">运维管理平台</h1>
+          <p class="brand-copy">
+            统一处理主机监控、告警事件、容器运维、批量执行与应用发布。
+            登录后进入值班工作台。
+          </p>
+        </div>
+
+        <div class="ops-board" aria-label="运维拓扑示意">
+          <div class="ops-board-header">
+            <div class="board-title">
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 3v18" />
+                  <path d="M3 12h18" />
+                  <path d="m5 5 14 14" />
+                  <path d="m19 5-14 14" />
+                </svg>
+              </span>
+              运维拓扑
+            </div>
+            <div class="board-note">示意接入关系，非实时状态</div>
+          </div>
+
+          <div class="topology-wrap">
+            <svg class="topology" viewBox="0 0 850 320" preserveAspectRatio="none" aria-hidden="true">
+              <path class="topology-line" d="M170 78 C255 64 320 118 420 140" />
+              <path class="topology-line is-warning" d="M680 78 C600 64 525 118 430 140" />
+              <path class="topology-line is-blue" d="M210 250 C285 210 340 180 420 152" />
+              <path class="topology-line" d="M650 250 C580 210 520 180 430 152" />
+            </svg>
+
+            <div class="node node-core">
+              <div class="node-title">
+                Ops Core
+                <span class="node-badge">核心</span>
+              </div>
+              <div class="node-meta">API · 权限 · 审计</div>
+            </div>
+
+            <div class="node node-prometheus">
+              <div class="node-title">
+                Prometheus
+                <span class="node-badge">监控</span>
+              </div>
+              <div class="node-meta">主机指标采集</div>
+            </div>
+
+            <div class="node node-alert">
+              <div class="node-title">
+                Alertmanager
+                <span class="node-badge is-warning">告警</span>
+              </div>
+              <div class="node-meta">规则与事件</div>
+            </div>
+
+            <div class="node node-k8s">
+              <div class="node-title">
+                K8s
+                <span class="node-badge is-info">集群</span>
+              </div>
+              <div class="node-meta">资源发现</div>
+            </div>
+
+            <div class="node node-docker">
+              <div class="node-title">
+                Docker Agent
+                <span class="node-badge">容器</span>
+              </div>
+              <div class="node-meta">主机侧代理</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="capability-row" aria-label="平台能力">
+          <div class="capability">
+            <span class="capability-icon" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 19V5" />
+                  <path d="M4 19h16" />
+                  <path d="m7 15 4-4 3 3 5-7" />
+                </svg>
+              </span>
+            </span>
+            监控告警
+          </div>
+          <div class="capability">
+            <span class="capability-icon" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M21 16V8l-9-5-9 5v8l9 5z" />
+                  <path d="M3.3 7.2 12 12l8.7-4.8" />
+                  <path d="M12 22V12" />
+                </svg>
+              </span>
+            </span>
+            资产容器
+          </div>
+          <div class="capability">
+            <span class="capability-icon" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M7 8h10" />
+                  <path d="M7 12h6" />
+                  <path d="M9 20h6" />
+                  <path d="M12 16v4" />
+                  <path d="M5 4h14v12H5z" />
+                </svg>
+              </span>
+            </span>
+            批量执行
+          </div>
+          <div class="capability">
+            <span class="capability-icon" aria-hidden="true">
+              <span class="icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 4h16v16H4z" />
+                  <path d="M8 9h8" />
+                  <path d="M8 13h6" />
+                  <path d="M8 17h4" />
+                </svg>
+              </span>
+            </span>
+            工单发布
+          </div>
+        </div>
+
+        <div class="brand-footer">
+          <span>登录后查看实时资产、告警与巡检态势</span>
+          <span class="env-pill">内部环境</span>
+        </div>
+      </section>
+
+      <section class="login-pane" aria-labelledby="login-title">
+        <div class="login-head">
           <div class="login-secure">
             <span class="icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
@@ -10,10 +157,10 @@
                 <path d="m9 12 2 2 4-4" />
               </svg>
             </span>
-            SECURITY GATEWAY
+            安全入口
           </div>
-          <h2 id="login-title" class="login-title">安全登录</h2>
-          <p class="login-copy">登录后继续处理监控、告警、终端与发布任务。</p>
+          <h2 id="login-title" class="login-title">登录</h2>
+          <p class="login-copy">使用平台账号进入值班工作台</p>
         </div>
 
         <el-form
@@ -26,12 +173,14 @@
         >
           <el-form-item prop="username" label="账号">
             <el-input
+              ref="usernameRef"
               v-model="form.username"
               placeholder="请输入用户名"
               :prefix-icon="User"
               size="large"
               autocomplete="username"
               aria-label="账号"
+              :disabled="loading"
             />
           </el-form-item>
 
@@ -45,6 +194,7 @@
               autocomplete="current-password"
               show-password
               aria-label="密码"
+              :disabled="loading"
               @keyup.enter="handleLogin"
             />
           </el-form-item>
@@ -52,12 +202,14 @@
           <el-form-item prop="captcha_code" label="验证码">
             <div class="captcha-row">
               <el-input
+                ref="captchaRef"
                 v-model="form.captcha_code"
                 placeholder="请输入验证码"
                 :prefix-icon="Key"
                 size="large"
                 inputmode="numeric"
                 aria-label="验证码"
+                :disabled="loading"
                 @keyup.enter="handleLogin"
               />
               <button
@@ -65,7 +217,8 @@
                 type="button"
                 aria-label="刷新验证码"
                 title="点击刷新验证码"
-                @click="refreshCaptcha"
+                :disabled="loading || captchaLoading"
+                @click="refreshCaptcha()"
               >
                 <img
                   v-if="captchaUrl"
@@ -73,7 +226,7 @@
                   alt="验证码"
                   class="captcha-img"
                 />
-                <span v-else class="captcha-placeholder">加载中</span>
+                <span v-else class="captcha-placeholder">{{ captchaLoading ? '加载中' : '点击刷新' }}</span>
               </button>
             </div>
           </el-form-item>
@@ -81,6 +234,7 @@
           <el-button
             type="primary"
             size="large"
+            native-type="submit"
             :loading="loading"
             class="login-button"
             aria-label="登录"
@@ -91,223 +245,14 @@
           </el-button>
 
           <div class="session-row" aria-label="登录安全信息">
-            <span>会话有效期 <strong>12h</strong></span>
-            <span>RBAC enabled</span>
+            <span>会话将在登录后由服务端签发</span>
+            <span>权限由 RBAC 控制</span>
           </div>
         </el-form>
 
         <div class="login-panel-bottom">
           <span>Ops Platform</span>
-          <span class="health-pill">0 incidents</span>
-        </div>
-      </section>
-
-      <section class="ops-stage" aria-labelledby="brand-title">
-        <div class="status-strip" aria-label="系统入口状态">
-          <div class="status-left">
-            <span class="live-dot" aria-hidden="true"></span>
-            <span class="status-label">生产环境入口</span>
-            <span class="status-code">CN-SH / UTC+8</span>
-          </div>
-          <div class="status-right">
-            <span class="status-label">Auth Gateway</span>
-            <span class="status-code">HEALTHY</span>
-          </div>
-        </div>
-
-        <div class="brand-block">
-          <div class="brand-kicker">
-            <span class="brand-mark" aria-hidden="true">
-              <span class="icon">
-                <svg viewBox="0 0 24 24">
-                  <path d="M4 5h16v10H4z" />
-                  <path d="M8 19h8" />
-                  <path d="M12 15v4" />
-                </svg>
-              </span>
-            </span>
-            OPS COMMAND CENTER
-          </div>
-          <h1 id="brand-title" class="brand-title">运维管理平台</h1>
-          <p class="brand-copy">
-            统一接入主机监控、告警响应、容器发现、批量执行、巡检任务与应用发布，让值班人员从登录开始进入同一张态势图。
-          </p>
-        </div>
-
-        <div class="ops-board" aria-label="运维态势预览">
-          <div class="ops-board-header">
-            <div class="board-title">
-              <span class="icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 3v18" />
-                  <path d="M3 12h18" />
-                  <path d="m5 5 14 14" />
-                  <path d="m19 5-14 14" />
-                </svg>
-              </span>
-              实时运维拓扑
-            </div>
-            <div class="board-tools" aria-hidden="true">
-              <span class="tool-dot is-green"></span>
-              <span class="tool-dot is-blue"></span>
-              <span class="tool-dot is-amber"></span>
-            </div>
-          </div>
-
-          <div class="topology-wrap">
-            <svg class="topology" viewBox="0 0 850 360" preserveAspectRatio="none" aria-hidden="true">
-              <path class="topology-line" d="M172 86 C260 70 315 130 410 150" />
-              <path class="topology-line is-warning" d="M676 90 C598 76 520 126 430 150" />
-              <path class="topology-line is-blue" d="M220 275 C285 230 340 205 420 164" />
-              <path class="topology-line" d="M655 276 C590 230 520 202 430 164" />
-              <path class="topology-line is-blue" d="M425 164 C425 205 425 232 425 282" />
-            </svg>
-
-            <div class="node node-core">
-              <div class="node-title">
-                Ops Core
-                <span class="node-badge">ACTIVE</span>
-              </div>
-              <div class="node-meta">api/v1 · rbac · audit</div>
-            </div>
-
-            <div class="node node-prometheus">
-              <div class="node-title">
-                Prometheus
-                <span class="node-badge">24ms</span>
-              </div>
-              <div class="node-meta">host metrics · node_exporter</div>
-            </div>
-
-            <div class="node node-alert">
-              <div class="node-title">
-                Alertmanager
-                <span class="node-badge is-warning">6</span>
-              </div>
-              <div class="node-meta">webhook · rules cache</div>
-            </div>
-
-            <div class="node node-k8s">
-              <div class="node-title">
-                K8s Cluster
-                <span class="node-badge">SYNC</span>
-              </div>
-              <div class="node-meta">pods · services · ingress</div>
-            </div>
-
-            <div class="node node-docker">
-              <div class="node-title">
-                Docker Agent
-                <span class="node-badge">PULL</span>
-              </div>
-              <div class="node-meta">start · stop · restart</div>
-            </div>
-          </div>
-
-          <div class="metrics-rail" aria-label="关键运行指标">
-            <div class="metric">
-              <div class="metric-label">在线资产</div>
-              <div class="metric-value">128</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">活跃告警</div>
-              <div class="metric-value is-warning">06</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">容器实例</div>
-              <div class="metric-value is-info">342</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">巡检通过率</div>
-              <div class="metric-value">98%</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="ops-footer">
-          <div class="event-feed">
-            <div class="panel-head">
-              <span>事件流</span>
-              <span>LIVE</span>
-            </div>
-            <div class="feed-lines" aria-label="近期事件">
-              <div class="feed-line">
-                <span>10:42</span>
-                <span>prod-node-08 CPU 恢复到安全阈值</span>
-                <span class="feed-ok">OK</span>
-              </div>
-              <div class="feed-line">
-                <span>10:39</span>
-                <span>payment-api 发布审批完成</span>
-                <span class="feed-ok">PASS</span>
-              </div>
-              <div class="feed-line">
-                <span>10:35</span>
-                <span>k8s-east ingress latency p95 偏高</span>
-                <span class="feed-warn">WARN</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="capability-list">
-            <div class="panel-head">
-              <span>值班能力</span>
-              <span>READY</span>
-            </div>
-            <div class="capabilities">
-              <div class="capability">
-                <span class="capability-icon" aria-hidden="true">
-                  <span class="icon">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M4 19V5" />
-                      <path d="M4 19h16" />
-                      <path d="m7 15 4-4 3 3 5-7" />
-                    </svg>
-                  </span>
-                </span>
-                实时监控告警
-              </div>
-              <div class="capability">
-                <span class="capability-icon" aria-hidden="true">
-                  <span class="icon">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M21 16V8l-9-5-9 5v8l9 5z" />
-                      <path d="M3.3 7.2 12 12l8.7-4.8" />
-                      <path d="M12 22V12" />
-                    </svg>
-                  </span>
-                </span>
-                资产容器管理
-              </div>
-              <div class="capability">
-                <span class="capability-icon" aria-hidden="true">
-                  <span class="icon">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M4 4h16v16H4z" />
-                      <path d="M8 9h8" />
-                      <path d="M8 13h6" />
-                      <path d="M8 17h4" />
-                    </svg>
-                  </span>
-                </span>
-                工单协作流转
-              </div>
-              <div class="capability">
-                <span class="capability-icon" aria-hidden="true">
-                  <span class="icon">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M7 8h10" />
-                      <path d="M7 12h6" />
-                      <path d="M9 20h6" />
-                      <path d="M12 16v4" />
-                      <path d="M5 4h14v12H5z" />
-                    </svg>
-                  </span>
-                </span>
-                SSH 批量执行
-              </div>
-            </div>
-          </div>
+          <span>内部运维入口</span>
         </div>
       </section>
     </div>
@@ -315,18 +260,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/modules/auth'
 import { getCaptcha } from '@/api/auth'
 import { User, Lock, Key } from '@element-plus/icons-vue'
-import { ElMessage, type FormInstance } from 'element-plus'
+import { ElMessage, type FormInstance, type InputInstance } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const formRef = ref<FormInstance>()
+const usernameRef = ref<InputInstance>()
+const captchaRef = ref<InputInstance>()
 const loading = ref(false)
+const captchaLoading = ref(false)
 
 const captchaId = ref('')
 const captchaUrl = ref('')
@@ -337,19 +285,37 @@ const rules = {
   captcha_code: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
 }
 
-async function refreshCaptcha() {
+function safeRedirectPath(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//')) {
+    return '/'
+  }
+  return raw
+}
+
+async function refreshCaptcha(options?: { focus?: boolean }) {
+  captchaLoading.value = true
   try {
     if (captchaUrl.value) URL.revokeObjectURL(captchaUrl.value)
     const { captchaId: id, imageUrl } = await getCaptcha()
     captchaId.value = id
     captchaUrl.value = imageUrl
     form.captcha_code = ''
+    if (options?.focus) {
+      await nextTick()
+      captchaRef.value?.focus()
+    }
   } catch {
     ElMessage.error('获取验证码失败')
+  } finally {
+    captchaLoading.value = false
   }
 }
 
-onMounted(refreshCaptcha)
+onMounted(async () => {
+  await refreshCaptcha()
+  await nextTick()
+  usernameRef.value?.focus()
+})
 
 async function handleLogin() {
   const valid = await formRef.value?.validate().catch(() => false)
@@ -359,10 +325,9 @@ async function handleLogin() {
     await authStore.login(form.username, form.password, captchaId.value, form.captcha_code)
     await authStore.fetchUserInfo()
     ElMessage.success('登录成功')
-    const redirect = (route.query.redirect as string) || '/'
-    router.push(redirect)
+    router.push(safeRedirectPath(route.query.redirect))
   } catch {
-    refreshCaptcha()
+    await refreshCaptcha({ focus: true })
     // 错误已在拦截器中处理
   } finally {
     loading.value = false
@@ -372,10 +337,9 @@ async function handleLogin() {
 
 <style lang="scss" scoped>
 .login-page {
-  --login-bg: #050806;
   --login-surface: #0d1713;
   --login-surface-strong: #111d18;
-  --login-surface-muted: #101812;
+  --login-surface-muted: #0a120e;
   --login-border: #1c3028;
   --login-border-strong: #2f5a49;
   --login-text-primary: #f2fff8;
@@ -385,178 +349,103 @@ async function handleLogin() {
   --login-primary-strong: #7df0b5;
   --login-info: #47c7ff;
   --login-warning: #f5a623;
-  --login-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
-  --login-radius: 8px;
+  --login-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  --login-radius: 10px;
   --login-font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
 
-  position: relative;
   min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px 20px 40px;
   color: var(--login-text-primary);
   background:
-    linear-gradient(rgba(85, 216, 145, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(85, 216, 145, 0.045) 1px, transparent 1px),
-    linear-gradient(115deg, #050806 0%, #07100d 48%, #0a1411 100%);
-  background-size: 44px 44px, 44px 44px, auto;
-  isolation: isolate;
+    linear-gradient(rgba(85, 216, 145, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 216, 145, 0.03) 1px, transparent 1px),
+    radial-gradient(ellipse 80% 60% at 18% 28%, rgba(85, 216, 145, 0.08), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 88% 78%, rgba(71, 199, 255, 0.05), transparent 50%),
+    linear-gradient(120deg, #050806 0%, #07100d 50%, #0a1411 100%);
+  background-size: 48px 48px, 48px 48px, auto, auto, auto;
+}
+
+.shell {
+  width: min(1180px, 100%);
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr;
+  border: 1px solid var(--login-border-strong);
+  border-radius: 16px;
   overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -2;
-    background:
-      linear-gradient(90deg, rgba(71, 199, 255, 0.08), transparent 28%, transparent 72%, rgba(85, 216, 145, 0.08)),
-      linear-gradient(180deg, transparent 0%, rgba(5, 8, 6, 0.72) 100%);
-    pointer-events: none;
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: repeating-linear-gradient(
-      180deg,
-      rgba(242, 255, 248, 0.025) 0,
-      rgba(242, 255, 248, 0.025) 1px,
-      transparent 1px,
-      transparent 4px
-    );
-    opacity: 0.36;
-    pointer-events: none;
-  }
-}
-
-.shell-grid {
-  width: min(1480px, 100%);
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 32px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  gap: 36px;
-  align-items: center;
-}
-
-.ops-stage {
-  min-width: 0;
-  display: grid;
-  grid-column: 1;
-  grid-row: 1;
-  gap: 20px;
-  align-content: center;
-}
-
-.status-strip {
-  width: min(760px, 100%);
-  padding: 10px 12px;
-  border: 1px solid var(--login-border);
-  border-radius: var(--login-radius);
-  background: rgba(8, 17, 13, 0.84);
+  background: rgba(8, 15, 12, 0.72);
   box-shadow: var(--login-shadow);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  backdrop-filter: blur(10px);
 }
 
-.status-left,
-.status-right {
+.brand-pane {
   min-width: 0;
+  padding: 36px 32px 28px;
+  border-right: 1px solid var(--login-border);
+  background:
+    linear-gradient(160deg, rgba(16, 41, 30, 0.5), transparent 58%),
+    linear-gradient(180deg, rgba(13, 23, 19, 0.35), rgba(5, 8, 6, 0.18));
   display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--login-primary);
-  box-shadow: 0 0 0 4px rgba(85, 216, 145, 0.12);
-  animation: dotPulse 1.8s ease-out infinite;
-  flex: 0 0 auto;
-}
-
-.status-label {
-  color: var(--login-text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.status-code {
-  padding: 3px 8px;
-  border: 1px solid rgba(71, 199, 255, 0.32);
-  border-radius: 999px;
-  background: rgba(71, 199, 255, 0.08);
-  color: #bceeff;
-  font-family: var(--login-font-mono);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.brand-block {
-  max-width: 760px;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 680px;
 }
 
 .brand-kicker {
-  margin-bottom: 14px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--login-primary-strong);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .brand-mark {
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(85, 216, 145, 0.38);
-  border-radius: 7px;
-  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(85, 216, 145, 0.4);
+  border-radius: 8px;
+  display: grid;
   place-items: center;
   background: #10291e;
   color: var(--login-primary-strong);
 }
 
 .brand-title {
-  max-width: 680px;
   margin: 0;
-  color: var(--login-text-primary);
-  font-size: 48px;
-  line-height: 1.12;
+  font-size: 34px;
+  line-height: 1.15;
   font-weight: 800;
-  letter-spacing: 0;
-  text-wrap: balance;
+  letter-spacing: -0.02em;
 }
 
 .brand-copy {
-  max-width: 620px;
-  margin: 16px 0 0;
+  margin: 10px 0 0;
+  max-width: 460px;
   color: var(--login-text-secondary);
-  font-size: 16px;
+  font-size: 14.5px;
+  line-height: 1.65;
 }
 
 .ops-board {
   position: relative;
-  width: min(850px, 100%);
-  min-height: 410px;
+  flex: 1;
+  min-height: 320px;
   border: 1px solid var(--login-border);
-  border-radius: var(--login-radius);
+  border-radius: 12px;
   background:
     linear-gradient(135deg, rgba(13, 23, 19, 0.96), rgba(7, 14, 11, 0.94)),
-    linear-gradient(rgba(85, 216, 145, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(85, 216, 145, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(85, 216, 145, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 216, 145, 0.04) 1px, transparent 1px);
   background-size: auto, 28px 28px, 28px 28px;
-  box-shadow: var(--login-shadow);
   overflow: hidden;
 }
 
 .ops-board-header {
-  height: 48px;
-  padding: 0 18px;
+  height: 44px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--login-border);
   display: flex;
   align-items: center;
@@ -568,40 +457,21 @@ async function handleLogin() {
 .board-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--login-text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.board-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tool-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--login-text-muted);
-}
-
-.tool-dot.is-green {
-  background: var(--login-primary);
-}
-
-.tool-dot.is-blue {
-  background: var(--login-info);
-}
-
-.tool-dot.is-amber {
-  background: var(--login-warning);
+.board-note {
+  color: var(--login-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .topology-wrap {
   position: absolute;
-  inset: 48px 0 96px;
+  inset: 44px 0 0;
 }
 
 .topology {
@@ -612,76 +482,67 @@ async function handleLogin() {
 
 .topology-line {
   fill: none;
-  stroke: rgba(85, 216, 145, 0.46);
+  stroke: rgba(85, 216, 145, 0.38);
   stroke-width: 1.4;
-  stroke-dasharray: 7 8;
-  animation: lineFlow 6s linear infinite;
+  stroke-dasharray: 6 8;
+  animation: lineFlow 8s linear infinite;
 }
 
 .topology-line.is-blue {
-  stroke: rgba(71, 199, 255, 0.48);
-  animation-duration: 7.5s;
+  stroke: rgba(71, 199, 255, 0.4);
+  animation-duration: 9.5s;
 }
 
 .topology-line.is-warning {
-  stroke: rgba(245, 166, 35, 0.48);
-  animation-duration: 8.5s;
+  stroke: rgba(245, 166, 35, 0.4);
+  animation-duration: 10.5s;
 }
 
 .node {
   position: absolute;
-  min-width: 126px;
+  min-width: 118px;
   padding: 10px 12px;
   border: 1px solid var(--login-border-strong);
   border-radius: var(--login-radius);
   background: rgba(9, 18, 14, 0.95);
-  box-shadow: var(--login-shadow);
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border: 1px solid rgba(85, 216, 145, 0.18);
-    border-radius: inherit;
-    pointer-events: none;
-  }
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .node-core {
-  top: 48%;
-  left: 48%;
-  min-width: 164px;
-  border-color: rgba(85, 216, 145, 0.62);
+  top: 46%;
+  left: 50%;
+  min-width: 148px;
+  border-color: rgba(85, 216, 145, 0.58);
   transform: translate(-50%, -50%);
 }
 
 .node-prometheus {
-  top: 16%;
-  left: 13%;
+  top: 14%;
+  left: 10%;
 }
 
 .node-alert {
-  top: 16%;
+  top: 14%;
   right: 10%;
-  border-color: rgba(245, 166, 35, 0.5);
+  border-color: rgba(245, 166, 35, 0.42);
 }
 
 .node-k8s {
-  bottom: 8%;
-  left: 18%;
-  border-color: rgba(71, 199, 255, 0.48);
+  bottom: 12%;
+  left: 14%;
+  border-color: rgba(71, 199, 255, 0.42);
 }
 
 .node-docker {
-  right: 14%;
-  bottom: 8%;
+  right: 12%;
+  bottom: 12%;
 }
 
 .node-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   color: var(--login-text-primary);
   font-size: 13px;
   font-weight: 700;
@@ -689,10 +550,7 @@ async function handleLogin() {
 }
 
 .node-meta {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-top: 5px;
   color: var(--login-text-muted);
   font-family: var(--login-font-mono);
   font-size: 11px;
@@ -716,162 +574,95 @@ async function handleLogin() {
   }
 }
 
-.node-badge.is-warning {
-  color: var(--login-warning);
-}
-
-.metrics-rail {
-  position: absolute;
-  right: 18px;
-  bottom: 16px;
-  left: 18px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.metric {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid rgba(47, 90, 73, 0.72);
-  border-radius: var(--login-radius);
-  background: rgba(13, 23, 19, 0.88);
-}
-
-.metric-label {
-  color: var(--login-text-muted);
-  font-size: 12px;
-}
-
-.metric-value {
-  margin-top: 4px;
-  color: var(--login-text-primary);
-  font-family: var(--login-font-mono);
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.metric-value.is-warning {
-  color: #ffd78d;
-}
-
-.metric-value.is-info {
+.node-badge.is-info {
   color: #a7e8ff;
 }
 
-.ops-footer {
-  width: min(850px, 100%);
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 14px;
-}
-
-.event-feed,
-.capability-list {
-  min-width: 0;
-  border: 1px solid var(--login-border);
-  border-radius: var(--login-radius);
-  background: rgba(8, 17, 13, 0.84);
-  box-shadow: var(--login-shadow);
-  overflow: hidden;
-}
-
-.panel-head {
-  height: 40px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--login-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--login-text-secondary);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.feed-lines {
-  height: 118px;
-  padding: 10px 14px;
-  display: grid;
-  gap: 8px;
-  overflow: hidden;
-}
-
-.feed-line {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  color: var(--login-text-secondary);
-  font-family: var(--login-font-mono);
-  font-size: 12px;
-
-  span:nth-child(2) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.feed-ok {
-  color: var(--login-primary-strong);
-}
-
-.feed-warn {
+.node-badge.is-warning {
   color: #ffd78d;
 }
 
-.capabilities {
-  padding: 12px 14px;
+.capability-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .capability {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--login-border);
+  border-radius: var(--login-radius);
+  background: rgba(8, 17, 13, 0.72);
   color: var(--login-text-secondary);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .capability-icon {
-  width: 26px;
-  height: 26px;
-  border: 1px solid rgba(85, 216, 145, 0.24);
-  border-radius: 7px;
-  display: inline-grid;
-  place-items: center;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
-  background: rgba(85, 216, 145, 0.1);
+  border-radius: 7px;
+  border: 1px solid rgba(85, 216, 145, 0.22);
+  background: rgba(85, 216, 145, 0.08);
   color: var(--login-primary-strong);
-}
-
-.login-panel {
-  width: 100%;
-  border: 1px solid var(--login-border-strong);
-  border-radius: var(--login-radius);
-  background: var(--login-surface);
-  box-shadow: var(--login-shadow);
-  grid-column: 2;
-  grid-row: 1;
-  overflow: hidden;
-}
-
-.login-panel-top {
-  min-height: 118px;
-  padding: 22px 24px;
-  border-bottom: 1px solid var(--login-border);
   display: grid;
-  gap: 8px;
+  place-items: center;
+}
+
+.brand-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--login-text-muted);
+  font-size: 12px;
+}
+
+.env-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border: 1px solid rgba(71, 199, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(71, 199, 255, 0.08);
+  color: #bceeff;
+  font-family: var(--login-font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--login-info);
+    opacity: 0.9;
+  }
+}
+
+.login-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--login-surface);
+  min-height: 680px;
+}
+
+.login-head {
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid var(--login-border);
   background:
-    linear-gradient(90deg, rgba(85, 216, 145, 0.12), transparent 68%),
+    linear-gradient(90deg, rgba(85, 216, 145, 0.1), transparent 70%),
     #101c17;
 }
 
 .login-secure {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   color: var(--login-primary-strong);
@@ -880,24 +671,26 @@ async function handleLogin() {
 }
 
 .login-title {
-  margin: 0;
+  margin: 10px 0 0;
   color: var(--login-text-primary);
   font-size: 26px;
   line-height: 1.2;
   font-weight: 800;
-  letter-spacing: 0;
 }
 
 .login-copy {
-  margin: 0;
+  margin: 8px 0 0;
   color: var(--login-text-secondary);
   font-size: 14px;
+  line-height: 1.5;
 }
 
 .login-form {
-  padding: 24px;
+  flex: 1;
+  padding: 28px 32px 20px;
   display: grid;
   gap: 16px;
+  align-content: start;
 }
 
 .login-form :deep(.el-form-item) {
@@ -965,19 +758,19 @@ async function handleLogin() {
 .captcha-row {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1fr) 118px;
   gap: 10px;
   align-items: start;
 }
 
 .captcha-button {
-  width: 112px;
+  width: 118px;
   height: 44px;
   padding: 0;
-  border: 1px solid rgba(71, 199, 255, 0.36);
+  border: 1px solid rgba(71, 199, 255, 0.35);
   border-radius: var(--login-radius);
   background:
-    linear-gradient(90deg, rgba(71, 199, 255, 0.08), rgba(85, 216, 145, 0.08)),
+    linear-gradient(90deg, rgba(71, 199, 255, 0.1), rgba(85, 216, 145, 0.08)),
     #e9f7f2;
   color: #0d7163;
   cursor: pointer;
@@ -989,6 +782,12 @@ async function handleLogin() {
     border-color: var(--login-info);
     outline: none;
     transform: translateY(-1px);
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.8;
+    transform: none;
   }
 }
 
@@ -1014,7 +813,7 @@ async function handleLogin() {
   width: 100%;
   height: 46px;
   margin-top: 8px;
-  border: 1px solid rgba(125, 240, 181, 0.58);
+  border: 1px solid rgba(125, 240, 181, 0.55);
   border-radius: var(--login-radius);
   background: var(--login-primary);
   color: #052216;
@@ -1025,7 +824,7 @@ async function handleLogin() {
     border-color: rgba(125, 240, 181, 0.72);
     background: var(--login-primary-strong);
     color: #052216;
-    box-shadow: 0 4px 8px rgba(85, 216, 145, 0.18);
+    box-shadow: 0 4px 12px rgba(85, 216, 145, 0.18);
     transform: translateY(-1px);
   }
 
@@ -1040,22 +839,17 @@ async function handleLogin() {
 }
 
 .session-row {
-  padding-top: 2px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: var(--login-text-muted);
   font-size: 12px;
-
-  strong {
-    color: var(--login-text-secondary);
-    font-weight: 700;
-  }
 }
 
 .login-panel-bottom {
-  padding: 14px 24px;
+  margin-top: auto;
+  padding: 14px 32px;
   border-top: 1px solid var(--login-border);
   display: flex;
   align-items: center;
@@ -1066,26 +860,9 @@ async function handleLogin() {
   font-size: 12px;
 }
 
-.health-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--login-primary-strong);
-  font-family: var(--login-font-mono);
-  white-space: nowrap;
-
-  &::before {
-    content: '';
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--login-primary);
-  }
-}
-
 .icon {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   display: inline-block;
   flex: 0 0 auto;
 
@@ -1107,205 +884,89 @@ async function handleLogin() {
   }
 }
 
-@keyframes dotPulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(85, 216, 145, 0.28);
+@media (prefers-reduced-motion: reduce) {
+  .topology-line {
+    animation: none;
+    stroke-dasharray: none;
   }
 
-  70% {
-    box-shadow: 0 0 0 8px rgba(85, 216, 145, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(85, 216, 145, 0);
-  }
-}
-
-@media (max-width: 1180px) {
-  .shell-grid {
-    grid-template-columns: minmax(0, 1fr) 390px;
-    gap: 24px;
-    padding: 24px;
-  }
-
-  .brand-title {
-    font-size: 40px;
-  }
-
-  .ops-board {
-    min-height: 390px;
-  }
-
-  .metrics-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .captcha-button,
+  .login-button,
+  .login-form :deep(.el-input__wrapper) {
+    transition: none;
   }
 }
 
-@media (max-width: 1080px) {
-  .login-page {
-    overflow-y: auto;
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
   }
 
-  .shell-grid {
+  .brand-pane {
     min-height: auto;
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .login-panel {
-    grid-column: auto;
-    grid-row: auto;
-    max-width: 520px;
-    margin: 0 auto 24px;
-  }
-
-  .ops-stage {
-    grid-column: auto;
-    grid-row: auto;
-    order: 2;
-  }
-
-  .brand-title {
-    font-size: 34px;
-  }
-
-  .ops-footer {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-height: 820px) and (min-width: 941px) {
-  .shell-grid {
-    gap: 28px;
-    padding-top: 20px;
-    padding-bottom: 20px;
-  }
-
-  .ops-stage {
+    border-right: 0;
+    border-bottom: 1px solid var(--login-border);
+    padding: 28px 24px 22px;
     gap: 16px;
   }
 
   .brand-title {
-    font-size: 40px;
-  }
-
-  .brand-copy {
-    margin-top: 10px;
+    font-size: 28px;
   }
 
   .ops-board {
-    min-height: 386px;
+    min-height: 280px;
   }
 
-  .ops-footer {
-    display: none;
+  .capability-row {
+    grid-template-columns: 1fr 1fr;
   }
 
-  .login-panel-top {
-    min-height: 104px;
-    padding-top: 18px;
-    padding-bottom: 18px;
+  .login-pane {
+    min-height: auto;
   }
 
-  .login-form {
-    gap: 13px;
-    padding-top: 20px;
-    padding-bottom: 20px;
+  .login-head,
+  .login-form,
+  .login-panel-bottom {
+    padding-left: 24px;
+    padding-right: 24px;
   }
 }
 
-@media (max-width: 640px) {
-  .shell-grid {
-    gap: 18px;
-    padding: 16px;
+@media (max-width: 560px) {
+  .login-page {
+    padding: 20px 12px 24px;
   }
 
-  .status-strip {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .brand-title {
-    font-size: 30px;
-  }
-
-  .brand-copy {
-    font-size: 15px;
-  }
-
-  .ops-board {
-    min-height: 560px;
-  }
-
-  .topology-wrap {
-    inset: 48px 0 160px;
-  }
-
-  .node {
-    min-width: 118px;
-  }
-
-  .node-core {
-    top: 45%;
-    left: 50%;
-  }
-
-  .node-prometheus {
-    top: 9%;
-    left: 8%;
-  }
-
-  .node-alert {
-    top: 9%;
-    right: 6%;
-  }
-
-  .node-k8s {
-    bottom: 8%;
-    left: 8%;
-  }
-
-  .node-docker {
-    right: 6%;
-    bottom: 8%;
-  }
-
-  .metrics-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .capabilities {
+  .capability-row {
     grid-template-columns: 1fr;
+  }
+
+  .brand-footer {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .captcha-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) 100px;
   }
 
   .captcha-button {
-    width: 112px;
+    width: 100px;
   }
 
-  .login-panel-top,
-  .login-form,
-  .login-panel-bottom {
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 1ms !important;
+  .node {
+    min-width: 104px;
+    padding: 8px 10px;
   }
 
-  .topology-line {
-    stroke-dasharray: none;
+  .node-title {
+    font-size: 12px;
+  }
+
+  .node-meta {
+    font-size: 10px;
   }
 }
 </style>

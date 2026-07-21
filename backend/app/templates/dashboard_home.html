@@ -140,14 +140,14 @@
     {% endif %}
 
     {# 告警动态 #}
-    {% if can.get('alerts.view') %}
+    {% if can.get('monitoring.view') %}
     <div class="panel">
       <div class="panel-head">
         <div>
           <p class="section-kicker">告警动态</p>
           <h3>最近告警</h3>
         </div>
-        <a class="small-btn" href="/alerts">查看全部</a>
+        <a class="small-btn" href="/monitoring/events">查看全部</a>
       </div>
       {% if summary.recent_alerts %}
       <div class="table-wrap">

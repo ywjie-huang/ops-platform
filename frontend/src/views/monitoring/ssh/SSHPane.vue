@@ -6,16 +6,15 @@
     @mousedown="$emit('activate', pane.id)"
     @focus="$emit('activate', pane.id)"
   >
-    <div class="pane-header">
+    <div v-if="canClose" class="pane-header">
       <div class="pane-title">
-        <span class="status-dot" :class="`is-${status}`" />
+        <span class="status-dot" :class="statusDotClass" />
         <span>{{ pane.title }}</span>
       </div>
       <div class="pane-meta">
         <span v-if="connected">{{ loginUsername }}@{{ hostIp }}:{{ loginPort }}</span>
         <span v-if="terminalSize">{{ terminalSize }}</span>
         <button
-          v-if="canClose"
           type="button"
           class="pane-close"
           aria-label="关闭窗格"
@@ -41,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -105,6 +104,7 @@ const loginPort = ref(22)
 const currentKeyId = ref<number | undefined>()
 const connectionStartTime = ref(0)
 const connectionTime = ref('')
+const statusDotClass = computed(() => `is-${status.value}`)
 
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -480,21 +480,17 @@ defineExpose({
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #27304d;
-  border-radius: 7px;
-  background: #111624;
+  border: 0;
+  background: var(--ssh-term, #0a0e12);
   outline: none;
-  transition: border-color 0.16s ease-out, box-shadow 0.16s ease-out, transform 0.16s ease-out;
 
   &.is-active {
-    border-color: #6ea8fe;
-    box-shadow:
-      inset 0 0 0 1px rgb(110 168 254 / 26%),
-      0 0 0 1px rgb(110 168 254 / 8%);
+    box-shadow: none;
   }
 
   &:focus-visible {
-    border-color: #6ea8fe;
+    outline: 1px solid var(--ssh-accent, #5b9fd4);
+    outline-offset: -1px;
   }
 }
 
@@ -503,19 +499,19 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 34px;
-  padding: 0 9px 0 10px;
-  color: #c3ccee;
-  background: linear-gradient(180deg, #1b2235, #171d2d);
-  border-bottom: 1px solid #27304d;
-  font-size: 12px;
+  min-height: 22px;
+  padding: 0 8px;
+  color: var(--ssh-muted, #6b7785);
+  background: var(--ssh-panel, #0f141b);
+  border-bottom: 1px solid var(--ssh-border, #1c2430);
+  font-size: 11px;
 }
 
 .pane-title,
 .pane-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 
   span:last-child {
@@ -525,52 +521,53 @@ defineExpose({
   }
 }
 
+.pane-title span:last-child {
+  color: var(--ssh-text, #d8dee9);
+}
+
 .pane-meta {
   flex-shrink: 0;
-  color: #7f8aaa;
+  color: var(--ssh-muted, #6b7785);
   font-variant-numeric: tabular-nums;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #565f89;
+  background: var(--ssh-faint, #3d4754);
 
   &.is-connected {
-    background: #4ade80;
-    box-shadow: 0 0 0 3px rgb(74 222 128 / 12%);
+    background: var(--ssh-ok, #3dd68c);
+    box-shadow: 0 0 0 3px var(--ssh-ok-dim, rgba(61, 214, 140, 0.12));
   }
 
   &.is-connecting {
-    background: #f6c177;
-    box-shadow: 0 0 0 3px rgb(246 193 119 / 12%);
+    background: var(--ssh-warn, #e0b44e);
+    box-shadow: 0 0 0 3px var(--ssh-warn-dim, rgba(224, 180, 78, 0.12));
   }
 
-  &.is-error {
-    background: #ff7b93;
-    box-shadow: 0 0 0 3px rgb(255 123 147 / 12%);
-  }
-
+  &.is-error,
   &.is-disconnected {
-    background: #6ea8fe;
+    background: var(--ssh-danger, #e86c7a);
+    box-shadow: 0 0 0 3px var(--ssh-danger-dim, rgba(232, 108, 122, 0.12));
   }
 }
 
 .pane-close {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
-  color: #7f8bb3;
+  color: var(--ssh-muted, #6b7785);
   cursor: pointer;
 
   &:hover,
   &:focus-visible {
-    background: #2a314b;
-    color: #f4f7ff;
+    background: var(--ssh-hover, #1a222d);
+    color: var(--ssh-text, #d8dee9);
     outline: none;
   }
 }
@@ -578,11 +575,9 @@ defineExpose({
 .terminal-container {
   flex: 1;
   min-height: 0;
-  padding: 10px;
+  padding: 8px 10px;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 2%), transparent 26px),
-    #0f1420;
+  background: var(--ssh-term, #0a0e12);
 
   :deep(.xterm) {
     height: 100%;
@@ -594,18 +589,8 @@ defineExpose({
 }
 
 @media (max-width: 768px) {
-  .pane-header {
-    min-height: 32px;
-  }
-
   .pane-meta span:first-child {
     display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ssh-pane {
-    transition: none;
   }
 }
 </style>

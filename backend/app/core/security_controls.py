@@ -28,7 +28,6 @@ class EmergencyAccessControls:
     ssh_terminal: bool = False
     sftp: bool = False
     batch_exec: bool = False
-    ssh_key_management: bool = False
     deploy_webhook: bool = False
 
     @classmethod
@@ -38,7 +37,6 @@ class EmergencyAccessControls:
             ssh_terminal=parse_env_bool(source.get("ENABLE_SSH_TERMINAL")),
             sftp=parse_env_bool(source.get("ENABLE_SFTP")),
             batch_exec=parse_env_bool(source.get("ENABLE_BATCH_EXEC")),
-            ssh_key_management=parse_env_bool(source.get("ENABLE_SSH_KEY_MANAGEMENT")),
             deploy_webhook=parse_env_bool(source.get("ENABLE_DEPLOY_WEBHOOK")),
         )
 

@@ -1,97 +1,92 @@
 <template>
-  <div class="ssh-toolbar">
+  <header class="ssh-toolbar">
     <div class="toolbar-left">
-      <el-button text size="small" aria-label="返回" @click="$router.back()">
+      <button type="button" class="icon-btn" aria-label="返回" title="返回" @click="$router.back()">
         <el-icon><ArrowLeft /></el-icon>
-      </el-button>
-      <el-divider direction="vertical" />
-      <span class="host-info">
-        <span :class="['status-dot', connected ? 'dot-green' : 'dot-grey']" />
-        <strong>{{ hostName }}</strong>
+      </button>
+      <div class="host-block">
+        <span :class="['status-dot', connected ? 'is-ok' : 'is-idle']" />
+        <strong class="host-name">{{ hostName || '未知主机' }}</strong>
         <span class="host-ip">{{ hostIp }}</span>
-      </span>
+      </div>
+      <span class="sep" />
     </div>
 
     <div class="toolbar-center">
-      <el-tooltip content="复制选中内容" placement="bottom">
-        <el-button text size="small" :disabled="!connected" @click="$emit('copy')">
-          <el-icon><CopyDocument /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip content="粘贴" placement="bottom">
-        <el-button text size="small" :disabled="!connected" @click="$emit('paste')">
-          <el-icon><DocumentCopy /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-divider direction="vertical" />
-      <el-tooltip content="清屏" placement="bottom">
-        <el-button text size="small" :disabled="!connected" @click="$emit('clear')">
-          <el-icon><Delete /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-divider direction="vertical" />
-      <el-tooltip content="缩小字体" placement="bottom">
-        <el-button text size="small" @click="$emit('change-font-size', -1)">
-          <span class="font-button font-button-small">A-</span>
-        </el-button>
-      </el-tooltip>
-      <span class="font-size-label">{{ fontSize }}px</span>
-      <el-tooltip content="放大字体" placement="bottom">
-        <el-button text size="small" @click="$emit('change-font-size', 1)">
-          <span class="font-button font-button-large">A+</span>
-        </el-button>
-      </el-tooltip>
-      <el-divider direction="vertical" />
-      <el-tooltip content="全屏" placement="bottom">
-        <el-button text size="small" @click="$emit('toggle-fullscreen')">
-          <el-icon><FullScreen /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip content="左右分屏" placement="bottom">
-        <el-button text size="small" :disabled="!canSplit" @click="$emit('split-vertical')">
-          <el-icon><DCaret /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip content="上下分屏" placement="bottom">
-        <el-button text size="small" :disabled="!canSplit" @click="$emit('split-horizontal')">
-          <el-icon class="rotate-icon"><DCaret /></el-icon>
-        </el-button>
-      </el-tooltip>
+      <slot name="tabs" />
     </div>
 
     <div class="toolbar-right">
-      <el-tooltip content="协作面板" placement="bottom">
-        <el-button
-          text
-          size="small"
-          :type="showFilePanel ? 'primary' : 'default'"
-          @click="$emit('toggle-file-panel')"
-        >
-          <el-icon><FolderOpened /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-divider direction="vertical" />
-      <el-tooltip v-if="connected" content="断开连接" placement="bottom">
-        <el-button text size="small" type="danger" @click="$emit('disconnect')">
-          <el-icon><SwitchButton /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip v-else content="重新连接" placement="bottom">
-        <el-button text size="small" type="success" @click="$emit('reconnect')">
-          <el-icon><RefreshRight /></el-icon>
-        </el-button>
-      </el-tooltip>
+      <button
+        type="button"
+        class="icon-btn"
+        title="左右分屏"
+        aria-label="左右分屏"
+        :disabled="!canSplit"
+        @click="$emit('split-vertical')"
+      >
+        <el-icon><DCaret /></el-icon>
+      </button>
+      <button
+        type="button"
+        class="icon-btn rotate"
+        title="上下分屏"
+        aria-label="上下分屏"
+        :disabled="!canSplit"
+        @click="$emit('split-horizontal')"
+      >
+        <el-icon><DCaret /></el-icon>
+      </button>
+      <span class="sep" />
+      <button type="button" class="icon-btn font-btn" title="缩小字体" aria-label="缩小字体" @click="$emit('change-font-size', -1)">
+        A-
+      </button>
+      <button type="button" class="icon-btn font-btn large" title="放大字体" aria-label="放大字体" @click="$emit('change-font-size', 1)">
+        A+
+      </button>
+      <span class="sep" />
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ active: showFilePanel }"
+        title="文件面板"
+        aria-label="文件面板"
+        @click="$emit('toggle-file-panel')"
+      >
+        <el-icon><FolderOpened /></el-icon>
+      </button>
+      <button type="button" class="icon-btn" title="全屏" aria-label="全屏" @click="$emit('toggle-fullscreen')">
+        <el-icon><FullScreen /></el-icon>
+      </button>
+      <span class="sep" />
+      <button
+        v-if="connected"
+        type="button"
+        class="icon-btn danger"
+        title="断开连接"
+        aria-label="断开连接"
+        @click="$emit('disconnect')"
+      >
+        <el-icon><SwitchButton /></el-icon>
+      </button>
+      <button
+        v-else
+        type="button"
+        class="icon-btn ok"
+        title="重新连接"
+        aria-label="重新连接"
+        @click="$emit('reconnect')"
+      >
+        <el-icon><RefreshRight /></el-icon>
+      </button>
     </div>
-  </div>
+  </header>
 </template>
 
 <script setup lang="ts">
 import {
   ArrowLeft,
-  CopyDocument,
   DCaret,
-  Delete,
-  DocumentCopy,
   FolderOpened,
   FullScreen,
   RefreshRight,
@@ -108,9 +103,6 @@ defineProps<{
 }>()
 
 defineEmits<{
-  copy: []
-  paste: []
-  clear: []
   'change-font-size': [delta: number]
   'toggle-fullscreen': []
   'split-vertical': []
@@ -123,157 +115,146 @@ defineEmits<{
 
 <style lang="scss" scoped>
 .ssh-toolbar {
-  display: flex;
-  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  height: 44px;
-  padding: 0 10px 0 12px;
+  height: 36px;
+  padding: 0 8px 0 6px;
+  background: var(--ssh-panel);
+  border-bottom: 1px solid var(--ssh-border);
   user-select: none;
-  background: #171c2c;
-  border: 1px solid #303a5c;
-  border-radius: 8px;
-  box-shadow: 0 8px 22px rgb(0 0 0 / 16%);
-
-  .el-button {
-    width: 28px;
-    height: 28px;
-    color: #aeb8d8;
-    border-radius: 6px;
-
-    &:hover {
-      color: #f4f7ff;
-      background: #242c43;
-    }
-
-    &:focus-visible {
-      outline: 2px solid #6ea8fe;
-      outline-offset: 1px;
-    }
-  }
-
-  .el-divider {
-    height: 18px;
-    border-color: #303a5c;
-  }
 }
 
 .toolbar-left,
-.toolbar-center,
-.toolbar-right {
+.toolbar-right,
+.toolbar-center {
   display: flex;
   align-items: center;
-  gap: 4px;
   min-width: 0;
+}
+
+.toolbar-left {
+  gap: 6px;
+}
+
+.toolbar-right {
+  gap: 2px;
+  justify-content: flex-end;
 }
 
 .toolbar-center {
-  flex: 1 1 auto;
-  justify-content: center;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
+}
 
-  &::-webkit-scrollbar {
-    display: none;
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--ssh-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--ssh-text);
+    background: var(--ssh-hover);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  &.active {
+    color: var(--ssh-accent);
+    background: var(--ssh-accent-dim);
+  }
+
+  &.danger:hover:not(:disabled) {
+    color: var(--ssh-danger);
+    background: var(--ssh-danger-dim);
+  }
+
+  &.ok {
+    color: var(--ssh-ok);
+  }
+
+  &.rotate .el-icon {
+    transform: rotate(90deg);
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--ssh-accent);
+    outline-offset: 1px;
   }
 }
 
-.toolbar-left,
-.toolbar-right {
-  flex: 0 0 auto;
+.font-btn {
+  font-size: 11px;
+  font-weight: 700;
+
+  &.large {
+    font-size: 13px;
+  }
 }
 
-.host-info {
+.sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--ssh-border);
+}
+
+.host-block {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: #e8edff;
-  font-size: 13px;
-
-  strong {
-    overflow: hidden;
-    max-width: 130px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.host-ip {
-  padding: 2px 7px;
-  color: #94a1c4;
-  background: #101624;
-  border: 1px solid #293352;
-  border-radius: 999px;
-  font-size: 12px;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
   border-radius: 50%;
+  background: var(--ssh-faint);
 
-  &.dot-green {
-    background: #4ade80;
-    box-shadow: 0 0 0 3px rgb(74 222 128 / 14%);
-  }
-
-  &.dot-grey {
-    background: #65708f;
+  &.is-ok {
+    background: var(--ssh-ok);
+    box-shadow: 0 0 0 3px var(--ssh-ok-dim);
   }
 }
 
-.font-size-label {
-  min-width: 38px;
-  padding: 2px 6px;
-  color: #93a0c0;
-  background: #101624;
-  border: 1px solid #293352;
-  border-radius: 5px;
+.host-name {
+  overflow: hidden;
+  max-width: 140px;
+  color: var(--ssh-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-ip {
+  color: var(--ssh-muted);
+  font-family: var(--ssh-font-mono);
   font-size: 11px;
-  text-align: center;
-}
-
-.font-button {
-  font-weight: 700;
-}
-
-.font-button-small {
-  font-size: 12px;
-}
-
-.font-button-large {
-  font-size: 16px;
-}
-
-.rotate-icon {
-  transform: rotate(90deg);
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
-  .ssh-toolbar {
-    height: 42px;
-    min-height: 42px;
-    padding: 0 8px;
-  }
-
-  .toolbar-center {
-    justify-content: flex-start;
-  }
-
   .host-ip {
     display: none;
   }
 
-  .host-info strong {
+  .host-name {
     max-width: 96px;
-  }
-}
-
-@media (max-width: 640px) {
-  .host-info strong {
-    display: none;
   }
 }
 </style>

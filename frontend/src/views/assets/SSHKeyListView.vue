@@ -89,17 +89,32 @@
         <!-- 密码认证 -->
         <template v-if="form.auth_type === 'password'">
           <el-form-item label="SSH 密码" prop="password">
-            <el-input v-model="form.password" type="password" show-password placeholder="请输入 SSH 密码" />
+            <el-input
+              v-model="form.password"
+              type="password"
+              show-password
+              :placeholder="editingId ? '留空表示不修改已有密码' : '请输入 SSH 密码'"
+            />
           </el-form-item>
         </template>
 
         <!-- 私钥认证 -->
         <template v-if="form.auth_type === 'key'">
           <el-form-item label="私钥内容" prop="private_key">
-            <el-input v-model="form.private_key" type="textarea" :rows="6" placeholder="粘贴私钥内容（以 -----BEGIN 开头）" />
+            <el-input
+              v-model="form.private_key"
+              type="textarea"
+              :rows="6"
+              :placeholder="editingId ? '留空表示不修改已有私钥' : '粘贴私钥内容（以 -----BEGIN 开头）'"
+            />
           </el-form-item>
           <el-form-item label="私钥密码">
-            <el-input v-model="form.passphrase" type="password" show-password placeholder="如果私钥有密码保护请填写" />
+            <el-input
+              v-model="form.passphrase"
+              type="password"
+              show-password
+              :placeholder="editingId ? '留空表示不修改已有口令' : '如果私钥有密码保护请填写'"
+            />
           </el-form-item>
         </template>
 
@@ -172,7 +187,7 @@ async function fetchData(extra?: any) {
 async function showDialog(row?: any) {
   editingId.value = row?.id || null
   if (row) {
-    // 编辑模式：获取详情（含敏感字段）
+    // 编辑模式：详情不再返回秘密原文，凭据字段留空表示“不修改”
     try {
       const res: any = await getSSHKey(row.id)
       const key = res.data
@@ -180,9 +195,9 @@ async function showDialog(row?: any) {
         name: key.name,
         auth_type: key.auth_type,
         username: key.username,
-        password: key.password || '',
-        private_key: key.private_key || '',
-        passphrase: key.passphrase || '',
+        password: '',
+        private_key: '',
+        passphrase: '',
         port: key.port,
         description: key.description || '',
         is_default: key.is_default,

@@ -8,19 +8,33 @@ from app.models.user import User
 
 
 DEFAULT_ROLE_PERMISSION_CODES = {
-    "viewer": ["dashboard.view", "reports.view", "assets.view", "containers.view", "monitoring.view", "users.view", "roles.view", "tickets.view", "alerts.view", "audit.view"],
+    "viewer": [
+        "dashboard.view",
+        "reports.view",
+        "assets.view",
+        "ssh_keys.view",
+        "containers.view",
+        "monitoring.view",
+        "users.view",
+        "roles.view",
+        "tickets.view",
+        "audit.view",
+    ],
     "asset_admin": [
         "dashboard.view",
         "reports.view",
         "assets.view",
-        "containers.view",
-        "monitoring.view",
         "assets.create",
         "assets.update",
+        "ssh_keys.view",
+        "ssh_keys.create",
+        "ssh_keys.update",
+        "ssh_keys.delete",
+        "containers.view",
+        "monitoring.view",
         "users.view",
         "roles.view",
         "tickets.view",
-        "alerts.view",
         "audit.view",
     ],
 }
@@ -156,10 +170,10 @@ PERMISSION_LABELS = {
     "dashboard": "仪表盘",
     "reports": "报表中心",
     "assets": "主机管理",
+    "ssh_keys": "主机密钥",
     "containers": "容器管理",
     "tickets": "工单协作",
-    "alerts": "告警中心",
-    "monitoring": "监控指标",
+    "monitoring": "主机监控",
     "monitoring_host": "主机监控",
     "users": "用户管理",
     "roles": "角色权限",
@@ -176,18 +190,18 @@ def build_permission_tree(permissions):
         "dashboard": ("报表大屏", 1),
         "reports": ("报表大屏", 1),
         "assets": ("资产管理", 2),
+        "ssh_keys": ("资产管理", 2),
         "containers": ("资产管理", 2),
         "monitoring": ("监控告警", 3),
         "tickets": ("工单协作", 4),
-        "alerts": ("告警中心", 5),
-        "users": ("用户管理", 6),
-        "roles": ("用户管理", 6),
-        "audit": ("系统管理", 7),
-        "settings": ("系统管理", 7),
-        "batch_exec": ("批量执行", 8),
-        "patrol": ("巡检中心", 9),
+        "users": ("用户管理", 5),
+        "roles": ("用户管理", 5),
+        "audit": ("系统管理", 6),
+        "settings": ("系统管理", 6),
+        "batch_exec": ("批量执行", 7),
+        "patrol": ("巡检中心", 8),
     }
-    PARENT_ORDER = {"报表大屏": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "告警中心": 5, "用户管理": 6, "系统管理": 7, "批量执行": 8, "巡检中心": 9}
+    PARENT_ORDER = {"报表大屏": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "用户管理": 5, "系统管理": 6, "批量执行": 7, "巡检中心": 8}
 
     children: dict[str, dict[str, list]] = {}
     child_order: dict[str, list[str]] = {}

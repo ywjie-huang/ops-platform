@@ -97,16 +97,16 @@
         <p class="section-kicker">关联告警</p>
         <h3>与此资产相关的告警</h3>
       </div>
-      {% if can.get('alerts.view') %}<a class="small-btn" href="/alerts">全部告警</a>{% endif %}
+      {% if can.get('monitoring.view') %}<a class="small-btn" href="/monitoring/events">全部告警</a>{% endif %}
     </div>
     <div class="activity-feed">
       {% for a in alerts %}
       <div class="feed-item compact">
-        <div class="feed-dot tone-{% if a.status == 'pending' %}red{% elif a.status == 'confirmed' %}orange{% elif a.status == 'resolved' %}green{% else %}default{% endif %}"></div>
+        <div class="feed-dot tone-{% if a.status == 'firing' %}red{% elif a.status == 'resolved' %}green{% else %}default{% endif %}"></div>
         <div class="feed-body">
           <div class="feed-head">
             <strong>{{ a.title }}</strong>
-            <span class="status-tag tone-{% if a.status == 'pending' %}red{% elif a.status == 'confirmed' %}orange{% elif a.status == 'resolved' %}green{% else %}default{% endif %}">{{ a.status }}</span>
+            <span class="status-tag tone-{% if a.status == 'firing' %}red{% elif a.status == 'resolved' %}green{% else %}default{% endif %}">{{ a.status }}</span>
           </div>
           <p class="feed-meta">{{ a.level }} · {{ a.source or '未知来源' }} · {{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
         </div>
