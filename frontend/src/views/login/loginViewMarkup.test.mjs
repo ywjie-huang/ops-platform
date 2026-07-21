@@ -7,12 +7,14 @@ import { dirname, join } from 'node:path'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const loginView = readFileSync(join(currentDir, 'LoginView.vue'), 'utf8')
 
-test('login page uses refined command-center layout with lite topology', () => {
+test('login page uses spotlight split layout with brand topology panel', () => {
   assert.match(loginView, /Ops Platform/)
+  assert.match(loginView, /INTERNAL OPS CONSOLE/)
   assert.match(loginView, /运维拓扑/)
-  assert.match(loginView, /示意接入关系，非实时状态/)
-  assert.match(loginView, /安全入口/)
-  assert.match(loginView, /使用平台账号进入值班工作台/)
+  assert.match(loginView, /示意接入关系 · 非实时状态/)
+  assert.match(loginView, /安全登录/)
+  assert.match(loginView, /opsctl login --env production/)
+  assert.match(loginView, /监控告警/)
   assert.match(loginView, /refreshCaptcha/)
   assert.match(loginView, /handleLogin/)
   assert.match(loginView, /@keyup\.enter="handleLogin"/)
