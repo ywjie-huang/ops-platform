@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import ALERTMANAGER_URL, PROMETHEUS_URL
 from app.models.system_config import SystemConfig
 
 # 前端/调用方用该标记表示“不修改已有密钥”
@@ -13,8 +14,8 @@ UNCHANGED_SECRET = "__UNCHANGED__"
 
 # 默认值（来自原 config.py）
 _DEFAULTS: dict[str, str] = {
-    "prometheus.url": "http://172.16.24.31:30001",
-    "alertmanager.url": "http://172.16.24.31:30093",
+    "prometheus.url": PROMETHEUS_URL,
+    "alertmanager.url": ALERTMANAGER_URL,
     # 巡检阈值
     "patrol.cpu_warning": "80",
     "patrol.cpu_critical": "95",

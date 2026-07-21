@@ -30,7 +30,7 @@ DEMO_PASSWORD: Final = "admin123"
 DEPLOY_ARTIFACT_DIR: Final = DATA_DIR / "deploy_artifacts"
 
 # Prometheus 配置
-PROMETHEUS_URL: Final = "http://172.16.24.31:30001"
+PROMETHEUS_URL: Final = os.environ.get("PROMETHEUS_URL", "").strip().rstrip("/")
 
 # Alertmanager 配置
-ALERTMANAGER_URL: Final = "http://172.16.24.31:30093"
+ALERTMANAGER_URL: Final = os.environ.get("ALERTMANAGER_URL", "").strip().rstrip("/")

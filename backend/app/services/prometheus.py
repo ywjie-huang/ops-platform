@@ -28,8 +28,10 @@ _INSTANCE_CACHE_TTL = 60  # 60 秒刷新一次
 async def _query_batch(exprs: dict[str, str], prom_url: str = "") -> dict[str, dict]:
     """批量并发查询，共享一个 HTTP 客户端。"""
     base_url = prom_url or PROMETHEUS_URL
-    url = f"{base_url}/api/v1/query"
     results: dict[str, dict] = {}
+    if not base_url:
+        return results
+    url = f"{base_url}/api/v1/query"
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async def _do(name: str, expr: str):
@@ -62,8 +64,10 @@ async def _query_range_batch(
 ) -> dict[str, dict]:
     """批量并发查询 Prometheus range 数据。"""
     base_url = prom_url or PROMETHEUS_URL
-    url = f"{base_url}/api/v1/query_range"
     results: dict[str, dict] = {}
+    if not base_url:
+        return results
+    url = f"{base_url}/api/v1/query_range"
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async def _do(name: str, expr: str):
@@ -136,9 +140,12 @@ async def discover_instances(prom_url: str = "") -> dict[str, str]:
     if _instance_cache and (now - _instance_cache_ts) < _INSTANCE_CACHE_TTL:
         return _instance_cache
 
+    base_url = prom_url or PROMETHEUS_URL
+    if not base_url:
+        return {}
+
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            base_url = prom_url or PROMETHEUS_URL
             resp = await client.get(f"{base_url}/api/v1/targets")
             resp.raise_for_status()
             data = resp.json()
@@ -362,6 +369,8 @@ async def get_host_trends(
 
 async def check_prometheus_health(db=None) -> bool:
     prom_url = get_prometheus_url(db) if db else PROMETHEUS_URL
+    if not prom_url:
+        return False
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{prom_url}/api/v1/status/config")
@@ -373,6 +382,8 @@ async def check_prometheus_health(db=None) -> bool:
 
 async def get_targets(db=None) -> list[dict[str, Any]]:
     prom_url = get_prometheus_url(db) if db else PROMETHEUS_URL
+    if not prom_url:
+        return []
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{prom_url}/api/v1/targets")

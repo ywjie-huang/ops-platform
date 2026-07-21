@@ -30,6 +30,8 @@ _TIMEOUT = httpx.Timeout(connect=5, read=10, write=5, pool=5)
 async def check_alertmanager_health(db=None) -> bool:
     """检查 Alertmanager 是否可达。"""
     am_url = get_alertmanager_url(db) if db else ALERTMANAGER_URL
+    if not am_url:
+        return False
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{am_url}/api/v2/status")
@@ -42,6 +44,8 @@ async def check_alertmanager_health(db=None) -> bool:
 async def get_alerts(db=None) -> list[dict[str, Any]]:
     """获取当前活跃告警列表。"""
     am_url = get_alertmanager_url(db) if db else ALERTMANAGER_URL
+    if not am_url:
+        return []
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(f"{am_url}/api/v2/alerts")
@@ -67,6 +71,8 @@ async def get_alerts(db=None) -> list[dict[str, Any]]:
 async def get_rules(db=None) -> list[dict[str, Any]]:
     """获取告警规则列表（来自 Prometheus /api/v1/rules，Alertmanager 本身不存规则）。"""
     prom_url = get_prometheus_url(db) if db else PROMETHEUS_URL
+    if not prom_url:
+        return []
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

@@ -28,8 +28,8 @@ router = APIRouter(prefix="/settings", tags=["系统配置"])
 
 # 可配置的 key 清单及描述
 _CONFIG_SPECS: dict[str, str] = {
-    "prometheus.url": "Prometheus 服务地址（例：http://172.16.24.31:30001）",
-    "alertmanager.url": "Alertmanager 服务地址（例：http://172.16.24.31:30093）",
+    "prometheus.url": "Prometheus 服务地址（例：http://prometheus:9090）",
+    "alertmanager.url": "Alertmanager 服务地址（例：http://alertmanager:9093）",
     "jenkins_config": "Jenkins 配置（JSON：url, username, token）",
     "llm.base_url": "LLM API 地址（OpenAI 兼容，例：https://api.openai.com/v1）",
     "llm.api_key": "LLM API Key",

@@ -16,7 +16,7 @@
 - Create: `backend/tests/test_empty_initial_data.py`
 - Modify: `backend/app/db/init_db.py`
 
-- [ ] **Step 1: Write failing tests for exact-match cleanup**
+- [x] **Step 1: Write failing tests for exact-match cleanup**
 
 Create SQLite-backed tests that insert the original three demo assets and three demo tickets, call `_cleanup_legacy_demo_data(db)`, and assert all six are deleted. Add separate records with one modified field and assert they remain.
 
@@ -34,13 +34,13 @@ def test_cleanup_removes_only_untouched_legacy_demo_records(db):
     assert db.scalar(select(Asset).where(Asset.id == modified.id)) is not None
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run: `python -m pytest backend/tests/test_empty_initial_data.py -v`
 
 Expected: import failure because `_cleanup_legacy_demo_data` does not exist.
 
-- [ ] **Step 3: Implement exact-match cleanup and remove seed calls**
+- [x] **Step 3: Implement exact-match cleanup and remove seed calls**
 
 Add immutable tuples containing every original stable field. Delete matching demo tickets before matching assets, using SQLAlchemy `delete()` with conjunctions across all fields. Remove `_seed_assets()` and `_seed_tickets()` from `init_db()` and call `_cleanup_legacy_demo_data(db)` instead.
 
@@ -53,7 +53,7 @@ def _cleanup_legacy_demo_data(db: Session) -> None:
     db.flush()
 ```
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run: `python -m pytest backend/tests/test_empty_initial_data.py -v`
 
@@ -68,7 +68,7 @@ Expected: all cleanup tests pass.
 - Modify: `backend/app/services/prometheus.py`
 - Modify: `backend/app/services/alertmanager.py`
 
-- [ ] **Step 1: Write failing tests for unconfigured integrations**
+- [x] **Step 1: Write failing tests for unconfigured integrations**
 
 Patch `httpx.AsyncClient` to raise if constructed. Assert Prometheus health is false, targets/instances/host summaries are empty, Alertmanager health is false, and alerts/rules are empty when the resolved URL is empty.
 
@@ -79,13 +79,13 @@ async def test_unconfigured_alert_rules_return_empty_without_http(monkeypatch):
     assert await alertmanager.get_rules(object()) == []
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `python -m pytest backend/tests/test_empty_initial_data.py -v`
 
 Expected: HTTP client construction assertion fails.
 
-- [ ] **Step 3: Implement empty defaults and service short-circuits**
+- [x] **Step 3: Implement empty defaults and service short-circuits**
 
 Read integration defaults from environment variables and default them to an empty string. Add `if not url: return ...` guards immediately after URL resolution in every externally calling public service used by monitoring and alert pages.
 
@@ -94,7 +94,7 @@ PROMETHEUS_URL: Final = os.environ.get("PROMETHEUS_URL", "").strip().rstrip("/")
 ALERTMANAGER_URL: Final = os.environ.get("ALERTMANAGER_URL", "").strip().rstrip("/")
 ```
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run: `python -m pytest backend/tests/test_empty_initial_data.py -v`
 
@@ -105,13 +105,13 @@ Expected: all empty-configuration tests pass without constructing an HTTP client
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-21-empty-initial-data.md` (checkbox status only)
 
-- [ ] **Step 1: Run backend full suite**
+- [x] **Step 1: Run backend full suite**
 
 Run: `python -m pytest backend`
 
 Expected: all tests pass.
 
-- [ ] **Step 2: Inspect final diff and initialization calls**
+- [x] **Step 2: Inspect final diff and initialization calls**
 
 Run: `git diff --check` and `rg -n "_seed_assets|_seed_tickets|172\\.16\\.24\\.31" backend/app`
 

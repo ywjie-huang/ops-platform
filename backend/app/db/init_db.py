@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pymysql
 from passlib.context import CryptContext
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import DEMO_PASSWORD, DEMO_USERNAME, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_USER
@@ -29,6 +29,63 @@ USER_DELETE_SET_NULL_FOREIGN_KEYS = (
 
 USER_DELETE_CASCADE_FOREIGN_KEYS = (
     ("user_roles", "user_id", "users", "id"),
+)
+
+_LEGACY_DEMO_ASSETS = (
+    {
+        "name": "web-prod-01",
+        "asset_type": "云主机",
+        "ip_address": "10.10.1.12",
+        "status": "使用中",
+        "owner": "平台组",
+        "spec": "4C8G",
+        "os": "Ubuntu 22.04",
+        "description": "核心业务 Web 节点",
+    },
+    {
+        "name": "db-prod-01",
+        "asset_type": "数据库",
+        "ip_address": "10.10.1.21",
+        "status": "使用中",
+        "owner": "DBA",
+        "spec": "8C16G",
+        "os": "CentOS 7.9",
+        "description": "主数据库实例",
+    },
+    {
+        "name": "waf-gateway",
+        "asset_type": "网络设备",
+        "ip_address": "10.10.1.2",
+        "status": "已关机",
+        "owner": "安全组",
+        "spec": "2C4G",
+        "os": "Debian 11",
+        "description": "统一入口网关",
+    },
+)
+
+_LEGACY_DEMO_TICKETS = (
+    {
+        "title": "新增监控项配置",
+        "description": "需要为 web-prod-01 添加 CPU、内存、磁盘监控告警规则",
+        "priority": "normal",
+        "status": "in_progress",
+        "assignee": "张三",
+    },
+    {
+        "title": "数据库慢查询排查",
+        "description": "近期 db-prod-01 出现多条慢查询，需要排查优化",
+        "priority": "high",
+        "status": "open",
+        "assignee": "李四",
+    },
+    {
+        "title": "SSL 证书续期",
+        "description": "api.example.com 证书将在 7 天后到期，需要续期并部署",
+        "priority": "critical",
+        "status": "open",
+        "assignee": "王五",
+    },
 )
 
 
@@ -471,8 +528,7 @@ def init_db() -> None:
         _seed_permissions(db)
         _seed_users(db)
         _seed_admin_permissions(db)
-        _seed_assets(db)
-        _seed_tickets(db)
+        _cleanup_legacy_demo_data(db)
         _seed_deploy_environments(db)
         from app.services.roles import sync_default_roles
 
@@ -589,83 +645,21 @@ def _seed_permissions(db: Session) -> None:
     db.flush()
 
 
-def _seed_assets(db: Session) -> None:
-    existing_asset = db.scalar(select(Asset).limit(1))
-    if existing_asset:
-        return
+def _cleanup_legacy_demo_data(db: Session) -> None:
+    """Remove untouched demo records created by older platform releases."""
+    for spec in _LEGACY_DEMO_TICKETS:
+        db.execute(
+            delete(Ticket).where(
+                *(getattr(Ticket, field) == value for field, value in spec.items())
+            )
+        )
 
-    db.add_all(
-        [
-            Asset(
-                name="web-prod-01",
-                asset_type="云主机",
-                ip_address="10.10.1.12",
-                status="使用中",
-                owner="平台组",
-                spec="4C8G",
-                os="Ubuntu 22.04",
-                description="核心业务 Web 节点",
-            ),
-            Asset(
-                name="db-prod-01",
-                asset_type="数据库",
-                ip_address="10.10.1.21",
-                status="使用中",
-                owner="DBA",
-                spec="8C16G",
-                os="CentOS 7.9",
-                description="主数据库实例",
-            ),
-            Asset(
-                name="waf-gateway",
-                asset_type="网络设备",
-                ip_address="10.10.1.2",
-                status="已关机",
-                owner="安全组",
-                spec="2C4G",
-                os="Debian 11",
-                description="统一入口网关",
-            ),
-        ]
-    )
+    for spec in _LEGACY_DEMO_ASSETS:
+        db.execute(
+            delete(Asset).where(
+                *(getattr(Asset, field) == value for field, value in spec.items()),
+                ~select(Ticket.id).where(Ticket.asset_id == Asset.id).exists(),
+            )
+        )
 
-
-def _seed_tickets(db: Session) -> None:
-    existing = db.scalar(select(Ticket).limit(1))
-    if existing:
-        return
-
-    assets = list(db.scalars(select(Asset)).all())
-    admin = db.scalar(select(User).where(User.username == DEMO_USERNAME))
-
-    db.add_all(
-        [
-            Ticket(
-                title="新增监控项配置",
-                description="需要为 web-prod-01 添加 CPU、内存、磁盘监控告警规则",
-                priority="normal",
-                status="in_progress",
-                assignee="张三",
-                asset_id=assets[0].id if assets else None,
-                creator_id=admin.id if admin else None,
-            ),
-            Ticket(
-                title="数据库慢查询排查",
-                description="近期 db-prod-01 出现多条慢查询，需要排查优化",
-                priority="high",
-                status="open",
-                assignee="李四",
-                asset_id=assets[1].id if len(assets) > 1 else None,
-                creator_id=admin.id if admin else None,
-            ),
-            Ticket(
-                title="SSL 证书续期",
-               description="api.example.com 证书将在 7 天后到期，需要续期并部署",
-                priority="critical",
-                status="open",
-                assignee="王五",
-                asset_id=None,
-                creator_id=admin.id if admin else None,
-            ),
-        ]
-    )
+    db.flush()
