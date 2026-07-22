@@ -3,46 +3,31 @@
     <div class="page-heading">
       <div>
         <h1 class="page-title">主机管理</h1>
-        <p class="page-subtitle">
-          按信息完整度和连接就绪度管理主机，优先暴露 SSH 未配置、负责人缺失和状态异常资产。
-        </p>
+        <p class="page-subtitle">管理主机资产台账与 SSH 接入，点击统计卡可快速定位待处理主机。</p>
       </div>
       <div class="heading-actions">
         <el-button :icon="Upload">批量导入</el-button>
+        <el-button :icon="Download" :loading="exporting" @click="exportAll">导出</el-button>
         <el-button type="primary" :icon="Plus" @click="showDialog()">新增主机</el-button>
       </div>
     </div>
 
     <div class="summary-grid" role="region" aria-label="主机资产总览">
-      <div class="metric-card">
-        <div class="metric-label">主机总数 <span class="status-dot dot-info" /></div>
-        <div class="metric-value">{{ stats.total }}</div>
-        <div class="metric-foot">资产库当前记录</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">使用中 <span class="status-dot dot-success" /></div>
-        <div class="metric-value is-success">{{ stats.active }}</div>
-        <div class="metric-foot">{{ activeRate }} 可纳入日常操作</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">已关机 <span class="status-dot dot-warning" /></div>
-        <div class="metric-value is-warning">{{ stats.shutdown }}</div>
-        <div class="metric-foot">建议确认是否闲置</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">SSH 已配置 <span class="status-dot dot-success" /></div>
-        <div class="metric-value">{{ inventoryStats.sshReady }}</div>
-        <div class="metric-foot">密码或密钥认证</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">信息不完整 <span class="status-dot dot-danger" /></div>
-        <div class="metric-value is-danger">{{ inventoryStats.incomplete }}</div>
-        <div class="metric-foot">缺负责人、规格或 SSH</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">需关注 <span class="status-dot dot-danger" /></div>
-        <div class="metric-value is-danger">{{ inventoryStats.attention }}</div>
-        <div class="metric-foot">风险优先排在前面</div>
+      <div
+        v-for="card in cards"
+        :key="card.key"
+        class="metric-card"
+        :class="{ active: activeCard === card.key }"
+        role="button"
+        tabindex="0"
+        @click="toggleCard(card.key)"
+        @keyup.enter="toggleCard(card.key)"
+      >
+        <div class="metric-label">{{ card.label }} <span class="status-dot" :class="card.dot" /></div>
+        <div class="metric-value" :class="card.valueClass">
+          {{ card.value }}<span v-if="card.ratio" class="metric-ratio">{{ card.ratio }}</span>
+        </div>
+        <div class="metric-foot">{{ card.foot }}</div>
       </div>
     </div>
 
@@ -55,42 +40,51 @@
           :prefix-icon="Search"
           placeholder="搜索主机名、IP、负责人"
           aria-label="搜索主机名、IP、负责人"
-          @keyup.enter="fetchData"
-          @clear="fetchData"
         />
-        <el-select v-model="filters.status" placeholder="全部状态" clearable aria-label="状态筛选" @change="fetchData">
+        <el-select v-model="filters.status" placeholder="全部状态" clearable aria-label="状态筛选" @change="applyFilters">
           <el-option v-for="s in statusList" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
-        <el-select v-model="filters.asset_type" placeholder="全部类型" clearable aria-label="类型筛选" @change="fetchData">
+        <el-select v-model="filters.asset_type" placeholder="全部类型" clearable aria-label="类型筛选" @change="applyFilters">
           <el-option v-for="t in assetTypes" :key="t" :label="t" :value="t" />
         </el-select>
-        <el-select v-model="sshFilter" placeholder="SSH 全部" aria-label="SSH 筛选">
+        <el-select v-model="sshFilter" placeholder="SSH 全部" aria-label="SSH 筛选" @change="applyFilters">
           <el-option label="SSH 全部" value="" />
           <el-option label="已配置" value="ready" />
           <el-option label="未配置" value="missing" />
           <el-option label="密钥认证" value="key" />
         </el-select>
-        <el-select v-model="sortMode" placeholder="排序" aria-label="排序方式">
-          <el-option label="风险优先" value="risk" />
-          <el-option label="最近创建" value="created" />
-          <el-option label="主机名" value="name" />
-          <el-option label="完整度" value="completeness" />
-        </el-select>
       </div>
       <div class="filter-right">
         <el-button text @click="resetFilters">重置</el-button>
-        <el-button :icon="Refresh" @click="fetchData">刷新</el-button>
+        <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
       </div>
+    </div>
+
+    <div v-if="selectedRows.length" class="batch-bar">
+      <span class="batch-bar-count">已选 <b>{{ selectedRows.length }}</b> 台主机</span>
+      <el-button link type="primary" @click="openOwnerDialog">批量分配负责人</el-button>
+      <el-button link type="primary" @click="exportSelected">导出所选</el-button>
+      <el-button link type="danger" :loading="batchLoading" @click="handleBatchDelete">批量删除</el-button>
+      <span class="batch-bar-spacer" />
+      <el-button link @click="clearSelection">取消选择</el-button>
     </div>
 
     <div class="asset-table-card">
       <div class="table-meta">
-        <span>已筛选出 {{ filteredItems.length }} 台主机，默认将 SSH 未配置、信息缺失和异常状态排在前面。</span>
-        <span>当前页 {{ items.length }} 条 / 共 {{ total }} 条</span>
+        <span>共 {{ total }} 台主机，默认按风险优先排序（SSH 未配置、信息缺失和异常状态排在前面）。</span>
+        <span>当前页 {{ items.length }} 条</span>
       </div>
       <div class="table-wrapper">
-        <el-table :data="displayItems" v-loading="loading" class="asset-table">
-          <el-table-column label="主机" min-width="230">
+        <el-table
+          ref="tableRef"
+          :data="items"
+          v-loading="loading"
+          class="asset-table"
+          @selection-change="handleSelectionChange"
+          @sort-change="handleSortChange"
+        >
+          <el-table-column type="selection" width="40" />
+          <el-table-column label="主机" min-width="230" prop="name" sortable="custom">
             <template #default="{ row }">
               <div class="host-cell">
                 <span class="risk-rail" :class="riskRailClass(row)" />
@@ -102,7 +96,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="status" label="状态" width="110">
+          <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="statusTagType(row.status)" size="small" round>
                 <span class="tag-dot" :class="statusDotClass(row.status)" />{{ row.status }}
@@ -110,34 +104,26 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="类型 / 系统" min-width="150">
+          <el-table-column label="类型 / 规格" min-width="170">
             <template #default="{ row }">
               <div class="cell-stack">
                 <span class="cell-primary">{{ row.asset_type || '-' }}</span>
-                <span class="cell-secondary">{{ row.os || '系统未填写' }}</span>
+                <span class="cell-secondary">
+                  <template v-if="row.spec">{{ row.spec }}</template>
+                  <span v-else class="is-warning">规格未填写</span>
+                  · {{ row.os || '系统未填写' }}
+                </span>
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column label="规格" min-width="130">
+          <el-table-column label="负责人" min-width="110" prop="owner" sortable="custom">
             <template #default="{ row }">
-              <div class="cell-stack">
-                <span class="cell-primary" :class="{ 'is-warning': !row.spec }">{{ row.spec || '未填写' }}</span>
-                <span class="cell-secondary">硬件配置</span>
-              </div>
+              <span class="cell-primary" :class="{ 'is-warning': !row.owner }">{{ row.owner || '未分配' }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="负责人" min-width="130">
-            <template #default="{ row }">
-              <div class="cell-stack">
-                <span class="cell-primary" :class="{ 'is-warning': !row.owner }">{{ row.owner || '未分配' }}</span>
-                <span class="cell-secondary">责任归属</span>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="SSH 状态" min-width="130">
+          <el-table-column label="SSH" min-width="110">
             <template #default="{ row }">
               <el-tag :type="sshTagType(row)" size="small" round>
                 <span class="tag-dot" :class="sshDotClass(row)" />{{ getAssetSshState(row).label }}
@@ -145,30 +131,24 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="完整度" min-width="150">
+          <el-table-column label="完整度" min-width="150" prop="completeness" sortable="custom">
             <template #default="{ row }">
-              <div class="completeness">
-                <span class="progress-track">
-                  <span class="progress-bar" :class="completenessClass(row)" :style="{ width: `${getAssetCompleteness(row).percent}%` }" />
-                </span>
-                <span :class="completenessTextClass(row)">{{ getAssetCompleteness(row).percent }}%</span>
-              </div>
+              <el-tooltip :content="completenessTip(row)" placement="top" :show-after="200">
+                <div class="completeness">
+                  <span class="progress-track">
+                    <span class="progress-bar" :class="completenessClass(row)" :style="{ width: `${getAssetCompleteness(row).percent}%` }" />
+                  </span>
+                  <span :class="completenessTextClass(row)">{{ getAssetCompleteness(row).percent }}%</span>
+                </div>
+              </el-tooltip>
             </template>
           </el-table-column>
 
-          <el-table-column label="创建时间" min-width="120">
-            <template #default="{ row }">
-              <div class="cell-stack">
-                <span class="cell-primary">{{ formatAssetDate(row.created_at) }}</span>
-                <span class="cell-secondary">资产入库</span>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="操作" width="150" fixed="right" align="center">
+          <el-table-column label="操作" width="170" fixed="right" align="center">
             <template #default="{ row }">
               <div class="action-cell">
-                <el-button size="small" type="info" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/hosts/${row.public_id}`)">详情</el-button>
+                <el-button size="small" type="primary" link :aria-label="`查看 ${row.name} 详情`" @click="$router.push(`/assets/hosts/${row.public_id}`)">详情</el-button>
+                <el-button size="small" type="primary" link :aria-label="`编辑 ${row.name}`" @click="showDialog(row)">编辑</el-button>
                 <el-popconfirm title="确认删除该资产？" @confirm="handleDelete(row.id)">
                   <template #reference>
                     <el-button size="small" type="danger" link :aria-label="`删除 ${row.name}`">删除</el-button>
@@ -196,7 +176,7 @@
 
     <el-drawer
       v-model="dialogVisible"
-      title="新增主机"
+      :title="editingRow ? `编辑主机 · ${editingRow.name}` : '新增主机'"
       direction="rtl"
       size="560px"
       destroy-on-close
@@ -276,8 +256,8 @@
               <el-radio-button value="key">SSH 密钥</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-show="form.auth_method === 'password'" label="密码" class="credential-form-item">
-            <el-input v-model="form.ssh_password" type="password" show-password placeholder="SSH 登录密码" />
+          <el-form-item v-show="form.auth_method === 'password'" :label="editingRow ? '密码（留空则不修改）' : '密码'" class="credential-form-item">
+            <el-input v-model="form.ssh_password" type="password" show-password :placeholder="editingRow ? '留空则保持原密码' : 'SSH 登录密码'" />
           </el-form-item>
           <el-form-item v-show="form.auth_method === 'key'" label="SSH 密钥" class="credential-form-item">
             <el-select v-model="form.ssh_key_id" placeholder="请选择 SSH 密钥" class="form-control" clearable>
@@ -308,37 +288,53 @@
         <div class="drawer-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
           <div class="drawer-footer-right">
-            <el-button :loading="saving" @click="handleSave(true)">保存并继续</el-button>
+            <el-button v-if="!editingRow" :loading="saving" @click="handleSave(true)">保存并继续</el-button>
             <el-button type="primary" :loading="saving" @click="handleSave(false)">保存</el-button>
           </div>
         </div>
       </template>
     </el-drawer>
+
+    <el-dialog v-model="ownerDialogVisible" title="批量分配负责人" width="420px" destroy-on-close>
+      <p class="owner-dialog-tip">将为选中的 {{ selectedRows.length }} 台主机统一设置负责人：</p>
+      <el-autocomplete
+        v-model="ownerInput"
+        :fetch-suggestions="fetchOwnerSuggestions"
+        placeholder="输入姓名搜索，或直接填写"
+        clearable
+        class="form-control"
+        @keyup.enter="submitBatchOwner"
+      />
+      <template #footer>
+        <el-button @click="ownerDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchLoading" @click="submitBatchOwner">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
-import { createAsset, deleteAsset, getAssets, getAssetStats } from '@/api/assets'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TableInstance } from 'element-plus'
+import { Download, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { createAsset, deleteAsset, getAssets, getAssetStats, updateAsset } from '@/api/assets'
 import { getSSHKeys } from '@/api/sshKeys'
 import { getUsers } from '@/api/users'
 import { usePagination } from '@/hooks/usePagination'
 import {
   buildAssetPayload,
   createAssetForm,
+  createAssetFormFromAsset,
   isValidIpAddress,
   type AssetForm,
 } from '@/utils/assetForm'
 import {
   formatAssetDate,
   getAssetCompleteness,
+  getAssetMissingFields,
   getAssetSshState,
   getCompletenessTone,
-  isAttentionAsset,
-  sortAssetsByRisk,
   type AssetLike,
 } from '@/utils/assetDisplay'
 
@@ -351,17 +347,26 @@ type AssetItem = AssetLike & {
   status: string
 }
 
+type CardKey = 'all' | 'active' | 'sshReady' | 'sshMissing'
+
 const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
+const exporting = ref(false)
+const batchLoading = ref(false)
 const items = ref<AssetItem[]>([])
+const selectedRows = ref<AssetItem[]>([])
 const dialogVisible = ref(false)
+const ownerDialogVisible = ref(false)
+const ownerInput = ref('')
+const editingRow = ref<AssetItem | null>(null)
 const formRef = ref<FormInstance>()
+const tableRef = ref<TableInstance>()
 const sshKeys = ref<any[]>([])
 const sshFilter = ref('')
-const sortMode = ref('risk')
+const ordering = ref('risk')
 
-const stats = reactive({ total: 0, active: 0, shutdown: 0, deleted: 0 })
+const stats = reactive({ total: 0, active: 0, shutdown: 0, deleted: 0, sshReady: 0, sshMissing: 0 })
 
 const assetTypes = ['云主机', '数据库', '网络设备', '中间件', '其他']
 const statusList = [
@@ -402,34 +407,45 @@ const rules: FormRules<AssetForm> = {
 }
 
 const activeRate = computed(() => {
-  if (!stats.total) return '0%'
+  if (!stats.total) return ''
   return `${Math.round((stats.active / stats.total) * 100)}%`
 })
 
-const filteredItems = computed(() => items.value.filter((item) => {
-  const ssh = getAssetSshState(item).state
-  if (sshFilter.value === 'ready') return ssh === 'key' || ssh === 'password'
-  if (sshFilter.value === 'missing') return ssh === 'missing' || ssh === 'partial'
-  if (sshFilter.value === 'key') return ssh === 'key'
-  return true
-}))
-
-const displayItems = computed(() => {
-  const list = [...filteredItems.value]
-  if (sortMode.value === 'created') return list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-  if (sortMode.value === 'name') return list.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  if (sortMode.value === 'completeness') return list.sort((a, b) => getAssetCompleteness(a).percent - getAssetCompleteness(b).percent)
-  return sortAssetsByRisk(list)
+const sshReadyRate = computed(() => {
+  if (!stats.total) return ''
+  return `${Math.round((stats.sshReady / stats.total) * 100)}%`
 })
 
-const inventoryStats = computed(() => {
-  const base = items.value
-  return {
-    sshReady: base.filter((item) => ['key', 'password'].includes(getAssetSshState(item).state)).length,
-    incomplete: base.filter((item) => getAssetCompleteness(item).percent < 90).length,
-    attention: base.filter(isAttentionAsset).length,
+const cards = computed<{ key: CardKey; label: string; value: number; ratio: string; foot: string; dot: string; valueClass?: string }[]>(() => [
+  { key: 'all', label: '主机总数', value: stats.total, ratio: '', foot: '资产库当前记录', dot: 'dot-info' },
+  { key: 'active', label: '使用中', value: stats.active, ratio: activeRate.value, foot: '可纳入日常操作', dot: 'dot-success', valueClass: 'is-success' },
+  { key: 'sshReady', label: 'SSH 就绪', value: stats.sshReady, ratio: sshReadyRate.value, foot: '密码或密钥认证可用', dot: 'dot-success' },
+  { key: 'sshMissing', label: 'SSH 未配置', value: stats.sshMissing, ratio: '', foot: '点击查看待接入主机', dot: 'dot-danger', valueClass: 'is-danger' },
+])
+
+const activeCard = computed<CardKey>(() => {
+  if (filters.status === '使用中') return 'active'
+  if (sshFilter.value === 'ready') return 'sshReady'
+  if (sshFilter.value === 'missing') return 'sshMissing'
+  return 'all'
+})
+
+function toggleCard(key: CardKey) {
+  if (key === 'all') {
+    filters.status = ''
+    sshFilter.value = ''
+  } else if (key === 'active') {
+    filters.status = filters.status === '使用中' ? '' : '使用中'
+    sshFilter.value = ''
+  } else if (key === 'sshReady') {
+    sshFilter.value = sshFilter.value === 'ready' ? '' : 'ready'
+    filters.status = ''
+  } else {
+    sshFilter.value = sshFilter.value === 'missing' ? '' : 'missing'
+    filters.status = ''
   }
-})
+  applyFilters()
+}
 
 function riskRailClass(row: AssetItem) {
   const tone = getCompletenessTone(getAssetCompleteness(row).percent)
@@ -460,17 +476,35 @@ function completenessTextClass(row: AssetItem) {
   return `is-${getCompletenessTone(getAssetCompleteness(row).percent)}`
 }
 
+function completenessTip(row: AssetItem) {
+  const missing = getAssetMissingFields(row)
+  return missing.length ? `缺失：${missing.join('、')}，点击「编辑」补全` : '信息完整'
+}
+
 async function fetchStats() {
   try {
     const res: any = await getAssetStats()
-    Object.assign(stats, res.data)
+    Object.assign(stats, {
+      total: res.data.total ?? 0,
+      active: res.data.active ?? 0,
+      shutdown: res.data.shutdown ?? 0,
+      deleted: res.data.deleted ?? 0,
+      sshReady: res.data.ssh_ready ?? 0,
+      sshMissing: res.data.ssh_missing ?? 0,
+    })
   } catch { /* ignore */ }
 }
 
 async function fetchData(extra?: any) {
   loading.value = true
   try {
-    const params = { ...filters, page: extra?.page || currentPage.value, page_size: extra?.page_size || pageSize.value }
+    const params = {
+      ...filters,
+      ssh: sshFilter.value,
+      ordering: ordering.value,
+      page: extra?.page || currentPage.value,
+      page_size: extra?.page_size || pageSize.value,
+    }
     const res: any = await getAssets(params)
     items.value = res.data.items
     total.value = res.data.total
@@ -479,12 +513,155 @@ async function fetchData(extra?: any) {
   }
 }
 
+function applyFilters() {
+  resetPagination()
+  fetchData()
+}
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => filters.keyword, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(applyFilters, 300)
+})
+
 function resetFilters() {
   Object.assign(filters, { keyword: '', asset_type: '', status: '' })
   sshFilter.value = ''
-  sortMode.value = 'risk'
+  ordering.value = 'risk'
   resetPagination()
   fetchData()
+}
+
+function refreshAll() {
+  fetchStats()
+  fetchData()
+}
+
+function handleSortChange({ prop, order }: { prop: string; order: 'ascending' | 'descending' | null }) {
+  ordering.value = order ? (order === 'ascending' ? prop : `-${prop}`) : 'risk'
+  applyFilters()
+}
+
+function handleSelectionChange(rows: AssetItem[]) {
+  selectedRows.value = rows
+}
+
+function clearSelection() {
+  tableRef.value?.clearSelection()
+}
+
+function buildRowPayload(row: AssetItem, owner: string) {
+  return {
+    name: row.name,
+    asset_type: row.asset_type,
+    ip_address: row.ip_address,
+    status: row.status,
+    owner,
+    description: row.description || '',
+    spec: row.spec || '',
+    os: row.os || '',
+    ssh_port: row.ssh_port || 22,
+    ssh_username: row.ssh_username || '',
+    ssh_password: '',
+    ssh_key_id: row.ssh_key_id ?? null,
+  }
+}
+
+function openOwnerDialog() {
+  ownerInput.value = ''
+  ownerDialogVisible.value = true
+}
+
+async function submitBatchOwner() {
+  const owner = ownerInput.value.trim()
+  if (!owner) {
+    ElMessage.warning('请输入负责人')
+    return
+  }
+  batchLoading.value = true
+  try {
+    await Promise.all(selectedRows.value.map((row) => updateAsset(row.id, buildRowPayload(row, owner))))
+    ElMessage.success(`已为 ${selectedRows.value.length} 台主机分配负责人`)
+    ownerDialogVisible.value = false
+    fetchData()
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedRows.value.length} 台主机？此操作不可恢复。`, '批量删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  batchLoading.value = true
+  try {
+    await Promise.all(selectedRows.value.map((row) => deleteAsset(row.id)))
+    ElMessage.success('删除成功')
+    clearSelection()
+    fetchData()
+    fetchStats()
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+function exportAssetsCsv(rows: AssetItem[], name: string) {
+  if (!rows.length) {
+    ElMessage.warning('没有可导出的数据')
+    return
+  }
+  const header = ['名称', 'IP 地址', '类型', '状态', '负责人', '规格', '操作系统', 'SSH 端口', 'SSH 用户名', '描述', '创建时间']
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const lines = [header.join(',')]
+  rows.forEach((row) => {
+    lines.push([
+      row.name,
+      row.ip_address,
+      row.asset_type,
+      row.status,
+      row.owner || '',
+      row.spec || '',
+      row.os || '',
+      row.ssh_port || '',
+      row.ssh_username || '',
+      row.description || '',
+      formatAssetDate(row.created_at),
+    ].map(esc).join(','))
+  })
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  link.href = url
+  link.download = `${name}-${stamp}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportAll() {
+  exporting.value = true
+  try {
+    const res: any = await getAssets({
+      ...filters,
+      ssh: sshFilter.value,
+      ordering: ordering.value,
+      page: 1,
+      page_size: Math.max(total.value, 1),
+    })
+    exportAssetsCsv(res.data.items || [], '主机导出')
+  } finally {
+    exporting.value = false
+  }
+}
+
+function exportSelected() {
+  exportAssetsCsv(selectedRows.value, '主机导出-所选')
 }
 
 async function fetchSSHKeys() {
@@ -506,8 +683,9 @@ async function fetchOwnerSuggestions(query: string, cb: (suggestions: { value: s
   }
 }
 
-function showDialog() {
-  Object.assign(form, createAssetForm())
+function showDialog(row?: AssetItem) {
+  editingRow.value = row || null
+  Object.assign(form, row ? createAssetFormFromAsset(row) : createAssetForm())
   fetchSSHKeys()
   dialogVisible.value = true
 }
@@ -517,13 +695,19 @@ async function handleSave(keepOpen = false) {
   if (!valid) return
   saving.value = true
   try {
-    await createAsset(buildAssetPayload(form))
-    ElMessage.success('创建成功')
-    if (keepOpen) {
-      Object.assign(form, createAssetForm())
-      formRef.value?.clearValidate()
-    } else {
+    if (editingRow.value) {
+      await updateAsset(editingRow.value.id, buildAssetPayload(form))
+      ElMessage.success('更新成功')
       dialogVisible.value = false
+    } else {
+      await createAsset(buildAssetPayload(form))
+      ElMessage.success('创建成功')
+      if (keepOpen) {
+        Object.assign(form, createAssetForm())
+        formRef.value?.clearValidate()
+      } else {
+        dialogVisible.value = false
+      }
     }
     fetchData()
     fetchStats()
@@ -594,7 +778,7 @@ onMounted(() => {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -609,6 +793,18 @@ onMounted(() => {
 .metric-card {
   padding: 12px 14px;
   min-width: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.metric-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgb(37 99 235 / 8%);
+}
+
+.metric-card.active {
+  border-color: var(--primary-color);
+  background: var(--primary-bg);
 }
 
 .metric-label {
@@ -626,6 +822,13 @@ onMounted(() => {
   color: var(--text-primary);
   font-size: 22px;
   font-weight: 750;
+}
+
+.metric-ratio {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .metric-foot {
@@ -686,6 +889,26 @@ onMounted(() => {
 .search-input {
   flex: 0 0 292px;
   width: 292px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--primary-bg);
+  border: 1px solid #bfdbfe;
+  border-radius: var(--border-radius);
+  color: var(--primary-color);
+  font-size: 13px;
+}
+
+.batch-bar-count b {
+  font-weight: 700;
+}
+
+.batch-bar-spacer {
+  flex: 1;
 }
 
 .asset-table-card {
@@ -890,9 +1113,15 @@ onMounted(() => {
   gap: 8px;
 }
 
+.owner-dialog-tip {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 @media (max-width: 1180px) {
   .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -40,6 +40,17 @@ export function getAssetCompleteness(asset: AssetLike) {
   }
 }
 
+export function getAssetMissingFields(asset: AssetLike): string[] {
+  const missing: string[] = []
+  if (!hasText(asset.owner)) missing.push('负责人')
+  if (!hasText(asset.spec)) missing.push('规格')
+  if (!hasText(asset.os)) missing.push('操作系统')
+  const sshState = getAssetSshState(asset).state
+  if (sshState === 'missing') missing.push('SSH')
+  else if (sshState === 'partial') missing.push('SSH 认证')
+  return missing
+}
+
 export function getAssetSshState(asset: AssetLike): { state: AssetSshState; label: string; tone: 'success' | 'warning' | 'danger' } {
   if (asset.ssh_key_id) return { state: 'key', label: '密钥认证', tone: 'success' }
   if (asset.has_ssh_password) return { state: 'password', label: '密码认证', tone: 'success' }

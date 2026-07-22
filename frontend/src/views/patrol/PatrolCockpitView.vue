@@ -1,245 +1,333 @@
 <template>
-  <div class="patrol-cockpit bigscreen-shell">
-    <span class="corner tl" aria-hidden="true"></span>
-    <span class="corner tr" aria-hidden="true"></span>
-    <span class="corner bl" aria-hidden="true"></span>
-    <span class="corner br" aria-hidden="true"></span>
-    <div class="scanline" aria-hidden="true"></div>
+  <div class="cockpit">
+    <div class="aurora" aria-hidden="true">
+      <span class="a1"></span>
+      <span class="a2"></span>
+      <span class="a3"></span>
+    </div>
+    <div class="grain" aria-hidden="true"></div>
 
-    <header class="bigscreen-topbar">
-      <div class="topbar-meta">
-        <button class="return-link" type="button" aria-label="返回巡检指挥台" @click="router.push('/patrol')">
-          <el-icon><Back /></el-icon>
-          <span>返回指挥台</span>
-        </button>
-        <span class="report-meta">{{ latestReport?.operator || '系统任务' }}</span>
-        <span class="report-meta">{{ relativeTime(latestReport?.created_at) }}</span>
-        <span class="live-pill">LIVE</span>
-      </div>
-
-      <div class="topbar-title" aria-label="巡检态势大屏">
-        <span class="title-line"></span>
-        <div>
-          <p>Patrol Situation</p>
-          <h2>巡检态势大屏</h2>
-        </div>
-        <span class="title-line"></span>
-      </div>
-
-      <div class="topbar-actions">
-        <span class="clock">{{ clockText }}</span>
-        <el-button class="screen-action" :loading="running" @click="handleRun">
-          <el-icon><VideoPlay /></el-icon>
-          立即巡检
-        </el-button>
-      </div>
-    </header>
-
-    <main v-loading="loading" class="bigscreen-dashboard">
-      <section class="metric-rail" aria-label="巡检核心指标">
-        <article
-          v-for="stat in cockpitStats"
-          :key="stat.key"
-          class="metric-tile"
-          :class="[stat.tone, { hero: stat.key === 'health' }]"
-        >
-          <span class="label">{{ stat.label }}</span>
-          <strong>{{ stat.value }}</strong>
-          <div v-if="stat.key === 'health'" class="ring-mini" aria-hidden="true">
-            <span>{{ stat.value }}</span>
-          </div>
-          <small>{{ stat.helper }}</small>
-          <div class="glow" aria-hidden="true"></div>
-        </article>
-      </section>
-
-      <section class="bigscreen-panel risk-queue" aria-label="高优先级风险队列">
-        <div class="panel-heading">
-          <div>
-            <span>Priority Queue</span>
-            <h3>优先风险队列</h3>
-          </div>
-          <strong>{{ priorityObjects.length }}</strong>
-        </div>
-
-        <div class="queue-list">
-          <article
-            v-for="(object, index) in priorityObjects"
-            :key="object.key"
-            class="queue-item"
-            :class="object.tone"
-          >
-            <div class="q-no">{{ String(index + 1).padStart(2, '0') }}</div>
-            <div class="q-body">
-              <div class="queue-top">
-                <span class="object-type">{{ object.categoryLabel }}</span>
-                <span class="status-chip" :class="object.tone">{{ object.priority }}</span>
-              </div>
-              <strong>{{ object.targetName }}</strong>
-              <p>{{ object.headline }}</p>
-              <div class="queue-foot">
-                <span>{{ object.critical }} 严重</span>
-                <span>{{ object.warning }} 警告</span>
-              </div>
-            </div>
-          </article>
-
-          <div v-if="!priorityObjects.length" class="empty-state compact">
-            <strong>暂无高优先级风险</strong>
-            <span>最近巡检未发现 P1/P2 对象。</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="bigscreen-panel radar-stage" role="img" aria-label="巡检风险雷达">
-        <div class="radar-header">
-          <span>Risk Radar</span>
-          <strong :class="statusTone(overview.status)">{{ overview.priorityLabel }}</strong>
-        </div>
-
-        <div class="radar-canvas">
-          <span class="radar-ring ring-outer"></span>
-          <span class="radar-ring ring-middle"></span>
-          <span class="radar-ring ring-inner"></span>
-          <span class="radar-axis axis-x"></span>
-          <span class="radar-axis axis-y"></span>
-          <span class="radar-sweep"></span>
-          <span class="radar-sector-label host">HOST</span>
-          <span class="radar-sector-label k8s">K8S</span>
-          <span class="radar-sector-label asset">ASSET</span>
-
-          <span
-            v-for="object in radarObjects"
-            :key="object.key"
-            class="radar-dot"
-            :class="object.tone"
-            :style="radarPointStyle(object)"
-            aria-hidden="true"
-          >
-            <span>{{ object.priority }}</span>
-          </span>
-
-          <div class="radar-core" :class="statusTone(overview.status)">
-            <span>{{ latestReport ? '当前态势' : '等待巡检' }}</span>
-            <strong>{{ latestReport ? overview.priorityLabel : '暂无报告' }}</strong>
-            <small>{{ latestReport?.summary || '执行一次巡检后将展示健康分、风险分布和战报。' }}</small>
-            <el-button v-if="!latestReport" class="empty-action" :loading="running" @click="handleRun">立即巡检</el-button>
-          </div>
-        </div>
-      </section>
-
-      <aside class="side-stack">
-        <section class="bigscreen-panel distribution-panel" aria-label="覆盖与风险分布">
-          <div class="panel-heading">
-            <div>
-              <span>Coverage</span>
-              <h3>覆盖与分布</h3>
-            </div>
-            <small>{{ relativeTime(latestReport?.created_at) }}</small>
-          </div>
-
-          <div class="category-grid">
-            <div v-for="lane in riskLanes" :key="lane.key" class="category-cell">
-              <span>{{ lane.label }}</span>
-              <strong>{{ lane.objects.length }}</strong>
-            </div>
-          </div>
-
-          <div class="severity-bars">
-            <div class="severity-row danger">
-              <span>严重</span>
-              <i><b :style="{ width: `${severityWidth(overview.critical)}%` }"></b></i>
-              <strong>{{ overview.critical }}</strong>
-            </div>
-            <div class="severity-row warning">
-              <span>警告</span>
-              <i><b :style="{ width: `${severityWidth(overview.warning)}%` }"></b></i>
-              <strong>{{ overview.warning }}</strong>
-            </div>
-            <div class="severity-row success">
-              <span>正常</span>
-              <i><b :style="{ width: `${severityWidth(overview.normal)}%` }"></b></i>
-              <strong>{{ overview.normal }}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="bigscreen-panel trend-panel" aria-label="最近巡检趋势">
-          <div class="panel-heading">
-            <div>
-              <span>Trend</span>
-              <h3>巡检趋势</h3>
-            </div>
-            <small>最近 {{ reports.length }} 次</small>
-          </div>
-
-          <div class="legend">
-            <span><i class="legend-critical"></i>严重</span>
-            <span><i class="legend-warning"></i>警告</span>
-            <span><i class="legend-normal"></i>正常</span>
-          </div>
-
-          <div class="trend-wrap">
-            <svg class="trend-chart" viewBox="0 0 360 128" role="img" aria-label="最近巡检异常趋势">
-              <defs>
-                <linearGradient id="critFill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(255,93,108,.28)" />
-                  <stop offset="100%" stop-color="rgba(255,93,108,0)" />
-                </linearGradient>
-                <linearGradient id="warnFill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(245,166,35,.18)" />
-                  <stop offset="100%" stop-color="rgba(245,166,35,0)" />
-                </linearGradient>
-              </defs>
-              <line class="grid" x1="0" y1="104" x2="360" y2="104" />
-              <line class="grid" x1="0" y1="68" x2="360" y2="68" />
-              <line class="grid" x1="0" y1="32" x2="360" y2="32" />
-              <path class="area-critical" :d="trendArea('critical_count')" />
-              <path class="area-warning" :d="trendArea('warning_count')" />
-              <path class="line-critical" :d="trendPath('critical_count')" />
-              <path class="line-warning" :d="trendPath('warning_count')" />
-              <path class="line-normal" :d="trendPath('normal_count')" />
-              <circle
-                v-for="point in trendEndPoints"
-                :key="point.key"
-                class="dot"
-                :cx="point.x"
-                :cy="point.y"
-                :r="point.r"
-                :fill="point.fill"
-              />
+    <div class="shell">
+      <!-- 顶栏 -->
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <path d="M3 12h4l3-8 4 16 3-8h4" />
             </svg>
           </div>
-        </section>
-      </aside>
-
-      <section class="battle-ticker" aria-label="巡检战报">
-        <div class="ticker-label">
-          <span>Battle Ticker</span>
-          <strong>巡检战报</strong>
-        </div>
-        <div class="ticker-viewport">
-          <div class="ticker-track" :class="{ still: !tickerItems.length }">
-            <article v-for="item in tickerItems" :key="item.key" class="ticker-item" :class="item.tone">
-              <span class="status-chip" :class="item.tone">{{ item.meta }}</span>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.detail }}</p>
-            </article>
-            <article v-if="!tickerItems.length" class="ticker-item success">
-              <span class="status-chip success">正常</span>
-              <strong>暂无风险战报</strong>
-              <p>执行巡检后，这里会展示重点对象和最近批次摘要。</p>
-            </article>
+          <div>
+            <div class="brand-eyebrow">Mission Control</div>
+            <div class="brand-title">巡检态势</div>
           </div>
         </div>
-      </section>
+        <div class="topbar-right">
+          <span class="live"><i></i>LIVE</span>
+          <span class="updated-pill">更新于 {{ updatedClock }}</span>
+          <div class="clock-box">
+            <div class="clock mono">{{ clockText }}</div>
+            <div class="date">{{ dateText }}</div>
+          </div>
+          <button class="btn-ghost" type="button" @click="router.push('/patrol')">返回指挥台</button>
+          <button class="btn-solid" type="button" :disabled="running" @click="handleRun">
+            {{ running ? '巡检中…' : '立即巡检' }}
+          </button>
+        </div>
+      </header>
 
-      <div v-if="errorMessage" class="error-banner" role="alert">
-        <strong>巡检态势加载失败</strong>
-        <span>{{ errorMessage }}</span>
-        <button type="button" @click="fetchCockpit">重试</button>
-      </div>
-    </main>
+      <main v-loading="loading" class="main">
+        <!-- 左：优先风险队列 -->
+        <section class="panel anim-panel" style="animation-delay: 0.1s" aria-label="优先风险队列">
+          <div class="panel-head">
+            <div>
+              <div class="eyebrow">Priority Queue</div>
+              <h3>优先风险</h3>
+            </div>
+            <span class="count">{{ queueObjects.length }}</span>
+          </div>
+          <div class="queue">
+            <article
+              v-for="(object, index) in queueObjects"
+              :key="object.key"
+              class="q-item anim-item"
+              :class="[toneClass(object.tone), { 'is-new': object.isNew, active: activeRisk === object.key }]"
+              :style="{ animationDelay: 0.2 + index * 0.09 + 's' }"
+              @click="activeRisk = activeRisk === object.key ? '' : object.key"
+            >
+              <div class="q-top">
+                <span class="q-type">{{ object.categoryLabel }}</span>
+                <span class="q-pill" :class="toneClass(object.tone)">{{ object.priority }}</span>
+                <span v-if="object.isNew" class="q-pill new">新增</span>
+                <span class="q-time">发现于 {{ foundAt }}</span>
+              </div>
+              <div class="q-name">{{ object.targetName }}</div>
+              <div class="q-head">{{ object.headline }}，{{ object.impact }}</div>
+              <div v-if="object.worst" class="q-metric">
+                <span>{{ object.worst.name }}</span>
+                <div class="track">
+                  <div class="fill" :style="{ width: entered ? Math.min(object.worst.pct, 100) + '%' : '0%' }"></div>
+                </div>
+                <b>{{ object.worst.value }}</b>
+              </div>
+            </article>
+            <div v-if="!queueObjects.length" class="empty-state">
+              <strong>暂无高优先级风险</strong>
+              <span>{{ latestReport ? '最近巡检未发现 P1/P2 对象。' : '执行一次巡检后展示风险队列。' }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 中：健康仪表盘 + 趋势 -->
+        <div class="center-stack">
+          <section class="panel gauge-panel anim-panel" style="animation-delay: 0.18s" aria-label="全局健康指数">
+            <div class="panel-head" style="width: 100%">
+              <div>
+                <div class="eyebrow">Health Index</div>
+                <h3>全局健康指数</h3>
+              </div>
+              <span class="head-meta">{{ relativeTime(latestReport?.created_at) }} · {{ latestReport?.operator || '系统任务' }}</span>
+            </div>
+            <div class="gauge-wrap">
+              <svg width="300" height="300" viewBox="0 0 300 300">
+                <defs>
+                  <linearGradient id="gaugeGrad" x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#8b8cf8" />
+                    <stop offset="55%" stop-color="#4dd8e6" />
+                    <stop offset="100%" stop-color="#3ddc97" />
+                  </linearGradient>
+                </defs>
+                <g class="gauge-ticks">
+                  <line v-for="(tick, i) in gaugeTicks" :key="i" :x1="tick.x1" :y1="tick.y1" :x2="tick.x2" :y2="tick.y2" />
+                </g>
+                <circle
+                  class="gauge-track"
+                  cx="150"
+                  cy="150"
+                  r="120"
+                  fill="none"
+                  stroke-width="13"
+                  :stroke-dasharray="arcLen"
+                  :stroke-dashoffset="arcTrackOffset"
+                  stroke-linecap="round"
+                  transform="rotate(150 150 150)"
+                />
+                <circle
+                  class="gauge-value"
+                  cx="150"
+                  cy="150"
+                  r="120"
+                  fill="none"
+                  stroke-width="13"
+                  :stroke-dasharray="arcLen"
+                  :stroke-dashoffset="arcValueOffset"
+                  transform="rotate(150 150 150)"
+                />
+              </svg>
+              <div class="gauge-center">
+                <div class="gauge-score mono" :class="{ crit: scoreTone === 'crit' }">
+                  {{ latestReport ? displayScore : '—' }}
+                </div>
+                <div class="gauge-label">Health Score</div>
+                <div class="gauge-status" :class="scoreTone">{{ statusText }}</div>
+                <button v-if="!latestReport" class="btn-solid" style="margin-top: 12px" :disabled="running" @click="handleRun">
+                  立即巡检
+                </button>
+                <div v-else class="gauge-cats">
+                  <span v-for="chip in catChips" :key="chip.key" class="cat-chip">
+                    <i :style="{ background: chip.color }"></i>{{ chip.short }} <b>{{ chip.count }}</b>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel trend-panel anim-panel" style="animation-delay: 0.26s" aria-label="健康分走势">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Trend</div>
+                <h3>健康分走势</h3>
+              </div>
+              <span class="head-meta">近 {{ trendItems.length }} 次巡检</span>
+            </div>
+            <div v-if="trendPoints.length" ref="trendBodyRef" class="trend-body">
+              <svg
+                class="trend-svg"
+                viewBox="0 0 640 150"
+                preserveAspectRatio="none"
+                @mousemove="onTrendHover"
+                @mouseleave="hoverIdx = -1"
+              >
+                <defs>
+                  <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(77, 216, 230, 0.2)" />
+                    <stop offset="100%" stop-color="rgba(77, 216, 230, 0)" />
+                  </linearGradient>
+                </defs>
+                <line class="grid" x1="14" y1="30" x2="626" y2="30" />
+                <line class="grid" x1="14" y1="70" x2="626" y2="70" />
+                <line class="grid" x1="14" y1="110" x2="626" y2="110" />
+                <line
+                  v-if="hoverIdx >= 0 && trendPoints[hoverIdx]"
+                  class="crosshair"
+                  :x1="trendPoints[hoverIdx].x"
+                  y1="14"
+                  :x2="trendPoints[hoverIdx].x"
+                  y2="126"
+                />
+                <path class="area" :d="trendArea" />
+                <path class="line" :d="trendLine" />
+                <circle
+                  v-for="(point, i) in trendPoints"
+                  :key="i"
+                  :class="[point.crit ? 'pt-crit' : 'pt', { 'pt-hover': i === hoverIdx }]"
+                  :cx="point.x"
+                  :cy="point.y"
+                  :r="i === hoverIdx ? 5 : point.crit ? 4 : 3"
+                />
+                <text
+                  v-for="tick in trendTicks"
+                  :key="'x' + tick.x"
+                  class="axis-label"
+                  :x="tick.x"
+                  y="146"
+                  text-anchor="middle"
+                >
+                  {{ tick.label }}
+                </text>
+              </svg>
+              <div v-if="hoverItem" class="trend-tip" :style="tipStyle">
+                <div>
+                  <span class="tt-score mono" :style="{ color: hoverItem.crit ? 'var(--c-crit)' : 'var(--c-cyan)' }">
+                    {{ hoverItem.score }}
+                  </span>
+                  分
+                </div>
+                <div class="tt-time">{{ hoverItem.full }}</div>
+                <div v-if="hoverItem.crit" class="tt-crit">⚠ 含严重项</div>
+              </div>
+            </div>
+            <div v-else class="empty-state">
+              <strong>暂无趋势数据</strong>
+              <span>执行巡检后展示健康分走势。</span>
+            </div>
+            <div class="trend-foot">
+              <span><i style="background: var(--c-cyan)"></i>健康分</span>
+              <span><i style="background: var(--c-crit)"></i>含严重项的批次</span>
+              <span v-if="deltaText" style="margin-left: auto">
+                较上次 <b :style="{ color: deltaColor }">{{ deltaText }}</b>
+              </span>
+            </div>
+          </section>
+        </div>
+
+        <!-- 右：异常构成 + 本批概览 -->
+        <div class="right-stack">
+          <section class="panel anim-panel" style="animation-delay: 0.22s" aria-label="异常构成">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Issue Types</div>
+                <h3>异常构成</h3>
+              </div>
+            </div>
+            <div v-if="donutSegments.length" class="donut-wrap">
+              <div class="donut">
+                <svg width="128" height="128" viewBox="0 0 128 128">
+                  <circle
+                    v-for="seg in donutSegments"
+                    :key="seg.type"
+                    cx="64"
+                    cy="64"
+                    r="50"
+                    fill="none"
+                    stroke-width="15"
+                    :stroke="seg.color"
+                    :stroke-dasharray="seg.dash"
+                    :stroke-dashoffset="seg.offset"
+                    opacity="0.92"
+                  />
+                </svg>
+                <div class="donut-center">
+                  <b class="mono">{{ totalIssues }}</b>
+                  <span>异常项</span>
+                </div>
+              </div>
+              <div class="donut-legend">
+                <div v-for="seg in donutSegments" :key="'l' + seg.type" class="dl-row">
+                  <i :style="{ background: seg.color, color: seg.color }"></i>{{ seg.type }}<b>{{ seg.count }}</b>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-state">
+              <strong>未发现异常</strong>
+              <span>{{ latestReport ? '本批巡检全部通过。' : '执行巡检后展示异常构成。' }}</span>
+            </div>
+          </section>
+
+          <section class="panel anim-panel" style="animation-delay: 0.3s" aria-label="本批概览">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Overview</div>
+                <h3>本批概览</h3>
+              </div>
+            </div>
+            <div class="mini-grid">
+              <div class="mini-tile crit">
+                <span class="mt-label">严重项</span><b>{{ overview.critical }}</b><small>P1 立即处置</small>
+              </div>
+              <div class="mini-tile warn">
+                <span class="mt-label">警告项</span><b>{{ overview.warning }}</b><small>P2 需观察</small>
+              </div>
+              <div class="mini-tile ok">
+                <span class="mt-label">正常项</span><b>{{ overview.normal }}</b><small>共 {{ overview.total }} 项</small>
+              </div>
+              <div class="mini-tile info">
+                <span class="mt-label">覆盖对象</span><b>{{ riskObjects.length }}</b><small>主机 / K8s / 资产</small>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <!-- 底部：风险榜单 -->
+      <section class="panel rank-panel anim-panel" style="animation-delay: 0.36s" aria-label="风险榜单">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Top Risks</div>
+            <h3>风险榜单</h3>
+          </div>
+          <span class="head-meta">按严重程度排序</span>
+        </div>
+        <div v-if="topRisks.length" class="rank-grid">
+          <article v-for="(object, index) in topRisks" :key="object.key" class="rk" :class="{ first: index === 0 }">
+            <div class="rk-top">
+              <span class="rk-no">{{ index + 1 }}</span>
+              <span class="rk-name">{{ object.targetName }}</span>
+              <span class="q-pill" :class="toneClass(object.tone)" style="margin-left: auto">{{ object.priority }}</span>
+            </div>
+            <div v-if="object.worst" class="rk-metric">
+              {{ object.worst.name }} <b>{{ object.worst.value }}</b> / 阈值 {{ object.worst.threshold }}
+            </div>
+            <div v-if="object.worst" class="rk-track">
+              <div
+                class="rk-fill"
+                :class="toneClass(object.tone)"
+                :style="{ width: entered ? Math.min(object.worst.pct, 100) + '%' : '0%' }"
+              ></div>
+            </div>
+          </article>
+        </div>
+        <div v-else class="empty-state">
+          <strong>暂无风险对象</strong>
+          <span>执行巡检后按严重程度展示 Top 风险。</span>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="errorMessage" class="error-banner" role="alert">
+      <strong>巡检态势加载失败</strong>
+      <span>{{ errorMessage }}</span>
+      <button type="button" @click="fetchCockpit">重试</button>
+    </div>
   </div>
 </template>
 
@@ -247,20 +335,36 @@
 import { computed, onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, VideoPlay } from '@element-plus/icons-vue'
 import { getPatrolReportDetail, getPatrolReports, runPatrol } from '@/api/patrol'
 import {
-  buildCockpitStats,
   buildPatrolOverview,
-  buildRadarObjects,
   buildRiskObjects,
-  buildTickerItems,
   groupRiskObjectsByCategory,
-  statusTone,
   type PatrolItemLike,
   type PatrolReportLike,
-  type RadarObject,
+  type PatrolTone,
+  type RiskObject,
 } from '@/utils/patrolCommand'
+
+interface WorstMetric {
+  name: string
+  value: string
+  threshold: string
+  pct: number
+}
+
+interface QueueObject extends RiskObject {
+  isNew: boolean
+  worst: WorstMetric | null
+}
+
+interface TrendItem {
+  id?: number
+  label: string
+  full: string
+  score: number
+  crit: boolean
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -269,18 +373,287 @@ const running = ref(false)
 const reports = ref<PatrolReportLike[]>([])
 const latestReport = ref<PatrolReportLike | null>(null)
 const detailItems = ref<PatrolItemLike[]>([])
+const prevDetailItems = ref<PatrolItemLike[]>([])
 const errorMessage = ref('')
 const clockText = ref('--:--:--')
+const dateText = ref('')
+const entered = ref(false)
+const activeRisk = ref('')
 let clockTimer: number | undefined
+let scoreRaf = 0
 
 const overview = computed(() => buildPatrolOverview(latestReport.value))
 const riskObjects = computed(() => buildRiskObjects(detailItems.value))
-const riskLanes = computed(() => groupRiskObjectsByCategory(riskObjects.value))
-const priorityObjects = computed(() => riskObjects.value.filter((item) => item.status !== 'normal').slice(0, 6))
-const radarObjects = computed(() => buildRadarObjects(riskObjects.value))
-const tickerItems = computed(() => buildTickerItems(priorityObjects.value, reports.value))
-const cockpitStats = computed(() => buildCockpitStats(latestReport.value, riskObjects.value.length, relativeTime(latestReport.value?.created_at)))
 
+const foundAt = computed(() => relativeTime(latestReport.value?.created_at))
+
+const updatedClock = computed(() => {
+  const value = latestReport.value?.created_at
+  if (!value) return '--:--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--:--'
+  return date.toLocaleTimeString('zh-CN', { hour12: false })
+})
+
+// ── 风险队列 ──
+const queueObjects = computed<QueueObject[]>(() => {
+  const prevKeys = new Set(
+    prevDetailItems.value.map((item) => `${item.category || 'other'}::${item.target_name || '未知对象'}`),
+  )
+  return riskObjects.value
+    .filter((object) => object.status !== 'normal')
+    .map((object) => ({
+      ...object,
+      isNew: prevDetailItems.value.length > 0 && !prevKeys.has(object.key),
+      worst: worstOf(object),
+    }))
+})
+
+const topRisks = computed(() => queueObjects.value.filter((object) => object.worst).slice(0, 5))
+
+function parseNum(value?: string) {
+  const match = String(value ?? '').match(/-?\d+(\.\d+)?/)
+  return match ? Number.parseFloat(match[0]) : null
+}
+
+function worstOf(object: RiskObject): WorstMetric | null {
+  const lead =
+    object.items.find((item) => item.status === 'critical') ||
+    object.items.find((item) => item.status === 'warning')
+  if (!lead) return null
+  const value = parseNum(lead.value)
+  const threshold = parseNum(lead.threshold)
+  let pct = 55
+  if (value != null && threshold != null && threshold > 0) {
+    pct = Math.min(100, Math.round((value / threshold) * 100))
+  } else if (value != null) {
+    pct = 70
+  }
+  return {
+    name: lead.check_name || '指标',
+    value: lead.value || '-',
+    threshold: lead.threshold || '-',
+    pct,
+  }
+}
+
+function toneClass(tone: PatrolTone) {
+  if (tone === 'danger') return 'crit'
+  if (tone === 'warning') return 'warn'
+  return 'ok'
+}
+
+// ── 仪表盘 ──
+const displayScore = ref(0)
+const arcLen = 2 * Math.PI * 120
+const arcFraction = 240 / 360
+const arcTrackOffset = arcLen * (1 - arcFraction)
+const arcValueOffset = computed(() => arcLen * (1 - arcFraction * (displayScore.value / 100)))
+
+const gaugeTicks = computed(() => {
+  const ticks: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+  for (let i = 0; i <= 20; i += 1) {
+    const angle = ((150 + (i / 20) * 240) * Math.PI) / 180
+    const r1 = 132
+    const r2 = i % 5 === 0 ? 124 : 128
+    ticks.push({
+      x1: 150 + Math.cos(angle) * r1,
+      y1: 150 + Math.sin(angle) * r1,
+      x2: 150 + Math.cos(angle) * r2,
+      y2: 150 + Math.sin(angle) * r2,
+    })
+  }
+  return ticks
+})
+
+const scoreTone = computed(() => {
+  if (!latestReport.value) return ''
+  const score = overview.value.healthScore
+  if (score >= 95) return 'ok'
+  if (score >= 90) return 'warn'
+  return 'crit'
+})
+
+const statusText = computed(() => {
+  if (!latestReport.value) return '暂无报告'
+  if (overview.value.critical > 0) return '需立即处置'
+  if (overview.value.warning > 0) return '需观察'
+  return '运行良好'
+})
+
+const LANE_STYLE: Record<string, { short: string; color: string }> = {
+  host: { short: '主机', color: '#4dd8e6' },
+  k8s: { short: 'K8s', color: '#8b8cf8' },
+  asset: { short: '资产', color: '#3ddc97' },
+}
+
+const catChips = computed(() =>
+  groupRiskObjectsByCategory(riskObjects.value).map((lane) => ({
+    key: lane.key,
+    short: LANE_STYLE[lane.key]?.short || lane.label,
+    color: LANE_STYLE[lane.key]?.color || '#98a2b6',
+    count: lane.objects.length,
+  })),
+)
+
+function animateScore(target: number) {
+  cancelAnimationFrame(scoreRaf)
+  const from = displayScore.value
+  const duration = 1300
+  const start = performance.now()
+  const frame = (now: number) => {
+    const progress = Math.min((now - start) / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    displayScore.value = Math.round(from + (target - from) * eased)
+    if (progress < 1) scoreRaf = requestAnimationFrame(frame)
+  }
+  scoreRaf = requestAnimationFrame(frame)
+}
+
+// ── 趋势 ──
+const trendItems = computed<TrendItem[]>(() =>
+  [...reports.value].reverse().map((report) => ({
+    id: report.id,
+    label: barLabel(report.created_at),
+    full: fullTime(report.created_at),
+    score: buildPatrolOverview(report).healthScore,
+    crit: (report.critical_count || 0) > 0,
+  })),
+)
+
+const trendPoints = computed(() => {
+  const list = trendItems.value
+  if (!list.length) return [] as Array<{ x: number; y: number; crit: boolean }>
+  const scores = list.map((item) => item.score)
+  const min = Math.min(...scores, 60)
+  const span = Math.max(100 - min, 10)
+  return list.map((item, index) => ({
+    x: list.length === 1 ? 320 : Math.round(14 + (index * 612) / (list.length - 1)),
+    y: Math.round(112 - ((item.score - min) / span) * 88),
+    crit: item.crit,
+  }))
+})
+
+const trendLine = computed(() =>
+  trendPoints.value.map((point, index) => (index === 0 ? 'M' : 'L') + point.x + ',' + point.y).join(' '),
+)
+
+const trendArea = computed(() => {
+  const points = trendPoints.value
+  if (!points.length) return ''
+  const last = points[points.length - 1]
+  const first = points[0]
+  return trendLine.value + ` L${last.x},126 L${first.x},126 Z`
+})
+
+const trendTicks = computed(() => {
+  const step = trendItems.value.length > 8 ? 2 : 1
+  return trendItems.value
+    .map((item, index) => ({ x: trendPoints.value[index]?.x || 0, label: item.label }))
+    .filter((_, index) => index % step === 0)
+})
+
+const trendDelta = computed(() => {
+  const list = trendItems.value
+  return list.length >= 2 ? list[list.length - 1].score - list[list.length - 2].score : null
+})
+
+const deltaText = computed(() => {
+  if (trendDelta.value == null) return ''
+  if (trendDelta.value > 0) return `▲ +${trendDelta.value}`
+  if (trendDelta.value < 0) return `▼ ${trendDelta.value}`
+  return '— 持平'
+})
+
+const deltaColor = computed(() => {
+  if (trendDelta.value == null || trendDelta.value === 0) return 'var(--c-soft)'
+  return trendDelta.value > 0 ? 'var(--c-ok)' : 'var(--c-crit)'
+})
+
+const hoverIdx = ref(-1)
+const trendBodyRef = ref<HTMLElement | null>(null)
+const tipStyle = ref({ left: '0px', top: '0px' })
+const hoverItem = computed(() => (hoverIdx.value >= 0 ? trendItems.value[hoverIdx.value] : null))
+
+function onTrendHover(event: MouseEvent) {
+  const el = event.currentTarget as HTMLElement
+  const rect = el.getBoundingClientRect()
+  const relX = ((event.clientX - rect.left) / rect.width) * 640
+  let best = 0
+  let bestDist = Infinity
+  trendPoints.value.forEach((point, index) => {
+    const dist = Math.abs(point.x - relX)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = index
+    }
+  })
+  hoverIdx.value = best
+  const body = trendBodyRef.value
+  const point = trendPoints.value[best]
+  if (body && point) {
+    const bodyRect = body.getBoundingClientRect()
+    tipStyle.value = {
+      left: (point.x / 640) * bodyRect.width + 'px',
+      top: (point.y / 150) * bodyRect.height + 'px',
+    }
+  }
+}
+
+// ── 异常构成 ──
+const TYPE_COLORS: Record<string, string> = {
+  磁盘: '#ff6473',
+  内存: '#ffc24b',
+  CPU: '#f47c48',
+  负载: '#8b8cf8',
+  Pod: '#4dd8e6',
+  证书: '#3ddc97',
+  连接: '#f472b6',
+  其他: '#98a2b6',
+}
+
+function issueType(checkName = '') {
+  if (/磁盘|disk/i.test(checkName)) return '磁盘'
+  if (/内存|memory/i.test(checkName)) return '内存'
+  if (/cpu/i.test(checkName)) return 'CPU'
+  if (/负载|load/i.test(checkName)) return '负载'
+  if (/pod|容器|集群|k8s/i.test(checkName)) return 'Pod'
+  if (/证书|cert|ssl/i.test(checkName)) return '证书'
+  if (/连接|网络|ping|tcp|端口/i.test(checkName)) return '连接'
+  return '其他'
+}
+
+const typeCounts = computed(() => {
+  const counts = new Map<string, number>()
+  detailItems.value
+    .filter((item) => item.status !== 'normal')
+    .forEach((item) => {
+      const type = issueType(item.check_name)
+      counts.set(type, (counts.get(type) || 0) + 1)
+    })
+  return Array.from(counts.entries())
+    .map(([type, count]) => ({ type, count, color: TYPE_COLORS[type] || TYPE_COLORS['其他'] }))
+    .sort((a, b) => b.count - a.count)
+})
+
+const totalIssues = computed(() => typeCounts.value.reduce((sum, item) => sum + item.count, 0))
+
+const donutSegments = computed(() => {
+  const circumference = 2 * Math.PI * 50
+  let acc = 0
+  return typeCounts.value.map((item) => {
+    const frac = totalIssues.value > 0 ? item.count / totalIssues.value : 0
+    const segment = {
+      ...item,
+      dash: `${Math.max(frac * circumference - 3, 0)} ${circumference - Math.max(frac * circumference - 3, 0)}`,
+      offset: -acc * circumference,
+    }
+    acc += frac
+    return segment
+  })
+})
+
+// ── 数据加载 ──
 function getRequestedReportId() {
   const raw = route.query.reportId
   const value = Array.isArray(raw) ? raw[0] : raw
@@ -292,12 +665,13 @@ async function fetchCockpit() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const res: any = await getPatrolReports({ page: 1, page_size: 7 })
+    const res: any = await getPatrolReports({ page: 1, page_size: 12 })
     reports.value = res.data.items || []
     const requestedReportId = getRequestedReportId()
-    latestReport.value = (requestedReportId != null
-      ? reports.value.find((item) => item.id === requestedReportId)
-      : null) || reports.value[0] || null
+    latestReport.value =
+      (requestedReportId != null ? reports.value.find((item) => item.id === requestedReportId) : null) ||
+      reports.value[0] ||
+      null
 
     if (requestedReportId != null && latestReport.value?.id !== requestedReportId) {
       const detail: any = await getPatrolReportDetail(requestedReportId)
@@ -310,8 +684,24 @@ async function fetchCockpit() {
     } else {
       detailItems.value = []
     }
+
+    // 拉取上一批报告用于“新增”判断（失败不影响主流程）
+    prevDetailItems.value = []
+    const currentIndex = reports.value.findIndex((item) => item.id === latestReport.value?.id)
+    const prevReport = reports.value[currentIndex + 1]
+    if (prevReport?.id) {
+      try {
+        const prevDetail: any = await getPatrolReportDetail(prevReport.id)
+        prevDetailItems.value = prevDetail.data.items || []
+      } catch {
+        prevDetailItems.value = []
+      }
+    }
+
+    if (latestReport.value) animateScore(overview.value.healthScore)
   } catch (e: any) {
     detailItems.value = []
+    prevDetailItems.value = []
     errorMessage.value = e?.response?.data?.detail || '请检查巡检报告接口或稍后重试。'
   } finally {
     loading.value = false
@@ -331,46 +721,25 @@ async function handleRun() {
   }
 }
 
-function severityWidth(value: number) {
-  const max = Math.max(overview.value.total, 1)
-  return Math.max(value > 0 ? 8 : 0, Math.round((value / max) * 100))
+// ── 工具 ──
+function pad(value: number) {
+  return String(value).padStart(2, '0')
 }
 
-function buildTrendCoords(field: 'normal_count' | 'warning_count' | 'critical_count') {
-  const list = [...reports.value].reverse()
-  if (!list.length) return [{ x: 10, y: 104 }, { x: 350, y: 104 }]
-  const max = Math.max(...list.map((item) => item[field] || 0), 1)
-  return list.map((item, index) => {
-    const x = list.length === 1 ? 180 : Math.round((index / (list.length - 1)) * 340 + 10)
-    const y = Math.round(108 - (((item[field] || 0) / max) * 84))
-    return { x, y }
-  })
+function barLabel(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const sameDay = date.toDateString() === new Date().toDateString()
+  if (sameDay) return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function trendPath(field: 'normal_count' | 'warning_count' | 'critical_count') {
-  const points = buildTrendCoords(field)
-  return points.map((point, index) => (index === 0 ? 'M' : 'L') + point.x + ',' + point.y).join(' ')
-}
-
-function trendArea(field: 'normal_count' | 'warning_count' | 'critical_count') {
-  const points = buildTrendCoords(field)
-  if (!points.length) return 'M10,104 L350,104 Z'
-  const line = points.map((point, index) => (index === 0 ? 'M' : 'L') + point.x + ',' + point.y).join(' ')
-  const last = points[points.length - 1]
-  const first = points[0]
-  return line + ' L' + last.x + ',104 L' + first.x + ',104 Z'
-}
-
-function radarPointStyle(object: RadarObject) {
-  const radians = (object.angle * Math.PI) / 180
-  const x = Math.min(88, Math.max(12, 50 + Math.cos(radians) * object.ring * 0.52))
-  const y = Math.min(86, Math.max(14, 50 + Math.sin(radians) * object.ring * 0.44))
-
-  return {
-    left: `${x}%`,
-    top: `${y}%`,
-    '--dot-size': `${object.size}px`,
-  }
+function fullTime(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function relativeTime(value?: string) {
@@ -389,1105 +758,975 @@ function relativeTime(value?: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-
 function tickClock() {
-  clockText.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  const now = new Date()
+  clockText.value = now.toLocaleTimeString('zh-CN', { hour12: false })
+  dateText.value = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
 }
 
 onMounted(() => {
   tickClock()
   clockTimer = window.setInterval(tickClock, 1000)
+  window.setTimeout(() => {
+    entered.value = true
+  }, 350)
 })
 
 onBeforeUnmount(() => {
   if (clockTimer) window.clearInterval(clockTimer)
+  cancelAnimationFrame(scoreRaf)
 })
 
 onActivated(fetchCockpit)
 </script>
 
 <style scoped>
-.bigscreen-shell {
-  --cockpit-bg: #050914;
-  --cockpit-panel: rgba(10, 16, 30, 0.78);
-  --cockpit-panel-strong: rgba(14, 22, 40, 0.88);
-  --cockpit-border: rgba(120, 146, 196, 0.22);
-  --cockpit-border-hot: color-mix(in srgb, var(--primary-color) 48%, var(--cockpit-border));
-  --cockpit-text: #eef5ff;
-  --cockpit-soft: #a9b7d0;
-  --cockpit-muted: #7f8eab;
+.cockpit {
+  --c-bg: #0a0d14;
+  --c-panel: rgba(255, 255, 255, 0.028);
+  --c-panel-hover: rgba(255, 255, 255, 0.05);
+  --c-hairline: rgba(255, 255, 255, 0.075);
+  --c-hairline-strong: rgba(255, 255, 255, 0.14);
+  --c-text: #f2f5fa;
+  --c-soft: #98a2b6;
+  --c-muted: #5f6a80;
+  --c-cyan: #4dd8e6;
+  --c-violet: #8b8cf8;
+  --c-ok: #3ddc97;
+  --c-warn: #ffc24b;
+  --c-crit: #ff6473;
+
   position: relative;
   min-height: calc(100vh - var(--header-height));
-  margin: 0;
-  padding: 14px;
-  color: var(--cockpit-text);
-  background:
-    radial-gradient(circle at 50% 18%, rgba(109, 124, 255, 0.26), transparent 30%),
-    radial-gradient(circle at 78% 10%, rgba(34, 211, 238, 0.16), transparent 22%),
-    radial-gradient(circle at 18% 88%, rgba(34, 197, 94, 0.09), transparent 20%),
-    radial-gradient(circle at 50% 70%, rgba(255, 93, 108, 0.05), transparent 28%),
-    linear-gradient(180deg, #091321 0%, #050914 48%, #03060d 100%);
+  padding: 22px 26px 26px;
+  color: var(--c-text);
+  background: var(--c-bg);
   border-radius: 12px;
   overflow: hidden;
+  font-feature-settings: 'tnum';
 }
-.bigscreen-shell::before {
-  content: "";
+
+.mono {
+  font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+}
+
+/* ═══ 极光背景 ═══ */
+.aurora {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.42;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 46px 46px;
-  mask-image: radial-gradient(circle at 50% 38%, #000 18%, transparent 78%);
+  z-index: 0;
 }
-.bigscreen-shell::after {
-  content: "";
+.aurora span {
   position: absolute;
-  inset: 8px;
-  border: 1px solid rgba(125, 160, 220, 0.14);
-  border-radius: 14px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+}
+.aurora .a1 {
+  width: 560px;
+  height: 560px;
+  left: -140px;
+  top: -180px;
+  background: radial-gradient(circle, rgba(139, 140, 248, 0.2), transparent 65%);
+  animation: drift1 26s ease-in-out infinite alternate;
+}
+.aurora .a2 {
+  width: 520px;
+  height: 520px;
+  right: -120px;
+  top: 6%;
+  background: radial-gradient(circle, rgba(77, 216, 230, 0.14), transparent 65%);
+  animation: drift2 32s ease-in-out infinite alternate;
+}
+.aurora .a3 {
+  width: 620px;
+  height: 620px;
+  left: 32%;
+  bottom: -280px;
+  background: radial-gradient(circle, rgba(61, 220, 151, 0.1), transparent 65%);
+  animation: drift3 38s ease-in-out infinite alternate;
+}
+@keyframes drift1 {
+  to {
+    transform: translate(90px, 60px) scale(1.12);
+  }
+}
+@keyframes drift2 {
+  to {
+    transform: translate(-80px, 90px) scale(0.92);
+  }
+}
+@keyframes drift3 {
+  to {
+    transform: translate(-70px, -60px) scale(1.08);
+  }
+}
+.grain {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 60px rgba(109, 124, 255, 0.04);
+  z-index: 0;
+  opacity: 0.5;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
 }
-.corner {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  z-index: 3;
-  pointer-events: none;
-  opacity: 0.85;
-}
-.corner::before,
-.corner::after {
-  content: "";
-  position: absolute;
-  background: linear-gradient(90deg, rgba(125, 211, 252, 0.9), rgba(109, 124, 255, 0.2));
-}
-.corner::before { width: 18px; height: 1px; }
-.corner::after { width: 1px; height: 18px; }
-.corner.tl { top: 12px; left: 12px; }
-.corner.tr { top: 12px; right: 12px; transform: scaleX(-1); }
-.corner.bl { bottom: 12px; left: 12px; transform: scaleY(-1); }
-.corner.br { bottom: 12px; right: 12px; transform: scale(-1); }
-.scanline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 110px;
-  top: -110px;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.1;
-  background: linear-gradient(180deg, transparent, rgba(125, 211, 252, 0.4), transparent);
-  animation: scan-move 9s linear infinite;
-}
-.bigscreen-topbar,
-.bigscreen-dashboard {
+
+.shell {
   position: relative;
-  z-index: 2;
-}
-
-.bigscreen-topbar {
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto minmax(180px, 1fr);
-  align-items: center;
+  z-index: 1;
+  max-width: 1680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  margin-bottom: 12px;
+  min-height: calc(100vh - var(--header-height) - 48px);
 }
 
-.topbar-meta,
-.topbar-actions,
-.return-link,
-.topbar-title,
-.legend,
-.queue-top,
-.queue-foot {
+/* ═══ 入场动效 ═══ */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.anim-panel {
+  animation: fadeUp 0.55s cubic-bezier(0.25, 0.8, 0.3, 1) backwards;
+}
+.anim-item {
+  animation: slideIn 0.45s cubic-bezier(0.25, 0.8, 0.3, 1) backwards;
+}
+
+/* ═══ 顶栏 ═══ */
+.topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  animation: fadeUp 0.5s backwards;
 }
-
-.topbar-meta {
-  gap: 10px;
-  min-width: 0;
-}
-
-.return-link {
-  min-height: 36px;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1px solid var(--cockpit-border);
-  border-radius: 8px;
-  color: var(--cockpit-text);
-  background: color-mix(in srgb, var(--cockpit-panel) 88%, transparent);
-  cursor: pointer;
-  transition: border-color 180ms ease-out, background 180ms ease-out, transform 180ms ease-out;
-}
-
-.return-link:hover,
-.return-link:focus-visible {
-  border-color: var(--cockpit-border-hot);
-  background: color-mix(in srgb, var(--primary-color) 12%, var(--cockpit-panel));
-  outline: none;
-}
-
-.return-link:active {
-  transform: translateY(1px);
-}
-
-.report-meta {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--cockpit-soft);
-  font-size: 12px;
-}
-.live-pill {
-  display: inline-flex;
+.brand {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  color: #9df3bf;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  gap: 14px;
 }
-.live-pill::before {
-  content: "";
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #8b8cf8, #4dd8e6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px -6px rgba(139, 140, 248, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.brand-mark svg {
+  width: 21px;
+  height: 21px;
+  color: #0a0d14;
+}
+.brand-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--c-muted);
+  text-transform: uppercase;
+}
+.brand-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--c-soft);
+}
+.live i {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--success-color);
-  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45);
-  animation: pulse-green 1.8s ease-out infinite;
+  background: var(--c-ok);
+  box-shadow: 0 0 10px var(--c-ok);
+  animation: livePulse 2s infinite;
 }
-.clock {
-  color: var(--cockpit-soft);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  padding: 0 4px;
+@keyframes livePulse {
+  50% {
+    opacity: 0.35;
+  }
 }
-
-.topbar-title {
-  justify-content: center;
-  gap: 14px;
-  text-align: center;
-}
-
-.topbar-title p {
-  margin: 0 0 2px;
-  color: #7dd3fc;
+.updated-pill {
+  border: 1px solid var(--c-hairline);
+  border-radius: 10px;
+  padding: 7px 13px;
+  background: rgba(255, 255, 255, 0.02);
   font-size: 11px;
-  font-weight: 700;
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
 }
-
-.topbar-title h2 {
-  margin: 0;
-  font-size: 26px;
-  line-height: 1.05;
-  letter-spacing: 0.08em;
-  text-shadow: 0 0 18px rgba(125, 211, 252, 0.22), 0 0 42px rgba(109, 124, 255, 0.18);
+.clock-box {
+  text-align: right;
 }
-
-.title-line {
-  width: 138px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-color) 82%, #7dd3fc));
-}
-
-.title-line:last-child {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #7dd3fc), transparent);
-}
-
-.topbar-actions {
-  justify-content: flex-end;
-}
-
-.screen-action {
-  min-height: 36px;
-}
-
-.bigscreen-dashboard {
-  position: relative;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: minmax(230px, 0.82fr) minmax(420px, 1.55fr) minmax(250px, 0.88fr);
-  grid-template-rows: auto minmax(420px, 1fr) 132px;
-  grid-template-areas:
-    "metrics metrics metrics"
-    "queue radar side"
-    "ticker ticker ticker";
-  gap: 12px;
-  min-height: calc(100vh - var(--header-height) - 86px);
-}
-
-.metric-rail {
-  grid-area: metrics;
-  display: grid;
-  grid-template-columns: 1.35fr repeat(4, minmax(128px, 1fr));
-  gap: 10px;
-}
-
-.metric-tile,
-.bigscreen-panel,
-.battle-ticker,
-.error-banner {
-  border: 1px solid var(--cockpit-border);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(20, 30, 52, 0.78), rgba(10, 16, 30, 0.72)),
-    radial-gradient(circle at 0% 0%, rgba(109, 124, 255, 0.08), transparent 40%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 36px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(10px);
-}
-
-.metric-tile {
-  min-width: 0;
-  min-height: 96px;
-  padding: 14px 16px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 12px;
-  align-content: center;
-  position: relative;
-  overflow: hidden;
-  backdrop-filter: blur(8px);
-}
-.metric-tile .label {
-  grid-column: 1 / -1;
-  color: var(--cockpit-muted);
-  font-size: 12px;
+.clock-box .clock {
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
-.metric-tile .glow {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 0;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(109, 124, 255, 0.8), rgba(34, 211, 238, 0.55), transparent);
+.clock-box .date {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin-top: 1px;
 }
-.metric-tile.hero {
-  background:
-    radial-gradient(circle at 100% 0%, rgba(255, 93, 108, 0.2), transparent 42%),
-    radial-gradient(circle at 0% 100%, rgba(109, 124, 255, 0.12), transparent 40%),
-    linear-gradient(180deg, rgba(26, 34, 58, 0.92), rgba(12, 18, 32, 0.84));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 28px rgba(255, 93, 108, 0.08);
-}
-.metric-tile.hero strong {
-  font-size: 34px;
-  text-shadow: 0 0 18px rgba(255, 93, 108, 0.25);
-}
-.metric-tile.danger strong {
-  animation: num-glow 2.4s ease-in-out infinite;
-}
-.ring-mini {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  position: relative;
-  background: conic-gradient(#ff5d6c 0 28%, #f5a623 28% 48%, rgba(34, 197, 94, 0.85) 48% 100%);
-  box-shadow: 0 0 18px rgba(255, 93, 108, 0.15);
-}
-.ring-mini::before {
-  content: "";
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: rgba(8, 14, 26, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-.ring-mini span {
-  position: relative;
+.btn-ghost {
+  background: var(--c-panel);
+  border: 1px solid var(--c-hairline-strong);
+  color: var(--c-text);
+  border-radius: 10px;
+  padding: 9px 16px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.18s;
+}
+.btn-ghost:hover {
+  background: var(--c-panel-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+.btn-solid {
+  background: linear-gradient(135deg, #8b8cf8, #6a6de8);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 8px 22px -8px rgba(139, 140, 248, 0.7);
+  transition: all 0.18s;
+}
+.btn-solid:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -8px rgba(139, 140, 248, 0.85);
+}
+.btn-solid:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.metric-tile span,
-.metric-tile small,
-.panel-heading span,
-.panel-heading small,
-.radar-header span,
-.ticker-label span,
-.object-type {
-  color: var(--cockpit-muted);
-  font-size: 12px;
-}
-
-.metric-tile strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 30px;
-  line-height: 1;
-}
-
-.metric-tile.health strong,
-.metric-tile.danger strong,
-.danger .status-chip,
-.status-chip.danger {
-  color: #ffb9bd;
-}
-
-.metric-tile.warning strong,
-.warning .status-chip,
-.status-chip.warning {
-  color: #ffd18a;
-}
-
-.metric-tile.success strong,
-.success .status-chip,
-.status-chip.success {
-  color: #9df3bf;
-}
-
-.metric-tile.info strong,
-.status-chip.info {
-  color: #8be9ff;
-}
-
-.risk-queue {
-  grid-area: queue;
-  min-width: 0;
-  padding: 14px;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
-}
-
-.panel-heading {
-  min-width: 0;
+/* ═══ 面板通用 ═══ */
+.panel {
+  background: var(--c-panel);
+  border: 1px solid var(--c-hairline);
+  border-radius: 18px;
+  padding: 18px 20px;
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 20px 50px -30px rgba(0, 0, 0, 0.7);
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel-head {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 14px;
 }
-
-.panel-heading h3 {
-  margin: 3px 0 0;
+.panel-head .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  color: var(--c-muted);
+  text-transform: uppercase;
+}
+.panel-head h3 {
   font-size: 15px;
+  font-weight: 700;
+  margin: 3px 0 0;
+}
+.panel-head .count {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--c-cyan);
+}
+.head-meta {
+  font-size: 11px;
+  color: var(--c-muted);
 }
 
-.panel-heading > strong {
-  font-size: 26px;
-  line-height: 1;
-}
-
-.queue-list {
+/* ═══ 主网格 ═══ */
+.main {
+  display: grid;
+  grid-template-columns: 350px minmax(0, 1fr) 350px;
+  gap: 16px;
+  flex: 1;
   min-height: 0;
-  overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 9px;
-  padding-right: 2px;
 }
 
-.queue-item {
-  min-width: 0;
-  padding: 12px 12px 12px 14px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+/* ── 左：风险队列 ── */
+.queue {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  border: 1px solid rgba(120, 146, 196, 0.16);
-  border-radius: 12px;
-  background: rgba(8, 14, 26, 0.42);
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 4px;
+}
+.queue::-webkit-scrollbar {
+  width: 4px;
+}
+.queue::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+.q-item {
+  border: 1px solid var(--c-hairline);
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
-.queue-item::before {
-  content: "";
+.q-item:hover {
+  background: var(--c-panel-hover);
+  border-color: var(--c-hairline-strong);
+  transform: translateX(3px);
+}
+.q-item.active {
+  border-color: rgba(77, 216, 230, 0.45);
+  background: rgba(77, 216, 230, 0.05);
+}
+.q-item::before {
+  content: '';
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
+  top: 14px;
+  bottom: 14px;
   width: 3px;
-  background: rgba(125, 160, 220, 0.25);
+  border-radius: 2px;
+  background: var(--tone);
+  box-shadow: 0 0 12px var(--tone);
 }
-.queue-item.danger {
-  border-color: rgba(255, 93, 108, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(255, 93, 108, 0.08), 0 0 24px rgba(255, 93, 108, 0.1);
+.q-item.crit {
+  --tone: var(--c-crit);
 }
-.queue-item.danger::before {
-  background: linear-gradient(180deg, #ff8a95, #ff5d6c);
+.q-item.warn {
+  --tone: var(--c-warn);
 }
-.queue-item.warning {
-  border-color: rgba(245, 166, 35, 0.32);
+.q-item.crit.is-new::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-crit);
+  box-shadow: 0 0 0 0 rgba(255, 100, 115, 0.6);
+  animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
-.queue-item.warning::before {
-  background: linear-gradient(180deg, #ffd18a, #f5a623);
+@keyframes ping {
+  70% {
+    box-shadow: 0 0 0 7px rgba(255, 100, 115, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 100, 115, 0);
+  }
 }
-.q-no {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 900;
-  color: var(--cockpit-soft);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  font-variant-numeric: tabular-nums;
-}
-.queue-item.danger .q-no {
-  color: #ffb4bb;
-  border-color: rgba(255, 93, 108, 0.25);
-  background: rgba(255, 93, 108, 0.08);
-}
-.queue-item.warning .q-no {
-  color: #ffd18a;
-  border-color: rgba(245, 166, 35, 0.22);
-  background: rgba(245, 166, 35, 0.08);
-}
-.q-body {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.queue-top,
-.queue-foot {
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.queue-item strong,
-.ticker-item strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
-
-.queue-item p,
-.ticker-item p {
-  margin: 0;
-  color: var(--cockpit-soft);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.queue-foot {
-  color: var(--cockpit-muted);
-  font-size: 12px;
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
-  min-height: 22px;
-  padding: 2px 8px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.radar-stage {
-  grid-area: radar;
-  min-width: 0;
-  padding: 14px;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-  overflow: hidden;
-}
-
-.radar-header {
+.q-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding-left: 8px;
+}
+.q-type {
+  font-size: 10px;
+  color: var(--c-muted);
+  letter-spacing: 0.05em;
+}
+.q-pill {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+.q-pill.crit {
+  background: rgba(255, 100, 115, 0.14);
+  color: var(--c-crit);
+}
+.q-pill.warn {
+  background: rgba(255, 194, 75, 0.13);
+  color: var(--c-warn);
+}
+.q-pill.new {
+  background: rgba(77, 216, 230, 0.13);
+  color: var(--c-cyan);
+}
+.q-time {
+  font-size: 10px;
+  color: var(--c-muted);
+  margin-left: auto;
+}
+.q-item.is-new .q-time {
+  margin-left: 0;
+}
+.q-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  padding-left: 8px;
+}
+.q-head {
+  font-size: 11.5px;
+  color: var(--c-soft);
+  margin: 5px 0 9px;
+  line-height: 1.55;
+  padding-left: 8px;
+}
+.q-metric {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 8px;
+  font-size: 10.5px;
+  color: var(--c-muted);
+}
+.q-metric .track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.q-metric .fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.8s cubic-bezier(0.3, 0, 0.2, 1);
+}
+.q-item.crit .fill {
+  background: linear-gradient(90deg, var(--c-warn), var(--c-crit));
+  box-shadow: 0 0 8px rgba(255, 100, 115, 0.6);
+}
+.q-item.warn .fill {
+  background: var(--c-warn);
+}
+.q-metric b {
+  color: var(--c-text);
 }
 
-.radar-header strong {
+/* ── 中：仪表盘 + 趋势 ── */
+.center-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.gauge-panel {
+  flex: 1.15;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.gauge-wrap {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  margin: 6px auto 0;
+}
+.gauge-track {
+  stroke: rgba(255, 255, 255, 0.07);
+}
+.gauge-value {
+  stroke: url(#gaugeGrad);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 14px rgba(77, 216, 230, 0.45));
+  transition: stroke-dashoffset 0.1s linear;
+}
+.gauge-ticks line {
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1.5;
+}
+.gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.gauge-score {
+  font-size: 76px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-shadow: 0 0 44px rgba(77, 216, 230, 0.4);
+}
+.gauge-score.crit {
+  color: var(--c-crit);
+  text-shadow: 0 0 44px rgba(255, 100, 115, 0.55);
+  animation: critBreath 2.2s ease-in-out infinite;
+}
+@keyframes critBreath {
+  50% {
+    text-shadow: 0 0 70px rgba(255, 100, 115, 0.85);
+  }
+}
+.gauge-label {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--c-muted);
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+.gauge-status {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 14px;
+}
+.gauge-status.warn {
+  color: var(--c-warn);
+  background: rgba(255, 194, 75, 0.1);
+}
+.gauge-status.ok {
+  color: var(--c-ok);
+  background: rgba(61, 220, 151, 0.1);
+}
+.gauge-status.crit {
+  color: var(--c-crit);
+  background: rgba(255, 100, 115, 0.1);
+}
+.gauge-cats {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.cat-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--c-soft);
+  border: 1px solid var(--c-hairline);
+  border-radius: 12px;
+  padding: 6px 13px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.18s;
+}
+.cat-chip:hover {
+  border-color: var(--c-hairline-strong);
+  background: var(--c-panel-hover);
+}
+.cat-chip b {
+  color: var(--c-text);
   font-size: 13px;
 }
-
-.radar-header strong.danger { color: #ffb9bd; }
-.radar-header strong.warning { color: #ffd18a; }
-.radar-header strong.success { color: #9df3bf; }
-.radar-header strong.info { color: #8be9ff; }
-
-.radar-canvas {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid rgba(109, 124, 255, 0.38);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(109, 124, 255, 0.22), transparent 40%),
-    radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.08), transparent 58%),
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    rgba(5, 10, 20, 0.94);
-  background-size: auto, auto, 28px 28px, 28px 28px, auto;
-  box-shadow: inset 0 0 50px rgba(109, 124, 255, 0.12), 0 0 30px rgba(109, 124, 255, 0.08);
-}
-.radar-canvas::after {
-  content: "";
-  position: absolute;
-  inset: 12%;
+.cat-chip i {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  pointer-events: none;
-  border: 1px dashed rgba(125, 211, 252, 0.12);
-  animation: radar-orbit 18s linear infinite;
-}
-.radar-sector-label {
-  position: absolute;
-  color: rgba(169, 183, 208, 0.72);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(125, 211, 252, 0.25);
-}
-.radar-sector-label.host { left: 18%; top: 18%; }
-.radar-sector-label.k8s { right: 16%; top: 22%; }
-.radar-sector-label.asset { left: 46%; bottom: 12%; }
-
-.radar-ring,
-.radar-axis,
-.radar-sweep,
-.radar-core,
-.radar-dot {
-  position: absolute;
 }
 
-.radar-ring {
-  inset: 50%;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 36%, transparent);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.ring-outer { width: 82%; aspect-ratio: 1; }
-.ring-middle { width: 56%; aspect-ratio: 1; }
-.ring-inner { width: 30%; aspect-ratio: 1; }
-
-.radar-axis {
-  background: color-mix(in srgb, var(--primary-color) 26%, transparent);
-}
-
-.axis-x {
-  left: 8%;
-  right: 8%;
-  top: 50%;
-  height: 1px;
-}
-
-.axis-y {
-  top: 8%;
-  bottom: 8%;
-  left: 50%;
-  width: 1px;
-}
-
-.radar-sweep {
-  inset: 8%;
-  border-radius: 50%;
-  background: conic-gradient(from -20deg, rgba(34, 211, 238, 0.38), rgba(109, 124, 255, 0.12), transparent 78deg);
-  animation: radar-sweep 6.8s linear infinite;
-  filter: blur(0.15px);
-  mix-blend-mode: screen;
-}
-
-.radar-core {
-  left: 50%;
-  top: 50%;
-  width: min(290px, 50%);
-  min-height: 176px;
-  padding: 18px 16px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 8px;
-  border: 1px solid rgba(109, 124, 255, 0.5);
-  border-radius: 20px;
-  text-align: center;
-  background: linear-gradient(180deg, rgba(16, 26, 48, 0.94), rgba(8, 14, 26, 0.88));
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 50px rgba(109, 124, 255, 0.2), 0 0 24px rgba(255, 93, 108, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(10px);
-}
-
-.radar-core span {
-  color: var(--cockpit-muted);
-  font-size: 12px;
-}
-
-.radar-core strong {
-  font-size: 34px;
-  letter-spacing: 0.04em;
-  text-shadow: 0 0 18px rgba(255, 93, 108, 0.28);
-}
-
-.radar-core small {
-  max-width: 32ch;
-  color: var(--cockpit-soft);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.empty-action {
-  margin-top: 5px;
-}
-
-.radar-dot {
-  width: var(--dot-size);
-  height: var(--dot-size);
-  min-width: 18px;
-  min-height: 18px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  color: #9df3bf;
-  background: color-mix(in srgb, currentColor 34%, var(--cockpit-panel));
-  transform: translate(-50%, -50%);
-  animation: risk-pulse 2.7s ease-out infinite;
-}
-
-.radar-dot span {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1px 6px;
-  border-radius: 999px;
-  color: var(--cockpit-text);
-  background: color-mix(in srgb, var(--cockpit-panel) 88%, transparent);
-  font-size: 10px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.radar-dot.danger {
-  color: #ff747d;
-}
-
-.radar-dot.warning {
-  color: #ffbf58;
-}
-
-.radar-dot.success {
-  color: #6ee7a0;
-  animation: none;
-}
-
-.side-stack {
-  grid-area: side;
-  min-width: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 0.92fr) minmax(0, 1fr);
-  gap: 12px;
-}
-
-.distribution-panel,
 .trend-panel {
-  min-height: 0;
-  padding: 14px;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 12px;
+  flex: 1;
 }
-
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.trend-body {
+  position: relative;
+  flex: 1;
+  min-height: 110px;
+  display: flex;
 }
-
-.category-cell {
-  min-width: 0;
-  padding: 9px;
-  border: 1px solid color-mix(in srgb, var(--cockpit-border) 82%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--cockpit-panel-strong) 74%, transparent);
-  display: grid;
-  gap: 3px;
+.trend-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 110px;
+  cursor: crosshair;
 }
-
-.category-cell span {
-  overflow: hidden;
-  color: var(--cockpit-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
+.trend-svg .grid {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+.trend-svg .axis-label {
+  fill: var(--c-muted);
+  font-size: 9.5px;
+}
+.trend-svg .area {
+  fill: url(#trendFill);
+}
+.trend-svg .line {
+  fill: none;
+  stroke: var(--c-cyan);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 6px rgba(77, 216, 230, 0.5));
+}
+.trend-svg .pt {
+  fill: #0a0d14;
+  stroke: var(--c-cyan);
+  stroke-width: 2;
+}
+.trend-svg .pt-crit {
+  fill: var(--c-crit);
+  stroke: var(--c-crit);
+}
+.trend-svg .pt-hover {
+  stroke: #fff;
+  stroke-width: 2.5;
+}
+.trend-svg .crosshair {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-dasharray: 3 4;
+}
+.trend-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  background: rgba(16, 20, 30, 0.92);
+  border: 1px solid var(--c-hairline-strong);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+  transform: translate(-50%, calc(-100% - 12px));
   white-space: nowrap;
 }
-
-.category-cell strong {
-  font-size: 21px;
+.trend-tip .tt-score {
+  font-size: 16px;
+  font-weight: 800;
 }
-
-.severity-bars {
-  display: grid;
-  align-content: start;
-  gap: 10px;
+.trend-tip .tt-time {
+  color: var(--c-muted);
 }
-
-.severity-row {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 8px;
-  color: var(--cockpit-soft);
-  font-size: 12px;
+.trend-tip .tt-crit {
+  color: var(--c-crit);
+  font-weight: 700;
 }
-
-.severity-row i {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, #ffffff 8%, transparent);
+.trend-foot {
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  color: var(--c-soft);
+  margin-top: 10px;
 }
-
-.severity-row b {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-}
-
-.severity-row.danger b { background: linear-gradient(90deg, #ff8a95, #ff5d6c); box-shadow: 0 0 12px rgba(255, 93, 108, 0.35); }
-.severity-row.warning b { background: linear-gradient(90deg, #ffd18a, #f5a623); box-shadow: 0 0 12px rgba(245, 166, 35, 0.28); }
-.severity-row.success b { background: linear-gradient(90deg, #86efac, #22c55e); box-shadow: 0 0 12px rgba(34, 197, 94, 0.22); }
-
-.legend {
-  gap: 10px;
-  color: var(--cockpit-muted);
-  font-size: 12px;
-}
-
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.legend i {
+.trend-foot i {
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  margin-right: 6px;
 }
 
-.legend-critical { background: var(--danger-color); }
-.legend-warning { background: var(--warning-color); }
-.legend-normal { background: var(--success-color); }
-
-.trend-wrap { min-height: 0; }
-.trend-chart {
-  width: 100%;
-  min-height: 118px;
-  display: block;
-}
-.trend-chart .grid {
-  stroke: rgba(120, 146, 196, 0.14);
-}
-.trend-chart .area-critical { fill: url(#critFill); }
-.trend-chart .area-warning { fill: url(#warnFill); }
-.trend-chart .line-critical,
-.trend-chart .line-warning,
-.trend-chart .line-normal {
-  fill: none;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.trend-chart .line-critical {
-  stroke: var(--danger-color);
-  filter: drop-shadow(0 0 4px rgba(255, 93, 108, 0.45));
-}
-.trend-chart .line-warning {
-  stroke: var(--warning-color);
-  filter: drop-shadow(0 0 3px rgba(245, 166, 35, 0.35));
-}
-.trend-chart .line-normal {
-  stroke: var(--success-color);
-  opacity: 0.9;
-}
-.trend-chart .dot {
-  stroke: #fff;
-  stroke-width: 1.2;
-}
-
-.battle-ticker {
-  grid-area: ticker;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  padding: 8px 12px;
-  display: grid;
-  grid-template-columns: 158px minmax(0, 1fr);
-  align-items: stretch;
-  gap: 0;
-  overflow: hidden;
-}
-.ticker-label {
-  display: grid;
-  align-content: center;
-  align-self: stretch;
-  gap: 4px;
-  padding: 0 14px 0 2px;
-  border-right: 1px solid var(--cockpit-border);
-  position: relative;
-  z-index: 5;
-  background: linear-gradient(90deg, rgba(14, 22, 40, 0.98), rgba(14, 22, 40, 0.94));
-  box-shadow: 12px 0 18px rgba(8, 14, 26, 0.55);
-  isolation: isolate;
-}
-.ticker-label strong {
-  font-size: 17px;
-}
-.ticker-viewport {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
-  padding-left: 12px;
+/* ── 右：异常构成 + 指标格 ── */
+.right-stack {
   display: flex;
-  align-items: stretch;
-  mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 18px), transparent);
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
 }
-.ticker-track {
-  min-width: 0;
-  min-height: 100%;
-  height: 100%;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
-  grid-auto-rows: 100%;
-  align-items: stretch;
-  gap: 10px;
-  animation: ticker-drift 28s linear infinite;
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+}
+.donut {
   position: relative;
-  width: max-content;
+  width: 128px;
+  height: 128px;
+  flex-shrink: 0;
 }
-.ticker-track:hover,
-.ticker-track.still {
-  animation-play-state: paused;
+.donut svg {
+  transform: rotate(-90deg);
 }
-.ticker-item {
-  min-width: 0;
-  min-height: 100%;
-  height: 100%;
-  padding: 10px 12px;
+.donut circle {
+  transition: stroke-dasharray 1s cubic-bezier(0.3, 0, 0.2, 1), stroke-dashoffset 1s cubic-bezier(0.3, 0, 0.2, 1);
+}
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.donut-center b {
+  font-size: 24px;
+  font-weight: 800;
+}
+.donut-center span {
+  font-size: 9.5px;
+  color: var(--c-muted);
+  letter-spacing: 0.1em;
+}
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+}
+.dl-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--c-soft);
+}
+.dl-row i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  box-shadow: 0 0 8px currentColor;
+}
+.dl-row b {
+  margin-left: auto;
+  color: var(--c-text);
+  font-size: 13px;
+}
+
+.mini-grid {
   display: grid;
-  align-content: center;
-  gap: 5px;
-  border: 1px solid rgba(120, 146, 196, 0.16);
-  border-radius: 12px;
-  background: rgba(8, 14, 26, 0.42);
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1;
+}
+.mini-tile {
+  border: 1px solid var(--c-hairline);
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.mini-tile:hover {
+  background: var(--c-panel-hover);
+  transform: translateY(-2px);
+}
+.mini-tile .mt-label {
+  font-size: 10.5px;
+  color: var(--c-muted);
+  letter-spacing: 0.05em;
+}
+.mini-tile b {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.mini-tile.crit b {
+  color: var(--c-crit);
+  text-shadow: 0 0 18px rgba(255, 100, 115, 0.4);
+}
+.mini-tile.warn b {
+  color: var(--c-warn);
+  text-shadow: 0 0 18px rgba(255, 194, 75, 0.35);
+}
+.mini-tile.ok b {
+  color: var(--c-ok);
+  text-shadow: 0 0 18px rgba(61, 220, 151, 0.35);
+}
+.mini-tile.info b {
+  color: var(--c-cyan);
+  text-shadow: 0 0 18px rgba(77, 216, 230, 0.35);
+}
+.mini-tile small {
+  font-size: 10.5px;
+  color: var(--c-muted);
+}
+
+/* ═══ 底部榜单 ═══ */
+.rank-panel {
+  padding-bottom: 14px;
+}
+.rank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.rk {
+  border: 1px solid var(--c-hairline);
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s;
   position: relative;
+}
+.rk:hover {
+  background: var(--c-panel-hover);
+  transform: translateY(-3px);
+  border-color: var(--c-hairline-strong);
+}
+.rk.first:hover {
+  box-shadow: 0 14px 34px -14px rgba(255, 100, 115, 0.4);
+}
+.rk-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 7px;
+}
+.rk-no {
+  width: 23px;
+  height: 23px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--c-soft);
+}
+.rk.first .rk-no {
+  background: linear-gradient(135deg, #ff8a94, var(--c-crit));
+  color: #fff;
+  box-shadow: 0 0 16px rgba(255, 100, 115, 0.55);
+}
+.rk-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rk-metric {
+  font-size: 10.5px;
+  color: var(--c-muted);
+  margin-bottom: 7px;
+}
+.rk-metric b {
+  color: var(--c-text);
+  font-size: 11.5px;
+}
+.rk-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
-.ticker-item::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: rgba(125, 160, 220, 0.25);
+.rk-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.9s cubic-bezier(0.3, 0, 0.2, 1);
 }
-.ticker-item.danger::before { background: linear-gradient(180deg, #ff8a95, #ff5d6c); }
-.ticker-item.warning::before { background: linear-gradient(180deg, #ffd18a, #f5a623); }
-.ticker-item.success::before { background: linear-gradient(180deg, #86efac, #22c55e); }
-
-.ticker-item.danger {
-  border-color: color-mix(in srgb, var(--danger-color) 42%, var(--cockpit-border));
+.rk-fill.crit {
+  background: linear-gradient(90deg, var(--c-warn), var(--c-crit));
+  box-shadow: 0 0 10px rgba(255, 100, 115, 0.5);
+}
+.rk-fill.warn {
+  background: linear-gradient(90deg, #ffd97a, var(--c-warn));
 }
 
-.ticker-item.warning {
-  border-color: color-mix(in srgb, var(--warning-color) 42%, var(--cockpit-border));
-}
-
-.ticker-item.success {
-  border-color: color-mix(in srgb, var(--success-color) 34%, var(--cockpit-border));
-}
-
+/* ═══ 空态 / 错误 ═══ */
 .empty-state {
-  min-height: 140px;
-  padding: 18px;
-  display: grid;
-  place-items: center;
-  align-content: center;
+  flex: 1;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
-  color: var(--cockpit-soft);
+  color: var(--c-soft);
   text-align: center;
+  border: 1px dashed var(--c-hairline);
+  border-radius: 12px;
+  padding: 18px;
 }
-
-.empty-state.compact {
-  min-height: 120px;
-  border: 1px dashed var(--cockpit-border);
-  border-radius: 8px;
-}
-
 .empty-state strong {
-  color: var(--cockpit-text);
+  color: var(--c-text);
+  font-size: 13px;
+}
+.empty-state span {
+  font-size: 11.5px;
 }
 
 .error-banner {
   position: absolute;
-  right: 14px;
-  bottom: 14px;
-  max-width: min(420px, calc(100% - 28px));
-  padding: 12px;
+  right: 26px;
+  bottom: 26px;
+  z-index: 10;
+  max-width: min(420px, calc(100% - 52px));
+  padding: 14px 16px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 12px;
-  border-color: color-mix(in srgb, var(--danger-color) 48%, var(--cockpit-border));
-  color: var(--cockpit-text);
+  border: 1px solid rgba(255, 100, 115, 0.4);
+  border-radius: 14px;
+  background: rgba(16, 20, 30, 0.95);
+  backdrop-filter: blur(10px);
 }
-
 .error-banner span {
-  color: var(--cockpit-soft);
+  color: var(--c-soft);
   font-size: 12px;
 }
-
 .error-banner button {
   grid-row: 1 / span 2;
+  align-self: center;
   min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--danger-color) 45%, var(--cockpit-border));
+  padding: 0 14px;
+  border: 1px solid rgba(255, 100, 115, 0.4);
   border-radius: 8px;
-  color: #ffb9bd;
-  background: color-mix(in srgb, var(--danger-color) 12%, var(--cockpit-panel));
+  color: var(--c-crit);
+  background: rgba(255, 100, 115, 0.1);
   cursor: pointer;
+  font-family: inherit;
 }
 
-@keyframes radar-sweep {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes risk-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 24%, transparent), 0 0 18px color-mix(in srgb, currentColor 36%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 9px color-mix(in srgb, currentColor 8%, transparent), 0 0 24px color-mix(in srgb, currentColor 54%, transparent);
-  }
-}
-
-@keyframes ticker-drift {
-  from { transform: translateX(0); }
-  to { transform: translateX(-18%); }
-}
-
-@media (max-width: 1180px) {
-  .bigscreen-dashboard {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 520px auto 150px;
-    grid-template-areas:
-      "metrics metrics"
-      "radar radar"
-      "queue side"
-      "ticker ticker";
-  }
-
-  .metric-rail {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
-  .bigscreen-shell {
-    margin: 0;
-    padding: 10px;
-  }
-
-  .bigscreen-topbar {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-  }
-
-  .topbar-title {
-    order: -1;
-  }
-
-  .title-line {
-    width: 72px;
-  }
-
-  .topbar-actions {
-    justify-content: flex-start;
-  }
-
-  .bigscreen-dashboard {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 460px auto auto 190px;
-    grid-template-areas:
-      "metrics"
-      "radar"
-      "queue"
-      "side"
-      "ticker";
-  }
-
-  .metric-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .category-grid {
+/* ═══ 响应式 ═══ */
+@media (max-width: 1200px) {
+  .main {
     grid-template-columns: 1fr;
   }
-
-  .side-stack {
-    grid-template-rows: auto auto;
-  }
-
-  .battle-ticker {
-    grid-template-columns: 1fr;
-  }
-
-  .ticker-label {
-    border-right: 0;
-    border-bottom: 1px solid var(--cockpit-border);
-    padding-bottom: 8px;
-    margin-bottom: 10px;
-    box-shadow: none;
-    background: transparent;
-  }
-
-  .ticker-viewport {
-    mask-image: none;
-  }
-
-  .ticker-track {
-    grid-auto-flow: row;
-    animation: none;
-    width: auto;
-    height: auto;
-  }
-
-  .ticker-item {
-    height: auto;
-    min-height: 0;
+  .queue {
+    max-height: 420px;
   }
 }
 
-@media (max-width: 560px) {
-  .metric-rail {
-    grid-template-columns: 1fr;
+@media (max-width: 640px) {
+  .cockpit {
+    padding: 14px;
   }
-
-  .radar-core {
-    width: min(260px, 72%);
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .clock-box {
+    display: none;
+  }
+  .donut-wrap {
+    flex-direction: column;
   }
 }
 
@@ -1498,14 +1737,6 @@ onActivated(fetchCockpit)
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-
-  .ticker-track,
-  .scanline,
-  .radar-canvas::after,
-  .radar-sweep {
-    transform: none !important;
-    animation: none !important;
   }
 }
 </style>

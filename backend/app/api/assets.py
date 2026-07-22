@@ -9,6 +9,7 @@ from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
 from app.models.user import User
 from app.services.assets import (
+    count_assets_by_ssh,
     count_assets_by_status,
     create_asset as create_asset_record,
     delete_asset,
@@ -63,6 +64,7 @@ def api_asset_stats(
     _: User = Depends(api_permission_required("assets.view")),
 ):
     counts = count_assets_by_status(db)
+    ssh_counts = count_assets_by_ssh(db)
     total = sum(counts.values())
     return {
         "code": 0,
@@ -71,6 +73,7 @@ def api_asset_stats(
             "active": counts.get("使用中", 0),
             "shutdown": counts.get("已关机", 0),
             "deleted": counts.get("已删除", 0),
+            **ssh_counts,
         },
     }
 
@@ -80,12 +83,14 @@ def api_list_assets(
     keyword: str = "",
     asset_type: str = "",
     status: str = "",
+    ssh: str = "",
+    ordering: str = "",
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("assets.view")),
 ):
-    items = list_assets(db, keyword=keyword, asset_type=asset_type, status=status)
+    items = list_assets(db, keyword=keyword, asset_type=asset_type, status=status, ssh=ssh, ordering=ordering)
     total = len(items)
     start = (max(page, 1) - 1) * page_size
     return {

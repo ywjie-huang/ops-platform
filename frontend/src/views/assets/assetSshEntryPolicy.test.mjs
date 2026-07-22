@@ -6,12 +6,12 @@ const assetListView = readFileSync(new URL('./AssetListView.vue', import.meta.ur
 const assetDetailView = readFileSync(new URL('./AssetDetailView.vue', import.meta.url), 'utf8')
 
 test('asset list keeps SSH as status/configuration, not a direct terminal row action', () => {
-  assert.match(assetListView, /SSH 状态/)
+  assert.match(assetListView, /<el-table-column label="SSH"/)
   assert.doesNotMatch(assetListView, /monitoring\/hosts\/\$\{row\.id\}\/ssh/)
 })
 
 test('asset list action column header and buttons are centered', () => {
-  assert.match(assetListView, /<el-table-column label="操作" width="150" fixed="right" align="center">/)
+  assert.match(assetListView, /<el-table-column label="操作" width="170" fixed="right" align="center">/)
   assert.match(assetListView, /\.action-cell\s*\{[\s\S]*?justify-content: center;/)
 })
 

@@ -5,22 +5,24 @@ import { test } from 'node:test'
 const cockpitView = readFileSync(new URL('./PatrolCockpitView.vue', import.meta.url), 'utf8')
 
 test('patrol cockpit uses immersive bigscreen layout vocabulary', () => {
-  assert.match(cockpitView, /class="patrol-cockpit bigscreen-shell"/)
-  assert.match(cockpitView, /class="metric-rail"/)
-  assert.match(cockpitView, /class="bigscreen-panel radar-stage"/)
-  assert.match(cockpitView, /class="bigscreen-panel risk-queue"/)
-  assert.match(cockpitView, /class="battle-ticker"/)
+  assert.match(cockpitView, /class="cockpit"/)
+  assert.match(cockpitView, /class="main"/)
+  assert.match(cockpitView, /class="panel gauge-panel/)
+  assert.match(cockpitView, /class="panel trend-panel/)
+  assert.match(cockpitView, /class="panel rank-panel/)
 })
 
 test('patrol cockpit keeps reduced motion and accessible radar semantics', () => {
   assert.match(cockpitView, /prefers-reduced-motion/)
-  assert.match(cockpitView, /role="img"/)
-  assert.match(cockpitView, /aria-label=/)
+  assert.match(cockpitView, /aria-label="全局健康指数"/)
+  assert.match(cockpitView, /aria-label="健康分走势"/)
+  assert.match(cockpitView, /role="alert"/)
 })
 
 test('patrol cockpit keeps desktop command layout at 1280 and compresses below it', () => {
   assert.doesNotMatch(cockpitView, /@media \(max-width: 1280px\)/)
-  assert.match(cockpitView, /@media \(max-width: 1180px\)[\s\S]*\.metric-rail[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/)
+  assert.match(cockpitView, /@media \(max-width: 1200px\)[\s\S]*\.main\s*\{[\s\S]*grid-template-columns: 1fr;/)
+  assert.match(cockpitView, /@media \(max-width: 1200px\)[\s\S]*\.queue\s*\{[\s\S]*max-height: 420px;/)
 })
 
 test('patrol cockpit shell does not create horizontal page overflow', () => {
