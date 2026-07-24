@@ -44,6 +44,15 @@ export default defineConfig({
     }),
     proxyClientIpPlugin(),
   ],
+  optimizeDeps: {
+    // Docker 详情页是懒加载路由，预构建其首个独有组件样式，避免首次进入时触发
+    // Vite 依赖重新优化并让浏览器中的旧依赖哈希返回 504。
+    include: [
+      'element-plus/es',
+      'element-plus/es/components/base/style/css',
+      'element-plus/es/components/progress/style/css',
+    ],
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
