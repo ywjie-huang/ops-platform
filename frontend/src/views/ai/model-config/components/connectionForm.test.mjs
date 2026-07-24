@@ -21,4 +21,6 @@ test('model selector renders provider metadata and a constrained popup', () => {
 
 test('model input row stacks on narrow screens', () => {
   assert.match(source, /@media \(max-width:\s*600px\)[\s\S]*?\.model-input-row[\s\S]*?flex-direction:\s*column/)
+  assert.match(source, /\.model-input-row \.btn[\s\S]*?min-height:\s*44px/)
+  assert.match(source, /\.btn:focus-visible[\s\S]*?outline:/)
 })

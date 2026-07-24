@@ -44,14 +44,36 @@
         <div class="form-group">
           <label class="form-label"><span class="required">*</span> 模型名称</label>
           <div class="model-input-row">
-            <input
-              class="form-input"
-              list="llm-model-options"
-              :class="{ error: formErrors.model }"
+            <el-select
               v-model="profile.model"
-              placeholder="gpt-4o"
+              class="model-select"
+              :class="{ 'is-error': formErrors.model }"
+              filterable
+              allow-create
+              default-first-option
+              fit-input-width
+              clearable
+              placeholder="输入或选择模型"
+              popper-class="model-select-popper"
+              aria-label="模型名称"
+              @change="$emit('validate', 'model')"
               @blur="$emit('validate', 'model')"
-            />
+            >
+              <template #empty>
+                <div class="model-select-empty">暂无可选模型，可直接输入模型名称</div>
+              </template>
+              <el-option
+                v-for="model in modelOptions"
+                :key="model.id"
+                :label="model.id"
+                :value="model.id"
+              >
+                <div class="model-option" :title="model.owned_by ? `${model.id} · ${model.owned_by}` : model.id">
+                  <span class="model-option__id">{{ model.id }}</span>
+                  <span v-if="model.owned_by" class="model-option__owner">{{ model.owned_by }}</span>
+                </div>
+              </el-option>
+            </el-select>
             <button
               class="btn btn-sm"
               type="button"
@@ -62,11 +84,6 @@
               {{ loadingModels ? '拉取中' : '刷新模型' }}
             </button>
           </div>
-          <datalist id="llm-model-options">
-            <option v-for="m in modelOptions" :key="m.id" :value="m.id">
-              {{ m.owned_by ? `${m.id} · ${m.owned_by}` : m.id }}
-            </option>
-          </datalist>
           <span v-if="formErrors.model" class="form-error">{{ formErrors.model }}</span>
           <span v-else class="form-tip">
             {{ modelListTip || '可手动输入，或点击“刷新模型”从服务商拉取' }}
@@ -178,7 +195,72 @@ const showPassword = ref(false)
   gap: 8px;
   align-items: center;
 }
-.model-input-row .form-input { flex: 1; }
+.model-select {
+  flex: 1;
+  min-width: 0;
+}
+.model-select :deep(.el-select__wrapper) {
+  min-height: 34px;
+  border-radius: 6px;
+  background: var(--surface-color);
+  box-shadow: 0 0 0 1px var(--border-color) inset;
+  transition: box-shadow 180ms ease-out;
+}
+.model-select:hover :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px var(--text-muted) inset;
+}
+.model-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow:
+    0 0 0 1px var(--primary-color) inset,
+    0 0 0 2px color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+.model-select.is-error :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px var(--danger-color) inset;
+}
+.model-select.is-error :deep(.el-select__wrapper.is-focused) {
+  box-shadow:
+    0 0 0 1px var(--danger-color) inset,
+    0 0 0 2px color-mix(in srgb, var(--danger-color) 12%, transparent);
+}
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+.model-option__id {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-option__owner {
+  flex: none;
+  max-width: 38%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-select-empty {
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+:global(.model-select-popper .el-select-dropdown__wrap) {
+  max-height: 280px;
+}
+:global(.model-select-popper .el-select-dropdown__item) {
+  padding: 0 12px;
+}
+:global(.model-select-popper .el-select-dropdown__item.is-selected) {
+  color: var(--primary-color);
+  background: var(--primary-bg);
+}
 .form-tip {
   font-size: 12px;
   color: var(--text-muted);
@@ -202,11 +284,29 @@ const showPassword = ref(false)
   color: var(--text-primary);
 }
 .btn-sm { padding: 4px 12px; font-size: 12px; }
+.btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
 .btn:disabled, .btn.is-loading {
   opacity: 0.5;
   cursor: not-allowed;
 }
 @media (max-width: 900px) {
   .form-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .model-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .model-input-row .btn {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .model-select :deep(.el-select__wrapper) {
+    transition: none;
+  }
 }
 </style>
