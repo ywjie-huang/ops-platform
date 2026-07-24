@@ -12,7 +12,6 @@ from app.services.containers import (
     cluster_runtime_summary,
     delete_cluster,
     find_clusters_by_name,
-    get_cluster,
     list_clusters,
     refresh_cluster_connection_status,
 )
@@ -84,6 +83,17 @@ def _sync_cluster_meta(cluster, info: dict) -> None:
         cluster.status_message = info.get("error", "连接失败")
 
 
+def _require_cluster_by_name(db: Session, cluster_name: str):
+    if cluster_name.isdigit():
+        raise HTTPException(status_code=404, detail="集群不存在")
+    matches = find_clusters_by_name(db, cluster_name)
+    if not matches:
+        raise HTTPException(status_code=404, detail="集群不存在")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="存在同名集群，请先修改集群名称")
+    return matches[0]
+
+
 # ─── 连接测试 ───────────────────────────────────────────────
 
 
@@ -118,30 +128,14 @@ def api_list_clusters(
     return {"code": 0, "data": payload}
 
 
-@router.get("/clusters/{cluster_id}")
+@router.get("/clusters/{cluster_name}")
 def api_get_cluster(
-    cluster_id: int,
-    db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("containers.view")),
-):
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
-    return {"code": 0, "data": _cluster_dict(c)}
-
-
-@router.get("/clusters/by-name/{cluster_name}")
-def api_get_cluster_by_name(
     cluster_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    matches = find_clusters_by_name(db, cluster_name)
-    if not matches:
-        raise HTTPException(status_code=404, detail="集群不存在")
-    if len(matches) > 1:
-        raise HTTPException(status_code=409, detail="存在同名集群，请先修改集群名称")
-    return {"code": 0, "data": _cluster_dict(matches[0])}
+    c = _require_cluster_by_name(db, cluster_name)
+    return {"code": 0, "data": _cluster_dict(c)}
 
 
 @router.post("/clusters")
@@ -157,6 +151,8 @@ def api_create_cluster(
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="集群名称不能为空")
+    if name.isdigit() or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="集群名称必须包含文字，且不能包含斜杠")
     if cluster_name_exists(db, name):
         raise HTTPException(status_code=409, detail="集群名称已存在")
 
@@ -193,23 +189,23 @@ def api_create_cluster(
     return {"code": 0, "msg": "创建成功", "data": _cluster_dict(c)}
 
 
-@router.put("/clusters/{cluster_id}")
+@router.put("/clusters/{cluster_name}")
 def api_update_cluster(
-    cluster_id: int, body: ClusterUpdate,
+    cluster_name: str, body: ClusterUpdate,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("containers.update")),
 ):
     from app.services.containers import update_cluster
 
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
 
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="集群名称不能为空")
-    if cluster_name_exists(db, name, exclude_id=cluster_id):
+    if name.isdigit() or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="集群名称必须包含文字，且不能包含斜杠")
+    if cluster_name_exists(db, name, exclude_id=c.id):
         raise HTTPException(status_code=409, detail="集群名称已存在")
 
     endpoint = body.endpoint.strip()
@@ -235,16 +231,14 @@ def api_update_cluster(
     return {"code": 0, "msg": "更新成功", "data": _cluster_dict(c)}
 
 
-@router.delete("/clusters/{cluster_id}")
+@router.delete("/clusters/{cluster_name}")
 def api_delete_cluster(
-    cluster_id: int,
+    cluster_name: str,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("containers.delete")),
 ):
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
 
     write_log(db, user=current_user, action="delete", target_type="container",
               target_id=c.id, target_name=c.name, ip_address=get_client_ip(request))
@@ -256,16 +250,14 @@ def api_delete_cluster(
 # ─── 集群资源（实时从 K8s API 拉取）────────────────────────
 
 
-@router.get("/clusters/{cluster_id}/resources")
+@router.get("/clusters/{cluster_name}/resources")
 def api_cluster_resources(
-    cluster_id: int,
+    cluster_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """实时从 K8s API 获取集群全部资源。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
 
@@ -287,40 +279,36 @@ def api_cluster_resources(
     return {"code": 0, "data": info}
 
 
-@router.get("/clusters/{cluster_id}/nodes")
+@router.get("/clusters/{cluster_name}/nodes")
 def api_cluster_nodes(
-    cluster_id: int,
+    cluster_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取集群节点列表。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     nodes = get_nodes(c.endpoint, c.token) if c.token else []
     return {"code": 0, "data": nodes}
 
 
-@router.get("/clusters/{cluster_id}/pods")
+@router.get("/clusters/{cluster_name}/pods")
 def api_cluster_pods(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取集群 Pod 列表。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     pods = get_pods(c.endpoint, c.token) if c.token else []
     if namespace:
         pods = [p for p in pods if p["namespace"] == namespace]
     return {"code": 0, "data": pods}
 
 
-@router.get("/clusters/{cluster_id}/pods/{namespace}/{pod_name}/logs")
+@router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/logs")
 def api_pod_logs(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str,
     pod_name: str,
     tail_lines: int = 200,
@@ -328,9 +316,7 @@ def api_pod_logs(
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取 Pod 日志。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     result = get_pod_logs(c.endpoint, c.token, namespace, pod_name, tail_lines)
@@ -339,26 +325,24 @@ def api_pod_logs(
     return {"code": 0, "data": {"logs": result.get("logs", "")}}
 
 
-@router.get("/clusters/{cluster_id}/pods/{namespace}/{pod_name}/events")
+@router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/events")
 def api_pod_events(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str,
     pod_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取 Pod 事件。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     return {"code": 0, "data": get_pod_events(c.endpoint, c.token, namespace, pod_name)}
 
 
-@router.delete("/clusters/{cluster_id}/pods/{namespace}/{pod_name}")
+@router.delete("/clusters/{cluster_name}/pods/{namespace}/{pod_name}")
 def api_delete_pod(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str,
     pod_name: str,
     request: Request,
@@ -366,9 +350,7 @@ def api_delete_pod(
     current_user: User = Depends(api_permission_required("containers.delete")),
 ):
     """删除 Pod。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     result = delete_pod(c.endpoint, c.token, namespace, pod_name)
@@ -381,9 +363,9 @@ def api_delete_pod(
     return {"code": 0, "msg": "删除成功"}
 
 
-@router.post("/clusters/{cluster_id}/deployments/{namespace}/{deployment_name}/restart")
+@router.post("/clusters/{cluster_name}/deployments/{namespace}/{deployment_name}/restart")
 def api_restart_deployment(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str,
     deployment_name: str,
     request: Request,
@@ -391,9 +373,7 @@ def api_restart_deployment(
     current_user: User = Depends(api_permission_required("containers.update")),
 ):
     """滚动重启 Deployment。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     result = restart_deployment(c.endpoint, c.token, namespace, deployment_name)
@@ -406,34 +386,30 @@ def api_restart_deployment(
     return {"code": 0, "msg": "重启已触发", "data": {"restarted_at": result.get("restarted_at")}}
 
 
-@router.get("/clusters/{cluster_id}/services")
+@router.get("/clusters/{cluster_name}/services")
 def api_cluster_services(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取集群 Service 列表。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     svcs = get_services(c.endpoint, c.token) if c.token else []
     if namespace:
         svcs = [s for s in svcs if s["namespace"] == namespace]
     return {"code": 0, "data": svcs}
 
 
-@router.get("/clusters/{cluster_id}/deployments")
+@router.get("/clusters/{cluster_name}/deployments")
 def api_cluster_deployments(
-    cluster_id: int,
+    cluster_name: str,
     namespace: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """获取集群 Deployment 列表。"""
-    c = get_cluster(db, cluster_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail="集群不存在")
+    c = _require_cluster_by_name(db, cluster_name)
     deps = get_deployments(c.endpoint, c.token) if c.token else []
     if namespace:
         deps = [d for d in deps if d["namespace"] == namespace]

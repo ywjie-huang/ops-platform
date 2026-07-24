@@ -111,9 +111,9 @@
       </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑 K8s 集群' : '接入 K8s 集群'" width="520px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="editingName ? '编辑 K8s 集群' : '接入 K8s 集群'" width="520px" destroy-on-close>
       <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-        <template v-if="editingId">更新集群信息，Token 留空则保留原值。</template>
+        <template v-if="editingName">更新集群信息，Token 留空则保留原值。</template>
         <template v-else>填入 K8s API Server 地址和 ServiceAccount Token，系统将自动测试连接并发现集群资源。</template>
       </el-alert>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
@@ -139,7 +139,7 @@
       <template #footer>
         <el-button :loading="testing" @click="handleTest">测试连接</el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ editingId ? '保存' : '接入' }}</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ editingName ? '保存' : '接入' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -176,7 +176,7 @@ const testing = ref(false)
 const keyword = ref('')
 const clusters = ref<ClusterRow[]>([])
 const dialogVisible = ref(false)
-const editingId = ref<number | null>(null)
+const editingName = ref('')
 const testResult = ref<any>(null)
 const formRef = ref<FormInstance>()
 
@@ -239,14 +239,14 @@ async function fetchClusters() {
 }
 
 function handleCreate() {
-  editingId.value = null
+  editingName.value = ''
   Object.assign(form, { name: '', endpoint: '', token: '', description: '' })
   testResult.value = null
   dialogVisible.value = true
 }
 
 function handleEdit(row: ClusterRow) {
-  editingId.value = row.id
+  editingName.value = row.name
   Object.assign(form, { name: row.name, endpoint: row.endpoint || '', token: '', description: row.description || '' })
   testResult.value = null
   dialogVisible.value = true
@@ -274,8 +274,8 @@ async function handleSubmit() {
   if (!valid) return
   saving.value = true
   try {
-    if (editingId.value) {
-      await updateCluster(editingId.value, form)
+    if (editingName.value) {
+      await updateCluster(editingName.value, form)
       ElMessage.success('更新成功')
     } else {
       await createCluster(form)
@@ -290,7 +290,7 @@ async function handleSubmit() {
 
 async function handleDelete(row: ClusterRow) {
   await ElMessageBox.confirm(`确定删除集群「${row.name}」？`, '删除确认', { type: 'warning' })
-  await deleteCluster(row.id)
+  await deleteCluster(row.name)
   ElMessage.success('删除成功')
   await fetchClusters()
 }

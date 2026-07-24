@@ -9,6 +9,7 @@ const dockerListSource = readFileSync(new URL('../../views/containers/DockerView
 const dockerDetailSource = readFileSync(new URL('../../views/containers/DockerDetailView.vue', import.meta.url), 'utf8')
 const clusterListSource = readFileSync(new URL('../../views/containers/ContainerView.vue', import.meta.url), 'utf8')
 const clusterDetailSource = readFileSync(new URL('../../views/containers/ContainerDetailView.vue', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../../api/containers.ts', import.meta.url), 'utf8')
 
 test('container routes use readable resource names as canonical paths', () => {
   assert.ok(assetGroup.children.some((route) => route.path === 'docker/host/:name' && route.name === 'DockerDetail'))
@@ -17,18 +18,18 @@ test('container routes use readable resource names as canonical paths', () => {
   assert.match(clusterListSource, /name: 'ContainerDetail', params: \{ name: row\.name \}/)
 })
 
-test('vue router resolves readable and legacy detail URLs to the intended routes', () => {
+test('vue router resolves only readable detail URLs', () => {
   const router = createRouter({ history: createMemoryHistory(), routes })
 
   assert.equal(router.resolve('/assets/docker/host/docker-prod-01').name, 'DockerDetail')
   assert.equal(router.resolve('/assets/containers/cluster/prod-k8s').name, 'ContainerDetail')
-  assert.equal(router.resolve('/assets/docker/12').name, 'DockerDetailLegacy')
-  assert.equal(router.resolve('/assets/containers/4').name, 'ContainerDetailLegacy')
+  assert.equal(router.resolve('/assets/docker/12').name, undefined)
+  assert.equal(router.resolve('/assets/containers/4').name, undefined)
 })
 
-test('legacy numeric paths remain compatible and canonicalize to name routes', () => {
-  assert.ok(assetGroup.children.some((route) => route.path === 'docker/:id(\\d+)' && route.name === 'DockerDetailLegacy'))
-  assert.ok(assetGroup.children.some((route) => route.path === 'containers/:id(\\d+)' && route.name === 'ContainerDetailLegacy'))
-  assert.match(dockerDetailSource, /router\.replace\(\{ name: 'DockerDetail'/)
-  assert.match(clusterDetailSource, /router\.replace\(\{ name: 'ContainerDetail'/)
+test('detail data and operations use names without numeric or transitional endpoints', () => {
+  assert.doesNotMatch(apiSource, /hosts\/by-name|clusters\/by-name/)
+  assert.doesNotMatch(apiSource, /hosts\/\$\{(?:host)?[Ii]d\}|clusters\/\$\{(?:cluster)?[Ii]d\}/)
+  assert.doesNotMatch(dockerDetailSource, /hostId|route\.params\.id/)
+  assert.doesNotMatch(clusterDetailSource, /clusterId|route\.params\.id/)
 })

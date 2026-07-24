@@ -2,17 +2,14 @@ import request from './request'
 
 // 集群管理
 export function getClusters(params?: { keyword?: string }) { return request.get('/containers/clusters', { params }) }
-export function getCluster(id: number) { return request.get(`/containers/clusters/${id}`) }
-export function getClusterByName(name: string) {
-  return request.get(`/containers/clusters/by-name/${encodeURIComponent(name)}`)
-}
+export function getCluster(name: string) { return request.get(`/containers/clusters/${encodeURIComponent(name)}`) }
 export function createCluster(data: { name: string; endpoint: string; token?: string; description?: string }) {
   return request.post('/containers/clusters', data)
 }
-export function updateCluster(id: number, data: { name: string; endpoint: string; token?: string; description?: string }) {
-  return request.put(`/containers/clusters/${id}`, data)
+export function updateCluster(name: string, data: { name: string; endpoint: string; token?: string; description?: string }) {
+  return request.put(`/containers/clusters/${encodeURIComponent(name)}`, data)
 }
-export function deleteCluster(id: number) { return request.delete(`/containers/clusters/${id}`) }
+export function deleteCluster(name: string) { return request.delete(`/containers/clusters/${encodeURIComponent(name)}`) }
 
 // 连接测试
 export function testConnection(data: { endpoint: string; token?: string }) {
@@ -20,28 +17,28 @@ export function testConnection(data: { endpoint: string; token?: string }) {
 }
 
 // 集群资源（实时从 K8s API 拉取）
-export function getClusterResources(id: number) { return request.get(`/containers/clusters/${id}/resources`) }
-export function getClusterNodes(id: number) { return request.get(`/containers/clusters/${id}/nodes`) }
-export function getClusterPods(id: number, params?: { namespace?: string }) {
-  return request.get(`/containers/clusters/${id}/pods`, { params })
+export function getClusterResources(name: string) { return request.get(`/containers/clusters/${encodeURIComponent(name)}/resources`) }
+export function getClusterNodes(name: string) { return request.get(`/containers/clusters/${encodeURIComponent(name)}/nodes`) }
+export function getClusterPods(name: string, params?: { namespace?: string }) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods`, { params })
 }
-export function getClusterServices(id: number, params?: { namespace?: string }) {
-  return request.get(`/containers/clusters/${id}/services`, { params })
+export function getClusterServices(name: string, params?: { namespace?: string }) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/services`, { params })
 }
-export function getClusterDeployments(id: number, params?: { namespace?: string }) {
-  return request.get(`/containers/clusters/${id}/deployments`, { params })
+export function getClusterDeployments(name: string, params?: { namespace?: string }) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/deployments`, { params })
 }
-export function getPodLogs(id: number, namespace: string, podName: string, params?: { tail_lines?: number }) {
-  return request.get(`/containers/clusters/${id}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs`, { params })
+export function getPodLogs(name: string, namespace: string, podName: string, params?: { tail_lines?: number }) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs`, { params })
 }
-export function getPodEvents(id: number, namespace: string, podName: string) {
-  return request.get(`/containers/clusters/${id}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)
+export function getPodEvents(name: string, namespace: string, podName: string) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)
 }
-export function deleteClusterPod(id: number, namespace: string, podName: string) {
-  return request.delete(`/containers/clusters/${id}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
+export function deleteClusterPod(name: string, namespace: string, podName: string) {
+  return request.delete(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
 }
-export function restartClusterDeployment(id: number, namespace: string, deploymentName: string) {
-  return request.post(`/containers/clusters/${id}/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(deploymentName)}/restart`)
+export function restartClusterDeployment(name: string, namespace: string, deploymentName: string) {
+  return request.post(`/containers/clusters/${encodeURIComponent(name)}/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(deploymentName)}/restart`)
 }
 
 // ─── Docker 监控 ──────────────────────────────────────────
@@ -51,40 +48,37 @@ export function getDockerOverview() { return request.get('/containers/docker/ove
 
 // Docker 主机管理
 export function getDockerHosts(params?: { keyword?: string }) { return request.get('/containers/docker/hosts', { params }) }
-export function getDockerHost(id: number) { return request.get(`/containers/docker/hosts/${id}`) }
-export function getDockerHostByName(name: string) {
-  return request.get(`/containers/docker/hosts/by-name/${encodeURIComponent(name)}`)
-}
+export function getDockerHost(name: string) { return request.get(`/containers/docker/hosts/${encodeURIComponent(name)}`) }
 export function createDockerHost(data: { name: string; endpoint: string; description?: string }) {
   return request.post('/containers/docker/hosts', data)
 }
-export function updateDockerHost(id: number, data: { name: string; endpoint?: string; description?: string }) {
-  return request.put(`/containers/docker/hosts/${id}`, data)
+export function updateDockerHost(name: string, data: { name: string; endpoint?: string; description?: string }) {
+  return request.put(`/containers/docker/hosts/${encodeURIComponent(name)}`, data)
 }
-export function deleteDockerHost(id: number) { return request.delete(`/containers/docker/hosts/${id}`) }
-export function refreshDockerHost(id: number) { return request.post(`/containers/docker/hosts/${id}/refresh`) }
+export function deleteDockerHost(name: string) { return request.delete(`/containers/docker/hosts/${encodeURIComponent(name)}`) }
+export function refreshDockerHost(name: string) { return request.post(`/containers/docker/hosts/${encodeURIComponent(name)}/refresh`) }
 
 // Docker 容器查询
-export function getDockerContainers(params?: { host_id?: number; keyword?: string; status?: string }) {
+export function getDockerContainers(params?: { keyword?: string; status?: string }) {
   return request.get('/containers/docker/containers', { params })
 }
-export function getHostContainers(hostId: number, params?: { keyword?: string; status?: string }) {
-  return request.get(`/containers/docker/hosts/${hostId}/containers`, { params })
+export function getHostContainers(hostName: string, params?: { keyword?: string; status?: string }) {
+  return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers`, { params })
 }
-export function getDockerContainerLogs(hostId: number, containerId: string, params?: { tail_lines?: number }) {
-  return request.get(`/containers/docker/hosts/${hostId}/containers/${encodeURIComponent(containerId)}/logs`, { params })
+export function getDockerContainerLogs(hostName: string, containerId: string, params?: { tail_lines?: number }) {
+  return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/logs`, { params })
 }
 
 // Docker 容器操作
-export function startDockerContainer(hostId: number, containerId: string) {
-  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/start`)
+export function startDockerContainer(hostName: string, containerId: string) {
+  return request.post(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/start`)
 }
-export function stopDockerContainer(hostId: number, containerId: string) {
-  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/stop`)
+export function stopDockerContainer(hostName: string, containerId: string) {
+  return request.post(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/stop`)
 }
-export function restartDockerContainer(hostId: number, containerId: string) {
-  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/restart`)
+export function restartDockerContainer(hostName: string, containerId: string) {
+  return request.post(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/restart`)
 }
-export function deleteDockerContainer(hostId: number, containerId: string) {
-  return request.post(`/containers/docker/hosts/${hostId}/containers/${containerId}/delete`)
+export function deleteDockerContainer(hostName: string, containerId: string) {
+  return request.post(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/delete`)
 }

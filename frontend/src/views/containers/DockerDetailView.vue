@@ -273,7 +273,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import {
   getDockerHost,
-  getDockerHostByName,
   deleteDockerHost,
   refreshDockerHost,
   getHostContainers,
@@ -290,8 +289,7 @@ const THRESHOLD_DANGER = 85
 
 const route = useRoute()
 const router = useRouter()
-const hostRouteRef = computed(() => String(route.params.name ?? route.params.id ?? ''))
-const hostId = ref(0)
+const hostName = computed(() => String(route.params.name ?? ''))
 
 const host = ref<any>({})
 const containers = ref<any[]>([])
@@ -495,7 +493,7 @@ async function fetchSelectedContainerLogs() {
   if (!selectedContainer.value) return
   logsLoading.value = true
   try {
-    const res: any = await getDockerContainerLogs(hostId.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
+    const res: any = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
     containerLogs.value = res.data?.logs || ''
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载日志失败')
@@ -534,7 +532,7 @@ async function handleContainerAction(row: any, action: 'start' | 'stop' | 'resta
 
   try {
     const apiMap = { start: startDockerContainer, stop: stopDockerContainer, restart: restartDockerContainer, delete: deleteDockerContainer }
-    await apiMap[action](hostId.value, row.container_id)
+    await apiMap[action](hostName.value, row.container_id)
     ElMessage.success(`${labels[action]}成功`)
     fetchContainers()
   } catch (e: any) {
@@ -543,18 +541,10 @@ async function handleContainerAction(row: any, action: 'start' | 'stop' | 'resta
 }
 
 async function fetchHost() {
-  if (!hostRouteRef.value) return false
+  if (!hostName.value) return false
   try {
-    const isLegacyRoute = route.name === 'DockerDetailLegacy'
-    const res: any = isLegacyRoute
-      ? await getDockerHost(Number(hostRouteRef.value))
-      : await getDockerHostByName(hostRouteRef.value)
+    const res: any = await getDockerHost(hostName.value)
     host.value = res.data
-    hostId.value = res.data.id
-    if (isLegacyRoute) {
-      skipCanonicalRef = res.data.name
-      await router.replace({ name: 'DockerDetail', params: { name: res.data.name }, query: route.query })
-    }
     return true
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '主机不存在')
@@ -563,10 +553,10 @@ async function fetchHost() {
 }
 
 async function fetchContainers() {
-  if (!hostId.value) return
+  if (!hostName.value) return
   loading.value = true
   try {
-    const res: any = await getHostContainers(hostId.value)
+    const res: any = await getHostContainers(hostName.value)
     containers.value = res.data
   } finally {
     loading.value = false
@@ -574,13 +564,12 @@ async function fetchContainers() {
 }
 
 async function loadHostDetail() {
-  const routeRef = hostRouteRef.value
+  const routeRef = hostName.value
   if (!routeRef || activeLoadRef === routeRef) return
   activeLoadRef = routeRef
   if (host.value.name && host.value.name !== routeRef) {
     host.value = {}
     containers.value = []
-    hostId.value = 0
   }
   try {
     if (await fetchHost()) await fetchContainers()
@@ -592,7 +581,7 @@ async function loadHostDetail() {
 async function handleRefresh() {
   refreshing.value = true
   try {
-    await refreshDockerHost(hostId.value)
+    await refreshDockerHost(hostName.value)
     await fetchHost()
     await fetchContainers()
     ElMessage.success('刷新成功')
@@ -605,7 +594,7 @@ async function handleRefresh() {
 
 async function handleDelete() {
   await ElMessageBox.confirm(`确定删除主机「${host.value.name}」？所有容器数据将被清除。`, '删除确认', { type: 'warning' })
-  await deleteDockerHost(hostId.value)
+  await deleteDockerHost(hostName.value)
   ElMessage.success('删除成功')
   router.push('/assets/docker')
 }
@@ -629,15 +618,8 @@ function stopAutoRefresh() {
   }
 }
 
-let skipCanonicalRef = ''
 let activeLoadRef = ''
-watch(hostRouteRef, (value) => {
-  if (skipCanonicalRef === value) {
-    skipCanonicalRef = ''
-    return
-  }
-  loadHostDetail()
-})
+watch(hostName, loadHostDetail)
 
 onActivated(loadHostDetail)
 

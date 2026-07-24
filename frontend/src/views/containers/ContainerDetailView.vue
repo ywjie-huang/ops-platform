@@ -437,7 +437,6 @@ import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import {
   deleteClusterPod,
   getCluster,
-  getClusterByName,
   getClusterDeployments,
   getClusterPods,
   getClusterResources,
@@ -529,8 +528,7 @@ interface PodEvent {
 
 const route = useRoute()
 const router = useRouter()
-const clusterRouteRef = computed(() => String(route.params.name ?? route.params.id ?? ''))
-const clusterId = ref(0)
+const clusterName = computed(() => String(route.params.name ?? ''))
 
 const cluster = ref<Record<string, any>>({})
 const resources = ref<K8sResources>({})
@@ -784,7 +782,7 @@ async function openPodLogs(row: K8sPod) {
   logsDialogVisible.value = true
   logsLoading.value = true
   try {
-    const res: any = await getPodLogs(clusterId.value, row.namespace, row.name, { tail_lines: 300 })
+    const res: any = await getPodLogs(clusterName.value, row.namespace, row.name, { tail_lines: 300 })
     podLogs.value = res.data?.logs || ''
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载日志失败')
@@ -800,7 +798,7 @@ async function openPodEvents(row: K8sPod) {
   eventsDialogVisible.value = true
   eventsLoading.value = true
   try {
-    const res: any = await getPodEvents(clusterId.value, row.namespace, row.name)
+    const res: any = await getPodEvents(clusterName.value, row.namespace, row.name)
     podEvents.value = res.data || []
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载事件失败')
@@ -816,7 +814,7 @@ async function confirmDeletePod(row: K8sPod) {
       '删除 Pod',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
     )
-    await deleteClusterPod(clusterId.value, row.namespace, row.name)
+    await deleteClusterPod(clusterName.value, row.namespace, row.name)
     ElMessage.success('Pod 已删除')
     await fetchResources()
   } catch (e: any) {
@@ -831,7 +829,7 @@ async function confirmRestartDeployment(row: K8sDeployment) {
       '重启 Deployment',
       { type: 'warning', confirmButtonText: '重启', cancelButtonText: '取消' },
     )
-    await restartClusterDeployment(clusterId.value, row.namespace, row.name)
+    await restartClusterDeployment(clusterName.value, row.namespace, row.name)
     ElMessage.success('重启已触发')
     await fetchDeployments()
   } catch (e: any) {
@@ -841,18 +839,10 @@ async function confirmRestartDeployment(row: K8sDeployment) {
 
 async function fetchCluster() {
   clusterError.value = ''
-  if (!clusterRouteRef.value) return false
+  if (!clusterName.value) return false
   try {
-    const isLegacyRoute = route.name === 'ContainerDetailLegacy'
-    const res: any = isLegacyRoute
-      ? await getCluster(Number(clusterRouteRef.value))
-      : await getClusterByName(clusterRouteRef.value)
+    const res: any = await getCluster(clusterName.value)
     cluster.value = res.data
-    clusterId.value = res.data.id
-    if (isLegacyRoute) {
-      skipCanonicalRef = res.data.name
-      await router.replace({ name: 'ContainerDetail', params: { name: res.data.name }, query: route.query })
-    }
     return true
   } catch (e: any) {
     clusterError.value = e?.response?.data?.detail || '加载失败'
@@ -861,11 +851,11 @@ async function fetchCluster() {
 }
 
 async function fetchResources() {
-  if (!clusterId.value) return
+  if (!clusterName.value) return
   refreshing.value = true
   resourcesError.value = ''
   try {
-    const res: any = await getClusterResources(clusterId.value)
+    const res: any = await getClusterResources(clusterName.value)
     resources.value = res.data
     cluster.value.status = res.data.connected ? 'running' : 'stopped'
     cluster.value.status_message = res.data.connected ? '' : (res.data.error || '连接失败')
@@ -880,13 +870,12 @@ async function fetchResources() {
 }
 
 async function loadClusterDetail() {
-  const routeRef = clusterRouteRef.value
+  const routeRef = clusterName.value
   if (!routeRef || activeLoadRef === routeRef) return
   activeLoadRef = routeRef
   if (cluster.value.name && cluster.value.name !== routeRef) {
     cluster.value = {}
     resources.value = {}
-    clusterId.value = 0
   }
   initialLoading.value = true
   try {
@@ -899,7 +888,7 @@ async function loadClusterDetail() {
 
 async function fetchPods() {
   try {
-    const res: any = await getClusterPods(clusterId.value, { namespace: podNamespace.value })
+    const res: any = await getClusterPods(clusterName.value, { namespace: podNamespace.value })
     resources.value.pods = res.data
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载失败')
@@ -908,7 +897,7 @@ async function fetchPods() {
 
 async function fetchDeployments() {
   try {
-    const res: any = await getClusterDeployments(clusterId.value, { namespace: depNamespace.value })
+    const res: any = await getClusterDeployments(clusterName.value, { namespace: depNamespace.value })
     resources.value.deployments = res.data
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载失败')
@@ -917,22 +906,15 @@ async function fetchDeployments() {
 
 async function fetchServices() {
   try {
-    const res: any = await getClusterServices(clusterId.value, { namespace: svcNamespace.value })
+    const res: any = await getClusterServices(clusterName.value, { namespace: svcNamespace.value })
     resources.value.services = res.data
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载失败')
   }
 }
 
-let skipCanonicalRef = ''
 let activeLoadRef = ''
-watch(clusterRouteRef, (value) => {
-  if (skipCanonicalRef === value) {
-    skipCanonicalRef = ''
-    return
-  }
-  loadClusterDetail()
-})
+watch(clusterName, loadClusterDetail)
 
 let timer: ReturnType<typeof setInterval> | null = null
 

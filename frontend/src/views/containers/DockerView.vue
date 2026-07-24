@@ -146,8 +146,8 @@
       </div>
     </div>
 
-    <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="min(720px, 90vw)" destroy-on-close>
-      <template v-if="!editingHostId">
+    <el-dialog v-model="hostDialogVisible" :title="editingHostName ? '编辑主机' : '注册 Docker 主机'" width="min(720px, 90vw)" destroy-on-close>
+      <template v-if="!editingHostName">
         <div class="access-mode">
           <div class="access-mode-label">接入方式</div>
           <el-radio-group v-model="accessMode" aria-label="选择 Docker Agent 接入方式">
@@ -245,7 +245,7 @@
 
       <template #footer>
         <el-button @click="hostDialogVisible = false">取消</el-button>
-        <template v-if="!editingHostId">
+        <template v-if="!editingHostName">
           <el-button v-if="accessMode === 'deploy' && setupStep > 0" @click="setupStep -= 1">上一步</el-button>
           <el-button v-if="accessMode === 'deploy' && setupStep < 2" type="primary" @click="goToNextSetupStep">
             {{ setupStep === 0 ? '下一步，部署 Agent' : '下一步，注册主机' }}
@@ -292,7 +292,7 @@ const autoRefresh = ref(false)
 const lastRefreshAt = ref<Date | null>(null)
 
 const hostDialogVisible = ref(false)
-const editingHostId = ref<number | null>(null)
+const editingHostName = ref('')
 const accessMode = ref<'deploy' | 'existing'>('deploy')
 const setupStep = ref(0)
 const agentImage = ref('')
@@ -504,7 +504,7 @@ async function refreshAll() {
 }
 
 function handleCreate() {
-  editingHostId.value = null
+  editingHostName.value = ''
   accessMode.value = 'deploy'
   setupStep.value = 0
   agentImage.value = ''
@@ -514,7 +514,7 @@ function handleCreate() {
 }
 
 function handleEdit(row: any) {
-  editingHostId.value = row.id
+  editingHostName.value = row.name
   Object.assign(hostForm, { name: row.name, endpoint: row.endpoint, description: row.description || '' })
   hostDialogVisible.value = true
 }
@@ -524,8 +524,8 @@ async function handleHostSubmit() {
   if (!valid) return
   saving.value = true
   try {
-    if (editingHostId.value) {
-      await updateDockerHost(editingHostId.value, hostForm)
+    if (editingHostName.value) {
+      await updateDockerHost(editingHostName.value, hostForm)
       ElMessage.success('更新成功')
     } else {
       const res: any = await createDockerHost(hostForm)
@@ -540,7 +540,7 @@ async function handleHostSubmit() {
 
 async function handleDelete(row: any) {
   await ElMessageBox.confirm(`确定删除主机「${row.name}」？所有容器数据将被清除。`, '删除确认', { type: 'warning' })
-  await deleteDockerHost(row.id)
+  await deleteDockerHost(row.name)
   ElMessage.success('删除成功')
   refreshAll()
 }
@@ -548,7 +548,7 @@ async function handleDelete(row: any) {
 async function handleRefresh(row: any) {
   refreshingHostId.value = row.id
   try {
-    await refreshDockerHost(row.id)
+    await refreshDockerHost(row.name)
     ElMessage.success('刷新成功')
     await refreshAll()
   } catch {

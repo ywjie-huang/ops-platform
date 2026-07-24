@@ -20,7 +20,6 @@ from app.services.docker_agent import (
     docker_host_name_exists,
     docker_overview,
     find_docker_hosts_by_name,
-    get_docker_host,
     is_host_online,
     list_docker_containers,
     list_docker_hosts,
@@ -104,6 +103,17 @@ def _normalize_log_tail_lines(value: int) -> int:
     return max(1, min(int(value or 300), MAX_DOCKER_LOG_TAIL))
 
 
+def _require_docker_host_by_name(db: Session, host_name: str) -> ContainerCluster:
+    if host_name.isdigit():
+        raise HTTPException(status_code=404, detail="主机不存在")
+    matches = find_docker_hosts_by_name(db, host_name)
+    if not matches:
+        raise HTTPException(status_code=404, detail="主机不存在")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="存在同名主机，请先修改主机名称")
+    return matches[0]
+
+
 # ─── 概览 ─────────────────────────────────────────────────
 
 @router.get("/overview")
@@ -126,30 +136,14 @@ def api_list_docker_hosts(
     return {"code": 0, "data": [_host_dict(h) for h in hosts]}
 
 
-@router.get("/hosts/{host_id}")
+@router.get("/hosts/{host_name}")
 def api_get_docker_host(
-    host_id: int,
-    db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("containers.view")),
-):
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
-    return {"code": 0, "data": _host_dict(h)}
-
-
-@router.get("/hosts/by-name/{host_name}")
-def api_get_docker_host_by_name(
     host_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    matches = find_docker_hosts_by_name(db, host_name)
-    if not matches:
-        raise HTTPException(status_code=404, detail="主机不存在")
-    if len(matches) > 1:
-        raise HTTPException(status_code=409, detail="存在同名主机，请先修改主机名称")
-    return {"code": 0, "data": _host_dict(matches[0])}
+    h = _require_docker_host_by_name(db, host_name)
+    return {"code": 0, "data": _host_dict(h)}
 
 
 @router.post("/hosts")
@@ -163,6 +157,8 @@ def api_create_docker_host(
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="主机名称不能为空")
+    if name.isdigit() or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="主机名称必须包含文字，且不能包含斜杠")
     if docker_host_name_exists(db, name):
         raise HTTPException(status_code=409, detail="主机名称已存在")
     if not body.endpoint.strip():
@@ -189,22 +185,22 @@ def api_create_docker_host(
     return {"code": 0, "msg": "注册成功" + ("，已连接 Agent" if ok else "，Agent 暂时不可达，请确认 Agent 已启动"), "data": _host_dict(h)}
 
 
-@router.put("/hosts/{host_id}")
+@router.put("/hosts/{host_name}")
 def api_update_docker_host(
-    host_id: int,
+    host_name: str,
     body: DockerHostUpdate,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("containers.update")),
 ):
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
+    h = _require_docker_host_by_name(db, host_name)
 
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="主机名称不能为空")
-    if docker_host_name_exists(db, name, exclude_id=host_id):
+    if name.isdigit() or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="主机名称必须包含文字，且不能包含斜杠")
+    if docker_host_name_exists(db, name, exclude_id=h.id):
         raise HTTPException(status_code=409, detail="主机名称已存在")
 
     kwargs = {"name": name}
@@ -225,16 +221,14 @@ def api_update_docker_host(
     return {"code": 0, "msg": "更新成功", "data": _host_dict(h)}
 
 
-@router.delete("/hosts/{host_id}")
+@router.delete("/hosts/{host_name}")
 def api_delete_docker_host(
-    host_id: int,
+    host_name: str,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("containers.delete")),
 ):
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
+    h = _require_docker_host_by_name(db, host_name)
 
     write_log(
         db, user=current_user, action="delete", target_type="docker_host",
@@ -249,16 +243,14 @@ def api_delete_docker_host(
 
 # ─── 手动刷新（从 Agent 拉取）─────────────────────────────
 
-@router.post("/hosts/{host_id}/refresh")
+@router.post("/hosts/{host_name}/refresh")
 def api_refresh_host(
-    host_id: int,
+    host_name: str,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
     """手动触发从 Agent 拉取最新数据。"""
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
+    h = _require_docker_host_by_name(db, host_name)
 
     ok = sync_host_from_agent(db, h)
     if not ok:
@@ -271,42 +263,37 @@ def api_refresh_host(
 
 @router.get("/containers")
 def api_list_docker_containers(
-    host_id: int | None = None,
     keyword: str = "",
     status: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    containers = list_docker_containers(db, host_id=host_id, keyword=keyword, status=status)
+    containers = list_docker_containers(db, keyword=keyword, status=status)
     return {"code": 0, "data": [_container_dict(c) for c in containers]}
 
 
-@router.get("/hosts/{host_id}/containers")
+@router.get("/hosts/{host_name}/containers")
 def api_host_containers(
-    host_id: int,
+    host_name: str,
     keyword: str = "",
     status: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
-    containers = list_docker_containers(db, host_id=host_id, keyword=keyword, status=status)
+    h = _require_docker_host_by_name(db, host_name)
+    containers = list_docker_containers(db, host_id=h.id, keyword=keyword, status=status)
     return {"code": 0, "data": [_container_dict(c) for c in containers]}
 
 
-@router.get("/hosts/{host_id}/containers/{container_id}/logs")
+@router.get("/hosts/{host_name}/containers/{container_id}/logs")
 def api_container_logs(
-    host_id: int,
+    host_name: str,
     container_id: str,
     tail_lines: int = 300,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
+    h = _require_docker_host_by_name(db, host_name)
 
     tail = _normalize_log_tail_lines(tail_lines)
     result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/logs?tail={tail}")
@@ -349,9 +336,9 @@ def _agent_error_detail(status_code: int, body: str, method: str) -> str:
     return (text or "Agent 请求失败")[:500]
 
 
-@router.post("/hosts/{host_id}/containers/{container_id}/{action}")
+@router.post("/hosts/{host_name}/containers/{container_id}/{action}")
 def api_container_action(
-    host_id: int,
+    host_name: str,
     container_id: str,
     action: str,
     request: Request,
@@ -362,9 +349,7 @@ def api_container_action(
     if action not in ("start", "stop", "restart", "delete"):
         raise HTTPException(status_code=400, detail="不支持的操作")
 
-    h = get_docker_host(db, host_id)
-    if not h:
-        raise HTTPException(status_code=404, detail="主机不存在")
+    h = _require_docker_host_by_name(db, host_name)
 
     result = _proxy_to_agent(h, "POST", f"/containers/{container_id}/{action}")
 

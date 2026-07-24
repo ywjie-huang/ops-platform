@@ -66,12 +66,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '集群详情', hidden: true, permission: 'containers.view', parentTitle: 'K8s 集群', activeMenu: '/assets/containers' },
       },
       {
-        path: 'containers/:id(\\d+)',
-        name: 'ContainerDetailLegacy',
-        component: () => import('@/views/containers/ContainerDetailView.vue'),
-        meta: { title: '集群详情', hidden: true, permission: 'containers.view', parentTitle: 'K8s 集群', activeMenu: '/assets/containers' },
-      },
-      {
         path: 'docker',
         name: 'DockerMonitor',
         component: () => import('@/views/containers/DockerView.vue'),
@@ -80,12 +74,6 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'docker/host/:name',
         name: 'DockerDetail',
-        component: () => import('@/views/containers/DockerDetailView.vue'),
-        meta: { title: '主机详情', hidden: true, permission: 'containers.view', parentTitle: 'Docker 监控', activeMenu: '/assets/docker' },
-      },
-      {
-        path: 'docker/:id(\\d+)',
-        name: 'DockerDetailLegacy',
         component: () => import('@/views/containers/DockerDetailView.vue'),
         meta: { title: '主机详情', hidden: true, permission: 'containers.view', parentTitle: 'Docker 监控', activeMenu: '/assets/docker' },
       },

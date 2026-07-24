@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from app.api import docker_mgmt
 from app.api.docker_mgmt import _proxy_to_agent
-from app.api.containers import api_get_cluster_by_name, api_list_clusters
+from app.api.containers import api_get_cluster, api_list_clusters
 from app.models.container import ContainerCluster, ContainerDeployment, ContainerPod
 from app.services.containers import cluster_name_exists, refresh_cluster_connection_status
 from app.services.docker_agent import docker_host_name_exists
@@ -125,7 +125,7 @@ def test_cluster_name_lookup_and_duplicate_detection_are_provider_scoped():
         db.add_all([k8s, docker])
         db.commit()
 
-        response = api_get_cluster_by_name("prod-main", db=db, _=None)
+        response = api_get_cluster("prod-main", db=db, _=None)
 
         assert response["data"]["id"] == k8s.id
         assert cluster_name_exists(db, "prod-main") is True
@@ -147,10 +147,27 @@ def test_docker_host_can_be_resolved_by_readable_name():
         db.add(host)
         db.commit()
 
-        response = docker_mgmt.api_get_docker_host_by_name("docker-prod-01", db=db, _=None)
+        response = docker_mgmt.api_get_docker_host("docker-prod-01", db=db, _=None)
 
         assert response["data"]["id"] == host.id
         assert response["data"]["name"] == "docker-prod-01"
+    finally:
+        db.close()
+
+
+def test_numeric_identifiers_are_not_accepted_as_resource_names():
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    db = SessionLocal()
+    try:
+        for lookup, value in ((api_get_cluster, "4"), (docker_mgmt.api_get_docker_host, "8")):
+            try:
+                lookup(value, db=db, _=None)
+                raise AssertionError("expected numeric identifiers to be rejected")
+            except HTTPException as exc:
+                assert exc.status_code == 404
     finally:
         db.close()
 
@@ -169,7 +186,7 @@ def test_name_lookup_rejects_ambiguous_existing_clusters():
         db.commit()
 
         try:
-            api_get_cluster_by_name("duplicate", db=db, _=None)
+            api_get_cluster("duplicate", db=db, _=None)
             raise AssertionError("expected ambiguous names to be rejected")
         except HTTPException as exc:
             assert exc.status_code == 409
@@ -267,7 +284,7 @@ def test_container_logs_proxy_clamps_tail_and_returns_logs(monkeypatch):
         db.commit()
 
         response = docker_mgmt.api_container_logs(
-            host.id,
+            host.name,
             "abc123def456",
             tail_lines=5000,
             db=db,
