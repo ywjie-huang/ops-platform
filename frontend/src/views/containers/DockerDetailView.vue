@@ -289,7 +289,9 @@ const THRESHOLD_DANGER = 85
 
 const route = useRoute()
 const router = useRouter()
-const hostName = computed(() => String(route.params.name ?? ''))
+const hostName = computed(() => (
+  route.name === 'DockerDetail' ? String(route.params.name ?? '') : ''
+))
 
 const host = ref<any>({})
 const containers = ref<any[]>([])

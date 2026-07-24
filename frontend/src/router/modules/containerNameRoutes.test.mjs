@@ -33,3 +33,8 @@ test('detail data and operations use names without numeric or transitional endpo
   assert.doesNotMatch(dockerDetailSource, /hostId|route\.params\.id/)
   assert.doesNotMatch(clusterDetailSource, /clusterId|route\.params\.id/)
 })
+
+test('cached detail views ignore name params owned by the other resource route', () => {
+  assert.match(dockerDetailSource, /route\.name === 'DockerDetail' \? String\(route\.params\.name/)
+  assert.match(clusterDetailSource, /route\.name === 'ContainerDetail' \? String\(route\.params\.name/)
+})

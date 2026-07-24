@@ -528,7 +528,9 @@ interface PodEvent {
 
 const route = useRoute()
 const router = useRouter()
-const clusterName = computed(() => String(route.params.name ?? ''))
+const clusterName = computed(() => (
+  route.name === 'ContainerDetail' ? String(route.params.name ?? '') : ''
+))
 
 const cluster = ref<Record<string, any>>({})
 const resources = ref<K8sResources>({})
