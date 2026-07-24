@@ -148,13 +148,24 @@
 
     <el-dialog v-model="hostDialogVisible" :title="editingHostId ? '编辑主机' : '注册 Docker 主机'" width="min(720px, 90vw)" destroy-on-close>
       <template v-if="!editingHostId">
-        <el-steps :active="setupStep" finish-status="success" align-center class="setup-steps">
+        <div class="access-mode">
+          <div class="access-mode-label">接入方式</div>
+          <el-radio-group v-model="accessMode" aria-label="选择 Docker Agent 接入方式">
+            <el-radio-button value="deploy">部署新 Agent</el-radio-button>
+            <el-radio-button value="existing">使用已有 Agent</el-radio-button>
+          </el-radio-group>
+          <p class="access-mode-tip">
+            {{ accessMode === 'deploy' ? '按步骤构建镜像、部署 Agent，再注册到平台。' : 'Agent 已在目标主机运行时，直接填写平台可访问的地址。' }}
+          </p>
+        </div>
+
+        <el-steps v-if="accessMode === 'deploy'" :active="setupStep" finish-status="success" align-center class="setup-steps">
           <el-step title="发布镜像" />
           <el-step title="部署 Agent" />
           <el-step title="注册主机" />
         </el-steps>
 
-        <section v-if="setupStep === 0" class="setup-panel" aria-labelledby="publish-agent-title">
+        <section v-if="accessMode === 'deploy' && setupStep === 0" class="setup-panel" aria-labelledby="publish-agent-title">
           <div class="setup-heading">
             <h3 id="publish-agent-title">从源码构建并发布 Agent 镜像</h3>
             <p>在获取本仓库源码的开发机上进入 <code>agent</code> 目录，将镜像推送到你有权限访问的仓库。</p>
@@ -176,7 +187,7 @@
           <div v-else class="setup-command-empty">填写镜像地址后生成构建、登录和推送命令。</div>
         </section>
 
-        <section v-if="setupStep === 1" class="setup-panel" aria-labelledby="deploy-agent-title">
+        <section v-if="accessMode === 'deploy' && setupStep === 1" class="setup-panel" aria-labelledby="deploy-agent-title">
           <div class="setup-heading">
             <h3 id="deploy-agent-title">在目标主机部署 Agent</h3>
             <p>填写管理平台能够访问的目标主机管理网 IP。端口暴露范围和防火墙规则请在服务器侧限制。</p>
@@ -198,10 +209,10 @@
           <div v-else class="setup-command-empty">填写镜像地址和管理网 IP 后生成拉取与运行命令。</div>
         </section>
 
-        <section v-if="setupStep === 2" class="setup-panel" aria-labelledby="register-agent-title">
+        <section v-if="accessMode === 'existing' || setupStep === 2" class="setup-panel" aria-labelledby="register-agent-title">
           <div class="setup-heading">
-            <h3 id="register-agent-title">将 Agent 注册到平台</h3>
-            <p>平台会通过 Agent 地址拉取 Docker 数据并执行容器管理操作。</p>
+            <h3 id="register-agent-title">{{ accessMode === 'existing' ? '注册已有 Agent' : '将 Agent 注册到平台' }}</h3>
+            <p>平台会通过 Agent 地址拉取 Docker 数据并执行容器管理操作，注册后将立即尝试连接。</p>
           </div>
           <el-form ref="hostFormRef" :model="hostForm" :rules="hostRules" label-width="100px">
             <el-form-item label="主机名称" prop="name">
@@ -209,7 +220,9 @@
             </el-form-item>
             <el-form-item label="Agent 地址" prop="endpoint">
               <el-input v-model="hostForm.endpoint" placeholder="例：10.10.20.15:9001" />
-              <div class="endpoint-tip">默认根据上一步的管理网 IP 生成，也可按实际网络配置修改。</div>
+              <div class="endpoint-tip">
+                {{ accessMode === 'existing' ? '填写管理平台可以访问的 Agent 地址，支持 IP:端口或完整 URL。' : '默认根据上一步的管理网 IP 生成，也可按实际网络配置修改。' }}
+              </div>
             </el-form-item>
             <el-form-item label="说明">
               <el-input v-model="hostForm.description" placeholder="备注信息" />
@@ -233,11 +246,11 @@
       <template #footer>
         <el-button @click="hostDialogVisible = false">取消</el-button>
         <template v-if="!editingHostId">
-          <el-button v-if="setupStep > 0" @click="setupStep -= 1">上一步</el-button>
-          <el-button v-if="setupStep < 2" type="primary" @click="goToNextSetupStep">
+          <el-button v-if="accessMode === 'deploy' && setupStep > 0" @click="setupStep -= 1">上一步</el-button>
+          <el-button v-if="accessMode === 'deploy' && setupStep < 2" type="primary" @click="goToNextSetupStep">
             {{ setupStep === 0 ? '下一步，部署 Agent' : '下一步，注册主机' }}
           </el-button>
-          <el-button v-else type="primary" :loading="saving" @click="handleHostSubmit">注册</el-button>
+          <el-button v-else-if="accessMode === 'existing' || setupStep === 2" type="primary" :loading="saving" @click="handleHostSubmit">注册</el-button>
         </template>
         <el-button v-else type="primary" :loading="saving" @click="handleHostSubmit">保存</el-button>
       </template>
@@ -280,6 +293,7 @@ const lastRefreshAt = ref<Date | null>(null)
 
 const hostDialogVisible = ref(false)
 const editingHostId = ref<number | null>(null)
+const accessMode = ref<'deploy' | 'existing'>('deploy')
 const setupStep = ref(0)
 const agentImage = ref('')
 const agentManagementIp = ref('')
@@ -363,6 +377,10 @@ const overviewCards = computed(() => [
 const lastRefreshText = computed(() => lastRefreshAt.value ? lastRefreshAt.value.toLocaleTimeString('zh-CN', { hour12: false }) : '尚未刷新')
 
 watch([hostKeyword, statusFilter, sortMode], () => { page.value = 1 })
+watch(accessMode, () => {
+  setupStep.value = 0
+  hostFormRef.value?.clearValidate()
+})
 
 async function copySetupCommand(command: string, successMessage: string) {
   if (!command) {
@@ -487,6 +505,7 @@ async function refreshAll() {
 
 function handleCreate() {
   editingHostId.value = null
+  accessMode.value = 'deploy'
   setupStep.value = 0
   agentImage.value = ''
   agentManagementIp.value = ''
@@ -759,6 +778,31 @@ onUnmounted(stopAutoRefresh)
 }
 .setup-steps {
   margin-bottom: 24px;
+}
+.access-mode {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.access-mode-label {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+.access-mode :deep(.el-radio-group) {
+  width: 100%;
+}
+.access-mode :deep(.el-radio-button) {
+  flex: 1;
+}
+.access-mode :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+.access-mode-tip {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .setup-panel {
   display: grid;
