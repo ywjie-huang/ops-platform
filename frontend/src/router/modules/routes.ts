@@ -60,8 +60,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'K8s 集群', icon: 'Box', permission: 'containers.view' },
       },
       {
-        path: 'containers/:id',
+        path: 'containers/cluster/:name',
         name: 'ContainerDetail',
+        component: () => import('@/views/containers/ContainerDetailView.vue'),
+        meta: { title: '集群详情', hidden: true, permission: 'containers.view', parentTitle: 'K8s 集群', activeMenu: '/assets/containers' },
+      },
+      {
+        path: 'containers/:id(\\d+)',
+        name: 'ContainerDetailLegacy',
         component: () => import('@/views/containers/ContainerDetailView.vue'),
         meta: { title: '集群详情', hidden: true, permission: 'containers.view', parentTitle: 'K8s 集群', activeMenu: '/assets/containers' },
       },
@@ -72,8 +78,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Docker 监控', icon: 'Connection', permission: 'containers.view' },
       },
       {
-        path: 'docker/:id',
+        path: 'docker/host/:name',
         name: 'DockerDetail',
+        component: () => import('@/views/containers/DockerDetailView.vue'),
+        meta: { title: '主机详情', hidden: true, permission: 'containers.view', parentTitle: 'Docker 监控', activeMenu: '/assets/docker' },
+      },
+      {
+        path: 'docker/:id(\\d+)',
+        name: 'DockerDetailLegacy',
         component: () => import('@/views/containers/DockerDetailView.vue'),
         meta: { title: '主机详情', hidden: true, permission: 'containers.view', parentTitle: 'Docker 监控', activeMenu: '/assets/docker' },
       },

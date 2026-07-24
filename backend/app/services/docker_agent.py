@@ -44,6 +44,25 @@ def get_docker_host(db: Session, host_id: int) -> ContainerCluster | None:
     return None
 
 
+def find_docker_hosts_by_name(db: Session, name: str) -> list[ContainerCluster]:
+    return list(db.scalars(
+        select(ContainerCluster).where(
+            ContainerCluster.name == name,
+            ContainerCluster.provider == "docker",
+        )
+    ).all())
+
+
+def docker_host_name_exists(db: Session, name: str, *, exclude_id: int | None = None) -> bool:
+    stmt = select(ContainerCluster.id).where(
+        ContainerCluster.name == name,
+        ContainerCluster.provider == "docker",
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(ContainerCluster.id != exclude_id)
+    return db.scalar(stmt.limit(1)) is not None
+
+
 def create_docker_host(
     db: Session,
     *,

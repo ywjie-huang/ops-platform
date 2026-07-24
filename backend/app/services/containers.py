@@ -78,6 +78,25 @@ def get_cluster(db: Session, cluster_id: int) -> ContainerCluster | None:
     )
 
 
+def find_clusters_by_name(db: Session, name: str) -> list[ContainerCluster]:
+    return list(db.scalars(
+        select(ContainerCluster).where(
+            ContainerCluster.name == name,
+            ContainerCluster.provider == "kubernetes",
+        )
+    ).all())
+
+
+def cluster_name_exists(db: Session, name: str, *, exclude_id: int | None = None) -> bool:
+    stmt = select(ContainerCluster.id).where(
+        ContainerCluster.name == name,
+        ContainerCluster.provider == "kubernetes",
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(ContainerCluster.id != exclude_id)
+    return db.scalar(stmt.limit(1)) is not None
+
+
 def create_cluster(db: Session, **kwargs) -> ContainerCluster:
     obj = ContainerCluster(**kwargs)
     db.add(obj)

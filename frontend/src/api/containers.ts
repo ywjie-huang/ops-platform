@@ -3,6 +3,9 @@ import request from './request'
 // 集群管理
 export function getClusters(params?: { keyword?: string }) { return request.get('/containers/clusters', { params }) }
 export function getCluster(id: number) { return request.get(`/containers/clusters/${id}`) }
+export function getClusterByName(name: string) {
+  return request.get(`/containers/clusters/by-name/${encodeURIComponent(name)}`)
+}
 export function createCluster(data: { name: string; endpoint: string; token?: string; description?: string }) {
   return request.post('/containers/clusters', data)
 }
@@ -49,6 +52,9 @@ export function getDockerOverview() { return request.get('/containers/docker/ove
 // Docker 主机管理
 export function getDockerHosts(params?: { keyword?: string }) { return request.get('/containers/docker/hosts', { params }) }
 export function getDockerHost(id: number) { return request.get(`/containers/docker/hosts/${id}`) }
+export function getDockerHostByName(name: string) {
+  return request.get(`/containers/docker/hosts/by-name/${encodeURIComponent(name)}`)
+}
 export function createDockerHost(data: { name: string; endpoint: string; description?: string }) {
   return request.post('/containers/docker/hosts', data)
 }

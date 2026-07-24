@@ -296,7 +296,7 @@ async function handleDelete(row: ClusterRow) {
 }
 
 function handleRowClick(row: ClusterRow) {
-  router.push(`/assets/containers/${row.id}`)
+  router.push({ name: 'ContainerDetail', params: { name: row.name } })
 }
 
 onMounted(fetchClusters)

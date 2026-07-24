@@ -8,8 +8,10 @@ from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.containers import (
+    cluster_name_exists,
     cluster_runtime_summary,
     delete_cluster,
+    find_clusters_by_name,
     get_cluster,
     list_clusters,
     refresh_cluster_connection_status,
@@ -128,6 +130,20 @@ def api_get_cluster(
     return {"code": 0, "data": _cluster_dict(c)}
 
 
+@router.get("/clusters/by-name/{cluster_name}")
+def api_get_cluster_by_name(
+    cluster_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    matches = find_clusters_by_name(db, cluster_name)
+    if not matches:
+        raise HTTPException(status_code=404, detail="集群不存在")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="存在同名集群，请先修改集群名称")
+    return {"code": 0, "data": _cluster_dict(matches[0])}
+
+
 @router.post("/clusters")
 def api_create_cluster(
     body: ClusterCreate,
@@ -137,6 +153,12 @@ def api_create_cluster(
 ):
     """创建集群，自动测试连接并获取集群信息。"""
     from app.services.containers import create_cluster, update_cluster
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="集群名称不能为空")
+    if cluster_name_exists(db, name):
+        raise HTTPException(status_code=409, detail="集群名称已存在")
 
     endpoint = body.endpoint.strip()
     token = body.token.strip()
@@ -151,7 +173,7 @@ def api_create_cluster(
 
     c = create_cluster(
         db,
-        name=body.name.strip(),
+        name=name,
         provider="kubernetes",
         endpoint=endpoint,
         token=token,
@@ -184,6 +206,12 @@ def api_update_cluster(
     if c is None:
         raise HTTPException(status_code=404, detail="集群不存在")
 
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="集群名称不能为空")
+    if cluster_name_exists(db, name, exclude_id=cluster_id):
+        raise HTTPException(status_code=409, detail="集群名称已存在")
+
     endpoint = body.endpoint.strip()
     token = body.token.strip() or c.token  # 不填 token 则保留旧值
 
@@ -194,7 +222,7 @@ def api_update_cluster(
 
     cluster_info = get_cluster_info(endpoint, token)
 
-    update_cluster(db, c, name=body.name.strip(), endpoint=endpoint,
+    update_cluster(db, c, name=name, endpoint=endpoint,
                    token=token, description=body.description.strip())
     _sync_cluster_meta(c, cluster_info)
     db.commit()

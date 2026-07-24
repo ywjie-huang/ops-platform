@@ -437,6 +437,7 @@ import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import {
   deleteClusterPod,
   getCluster,
+  getClusterByName,
   getClusterDeployments,
   getClusterPods,
   getClusterResources,
@@ -528,7 +529,8 @@ interface PodEvent {
 
 const route = useRoute()
 const router = useRouter()
-const clusterId = computed(() => Number(route.params.id))
+const clusterRouteRef = computed(() => String(route.params.name ?? route.params.id ?? ''))
+const clusterId = ref(0)
 
 const cluster = ref<Record<string, any>>({})
 const resources = ref<K8sResources>({})
@@ -839,15 +841,27 @@ async function confirmRestartDeployment(row: K8sDeployment) {
 
 async function fetchCluster() {
   clusterError.value = ''
+  if (!clusterRouteRef.value) return false
   try {
-    const res: any = await getCluster(clusterId.value)
+    const isLegacyRoute = route.name === 'ContainerDetailLegacy'
+    const res: any = isLegacyRoute
+      ? await getCluster(Number(clusterRouteRef.value))
+      : await getClusterByName(clusterRouteRef.value)
     cluster.value = res.data
+    clusterId.value = res.data.id
+    if (isLegacyRoute) {
+      skipCanonicalRef = res.data.name
+      await router.replace({ name: 'ContainerDetail', params: { name: res.data.name }, query: route.query })
+    }
+    return true
   } catch (e: any) {
     clusterError.value = e?.response?.data?.detail || '加载失败'
+    return false
   }
 }
 
 async function fetchResources() {
+  if (!clusterId.value) return
   refreshing.value = true
   resourcesError.value = ''
   try {
@@ -862,6 +876,24 @@ async function fetchResources() {
   } finally {
     refreshing.value = false
     initialLoading.value = false
+  }
+}
+
+async function loadClusterDetail() {
+  const routeRef = clusterRouteRef.value
+  if (!routeRef || activeLoadRef === routeRef) return
+  activeLoadRef = routeRef
+  if (cluster.value.name && cluster.value.name !== routeRef) {
+    cluster.value = {}
+    resources.value = {}
+    clusterId.value = 0
+  }
+  initialLoading.value = true
+  try {
+    if (await fetchCluster()) await fetchResources()
+    else initialLoading.value = false
+  } finally {
+    if (activeLoadRef === routeRef) activeLoadRef = ''
   }
 }
 
@@ -892,17 +924,20 @@ async function fetchServices() {
   }
 }
 
-watch(clusterId, (id) => {
-  if (!id || isNaN(id)) return
-  if (!route.path.startsWith('/assets/containers/')) return
-  initialLoading.value = true
-  fetchCluster()
-  fetchResources()
-}, { immediate: true })
+let skipCanonicalRef = ''
+let activeLoadRef = ''
+watch(clusterRouteRef, (value) => {
+  if (skipCanonicalRef === value) {
+    skipCanonicalRef = ''
+    return
+  }
+  loadClusterDetail()
+})
 
 let timer: ReturnType<typeof setInterval> | null = null
 
 onActivated(() => {
+  loadClusterDetail()
   timer = setInterval(fetchResources, 30000)
 })
 

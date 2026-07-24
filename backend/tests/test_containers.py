@@ -4,9 +4,10 @@ from fastapi import HTTPException
 
 from app.api import docker_mgmt
 from app.api.docker_mgmt import _proxy_to_agent
-from app.api.containers import api_list_clusters
+from app.api.containers import api_get_cluster_by_name, api_list_clusters
 from app.models.container import ContainerCluster, ContainerDeployment, ContainerPod
-from app.services.containers import refresh_cluster_connection_status
+from app.services.containers import cluster_name_exists, refresh_cluster_connection_status
+from app.services.docker_agent import docker_host_name_exists
 
 
 def _create_container_tables(engine):
@@ -108,6 +109,71 @@ def test_list_clusters_refreshes_connection_status_before_returning_rows(monkeyp
 
         assert response["data"][0]["status"] == "stopped"
         assert response["data"][0]["status_message"] == "authentication failed"
+    finally:
+        db.close()
+
+
+def test_cluster_name_lookup_and_duplicate_detection_are_provider_scoped():
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    db = SessionLocal()
+    try:
+        k8s = ContainerCluster(name="prod-main", provider="kubernetes")
+        docker = ContainerCluster(name="prod-main", provider="docker")
+        db.add_all([k8s, docker])
+        db.commit()
+
+        response = api_get_cluster_by_name("prod-main", db=db, _=None)
+
+        assert response["data"]["id"] == k8s.id
+        assert cluster_name_exists(db, "prod-main") is True
+        assert cluster_name_exists(db, "prod-main", exclude_id=k8s.id) is False
+        assert docker_host_name_exists(db, "prod-main") is True
+        assert docker_host_name_exists(db, "prod-main", exclude_id=docker.id) is False
+    finally:
+        db.close()
+
+
+def test_docker_host_can_be_resolved_by_readable_name():
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    db = SessionLocal()
+    try:
+        host = ContainerCluster(name="docker-prod-01", provider="docker", endpoint="127.0.0.1:9001")
+        db.add(host)
+        db.commit()
+
+        response = docker_mgmt.api_get_docker_host_by_name("docker-prod-01", db=db, _=None)
+
+        assert response["data"]["id"] == host.id
+        assert response["data"]["name"] == "docker-prod-01"
+    finally:
+        db.close()
+
+
+def test_name_lookup_rejects_ambiguous_existing_clusters():
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    db = SessionLocal()
+    try:
+        db.add_all([
+            ContainerCluster(name="duplicate", provider="kubernetes"),
+            ContainerCluster(name="duplicate", provider="kubernetes"),
+        ])
+        db.commit()
+
+        try:
+            api_get_cluster_by_name("duplicate", db=db, _=None)
+            raise AssertionError("expected ambiguous names to be rejected")
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "同名集群" in exc.detail
     finally:
         db.close()
 

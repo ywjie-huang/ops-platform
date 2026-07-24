@@ -17,7 +17,9 @@ from app.services.audit import write_log
 from app.services.docker_agent import (
     create_docker_host,
     delete_docker_host,
+    docker_host_name_exists,
     docker_overview,
+    find_docker_hosts_by_name,
     get_docker_host,
     is_host_online,
     list_docker_containers,
@@ -136,6 +138,20 @@ def api_get_docker_host(
     return {"code": 0, "data": _host_dict(h)}
 
 
+@router.get("/hosts/by-name/{host_name}")
+def api_get_docker_host_by_name(
+    host_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    matches = find_docker_hosts_by_name(db, host_name)
+    if not matches:
+        raise HTTPException(status_code=404, detail="主机不存在")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="存在同名主机，请先修改主机名称")
+    return {"code": 0, "data": _host_dict(matches[0])}
+
+
 @router.post("/hosts")
 def api_create_docker_host(
     body: DockerHostCreate,
@@ -144,14 +160,17 @@ def api_create_docker_host(
     current_user: User = Depends(api_permission_required("containers.create")),
 ):
     """注册 Docker 主机，填写名称和 Agent 地址（IP:端口）。"""
-    if not body.name.strip():
+    name = body.name.strip()
+    if not name:
         raise HTTPException(status_code=400, detail="主机名称不能为空")
+    if docker_host_name_exists(db, name):
+        raise HTTPException(status_code=409, detail="主机名称已存在")
     if not body.endpoint.strip():
         raise HTTPException(status_code=400, detail="Agent 地址不能为空")
 
     h = create_docker_host(
         db,
-        name=body.name.strip(),
+        name=name,
         endpoint=body.endpoint.strip(),
         description=body.description.strip(),
     )
@@ -182,9 +201,13 @@ def api_update_docker_host(
     if not h:
         raise HTTPException(status_code=404, detail="主机不存在")
 
-    kwargs = {}
-    if body.name.strip():
-        kwargs["name"] = body.name.strip()
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="主机名称不能为空")
+    if docker_host_name_exists(db, name, exclude_id=host_id):
+        raise HTTPException(status_code=409, detail="主机名称已存在")
+
+    kwargs = {"name": name}
     if body.endpoint.strip():
         kwargs["endpoint"] = body.endpoint.strip()
     if body.description:

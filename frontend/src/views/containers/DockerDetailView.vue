@@ -273,6 +273,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import {
   getDockerHost,
+  getDockerHostByName,
   deleteDockerHost,
   refreshDockerHost,
   getHostContainers,
@@ -289,7 +290,8 @@ const THRESHOLD_DANGER = 85
 
 const route = useRoute()
 const router = useRouter()
-const hostId = computed(() => Number(route.params.id))
+const hostRouteRef = computed(() => String(route.params.name ?? route.params.id ?? ''))
+const hostId = ref(0)
 
 const host = ref<any>({})
 const containers = ref<any[]>([])
@@ -541,23 +543,49 @@ async function handleContainerAction(row: any, action: 'start' | 'stop' | 'resta
 }
 
 async function fetchHost() {
-  if (!hostId.value || isNaN(hostId.value)) return
+  if (!hostRouteRef.value) return false
   try {
-    const res: any = await getDockerHost(hostId.value)
+    const isLegacyRoute = route.name === 'DockerDetailLegacy'
+    const res: any = isLegacyRoute
+      ? await getDockerHost(Number(hostRouteRef.value))
+      : await getDockerHostByName(hostRouteRef.value)
     host.value = res.data
-  } catch {
-    ElMessage.error('主机不存在')
+    hostId.value = res.data.id
+    if (isLegacyRoute) {
+      skipCanonicalRef = res.data.name
+      await router.replace({ name: 'DockerDetail', params: { name: res.data.name }, query: route.query })
+    }
+    return true
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '主机不存在')
+    return false
   }
 }
 
 async function fetchContainers() {
-  if (!hostId.value || isNaN(hostId.value)) return
+  if (!hostId.value) return
   loading.value = true
   try {
     const res: any = await getHostContainers(hostId.value)
     containers.value = res.data
   } finally {
     loading.value = false
+  }
+}
+
+async function loadHostDetail() {
+  const routeRef = hostRouteRef.value
+  if (!routeRef || activeLoadRef === routeRef) return
+  activeLoadRef = routeRef
+  if (host.value.name && host.value.name !== routeRef) {
+    host.value = {}
+    containers.value = []
+    hostId.value = 0
+  }
+  try {
+    if (await fetchHost()) await fetchContainers()
+  } finally {
+    if (activeLoadRef === routeRef) activeLoadRef = ''
   }
 }
 
@@ -601,10 +629,17 @@ function stopAutoRefresh() {
   }
 }
 
-onActivated(() => {
-  fetchHost()
-  fetchContainers()
+let skipCanonicalRef = ''
+let activeLoadRef = ''
+watch(hostRouteRef, (value) => {
+  if (skipCanonicalRef === value) {
+    skipCanonicalRef = ''
+    return
+  }
+  loadHostDetail()
 })
+
+onActivated(loadHostDetail)
 
 onDeactivated(stopAutoRefresh)
 </script>

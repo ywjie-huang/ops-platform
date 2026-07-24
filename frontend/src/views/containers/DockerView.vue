@@ -564,7 +564,7 @@ function handleRowCommand(command: string, row: any) {
 }
 
 function goDetail(row: any) {
-  router.push(`/assets/docker/${row.id}`)
+  router.push({ name: 'DockerDetail', params: { name: row.name } })
 }
 
 function toggleAutoRefresh() {
