@@ -69,8 +69,10 @@ def _save_execution(command: str, asset_ids: list[int], asset_names: list[str],
 async def ws_batch_exec(websocket: WebSocket):
     """
     WebSocket 批量执行端点。
-    客户端发送：{ "asset_ids": [1,2,3], "command": "uptime", "timeout": 30 }
-    服务端推送：exec_start → exec_result（每台） → exec_done
+    客户端发送：{ "asset_ids": [1,2,3], "command": "uptime", "timeout": 30,
+                 "concurrency": 5, "batch_size": 3 }
+    执行中客户端可发送：{ "type": "exec_cancel" } 取消未开始的主机
+    服务端推送：exec_start → exec_result（每台）→ exec_done
     """
     await websocket.accept()
 
@@ -86,6 +88,8 @@ async def ws_batch_exec(websocket: WebSocket):
     asset_ids = params.get("asset_ids", [])
     command = params.get("command", "").strip()
     timeout = min(params.get("timeout", 30), 300)  # 最大 300 秒
+    concurrency = max(0, min(int(params.get("concurrency", 0) or 0), 50))  # 0=不限，最大 50
+    batch_size = max(0, min(int(params.get("batch_size", 0) or 0), 100))   # 0=不分批
 
     if not asset_ids or not command:
         await websocket.send_text(json.dumps({"type": "error", "message": "请选择主机并输入命令"}))
@@ -132,7 +136,39 @@ async def ws_batch_exec(websocket: WebSocket):
         except Exception as e:
             logger.debug('WS send failed: %s', e)
 
-    result = await execute_on_hosts(hosts, command, send_message, timeout)
+    cancel_event = asyncio.Event()
+
+    async def listen_cancel():
+        """执行期间监听客户端取消消息；连接断开同样视为取消。"""
+        try:
+            while not cancel_event.is_set():
+                msg_raw = await websocket.receive_text()
+                try:
+                    msg = json.loads(msg_raw)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if msg.get("type") == "exec_cancel":
+                    cancel_event.set()
+                    return
+        except WebSocketDisconnect:
+            cancel_event.set()
+        except Exception as e:
+            logger.debug('WS listen failed: %s', e)
+            cancel_event.set()
+
+    listen_task = asyncio.create_task(listen_cancel())
+    try:
+        result = await execute_on_hosts(
+            hosts, command, send_message, timeout,
+            concurrency=concurrency, batch_size=batch_size,
+            cancel_event=cancel_event,
+        )
+    finally:
+        listen_task.cancel()
+        try:
+            await listen_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
     # 保存执行记录
     asset_names = [a.name for a in assets]

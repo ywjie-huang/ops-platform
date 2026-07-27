@@ -1,4 +1,5 @@
 """JWT 工具函数。"""
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -13,7 +14,7 @@ ACCESS_TOKEN_EXPIRE_HOURS = 12
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "jti": uuid.uuid4().hex})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 

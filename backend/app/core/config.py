@@ -29,6 +29,12 @@ DEMO_PASSWORD: Final = "admin123"
 # 构建产物存储目录
 DEPLOY_ARTIFACT_DIR: Final = DATA_DIR / "deploy_artifacts"
 
+# Redis 配置（支持环境变量覆盖，兼容 Docker 部署）
+REDIS_HOST: Final = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT: Final = int(os.environ.get("REDIS_PORT", "6379"))
+REDIS_PASSWORD: Final = os.environ.get("REDIS_PASSWORD", "123456")
+REDIS_DB: Final = int(os.environ.get("REDIS_DB", "0"))
+
 # Prometheus 配置
 PROMETHEUS_URL: Final = os.environ.get("PROMETHEUS_URL", "").strip().rstrip("/")
 

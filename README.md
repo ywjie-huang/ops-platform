@@ -1,6 +1,6 @@
 # ops-platform · 运维管理平台
 
-基于 **FastAPI + Vue 3 + Element Plus + MySQL** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Kubernetes + Docker Agent + Jenkins + LLM**，覆盖主机监控、告警管理、容器运维、巡检指挥、应用发布与 AI 智能助手。
+基于 **FastAPI + Vue 3 + Element Plus + MySQL + Redis** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Kubernetes + Docker Agent + Jenkins + LLM**，覆盖主机监控、告警管理、容器运维、巡检指挥、应用发布与 AI 智能助手。
 
 ---
 
@@ -14,7 +14,7 @@
 | **工单协作** | 工单协作 | 工单流转与资产关联 |
 | **应用发布** | 应用管理 / 部署记录 / 部署审批 | Jenkins 触发 / SSH 上传部署 / 审批流程 / 一键回滚 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
-| **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 执行历史 |
+| **批量执行** | 批量执行 | SSH 批量命令执行 + 实时输出 + 并发/分批控制 + 高危命令拦截 + 执行历史 |
 | **巡检中心** | 巡检指挥台 / 定时任务 | 指挥台分车道处置 + 态势大屏 + 内嵌阈值校准 + Cron 调度 |
 | **智能中心** | 智能助手 / 模型配置 | LLM 流式对话 + 工具调用 + 多配置档案 + Responses 模式 |
 | **系统管理** | 审计日志 / 配置中心 | 操作审计 + Prometheus/Alertmanager/Jenkins 配置 |
@@ -26,8 +26,10 @@
 ### 1. 认证与账号
 
 - 登录页（暗色渐变背景 + 玻璃拟态卡片 + 动态装饰）
-- **图形验证码**：4 位数字验证码，点击可刷新，120 秒过期，登录失败自动刷新
-- 错误提示区分：登录页显示具体错误（账号或密码不正确 / 验证码错误），其他页面 Token 过期显示"登录已过期"
+- **图形验证码**：4 位数字验证码，点击可刷新，120 秒过期，登录失败自动刷新；**Redis 存储**（`GETDEL` 原子校验、一次性使用，多实例部署下全局一致，Redis 不可用自动降级为内存）
+- **登录防爆破**：按「用户名 + IP」计数，**5 次失败锁定 15 分钟**（返回 429 + 剩余等待时间），登录成功自动清零
+- **JWT 黑名单**：token 签发时携带唯一 `jti`，**登出即吊销**（Redis 黑名单，TTL 为 token 剩余有效期），被吊销 token 立即返回 401
+- 错误提示区分：登录页显示具体错误（账号或密码不正确 / 验证码错误 / 锁定剩余时间），其他页面 Token 过期显示"登录已过期"
 - 基于 MySQL 的用户表，`pbkdf2_sha256` 密码哈希
 - 首次启动自动创建默认管理员
 - 修改密码：右上角用户菜单 → 弹窗修改，修改后需重新登录
@@ -197,29 +199,44 @@ docker run -d -p 9001:9001 \
 采用 **IDE 工作区风格**的三栏布局，参考 Ansible AWX 设计理念：
 
 **左侧主机面板**（可折叠）：
-- 搜索框实时过滤主机
-- 全选 / 反选快捷操作
-- 主机按状态分组显示（使用中 / 已关机），已关机主机默认不可选
-- 底部显示已选主机计数
+- 搜索框实时过滤（名称 / IP / 类型）
+- 主机按**资产类型分组树**展示，组头显示「已选/总数」，可折叠
+- 快捷操作 chips：全选在线 / 反选 / 清空
+- 底部**已选主机 chips 区**：选中主机一目了然，可单个移除或一键清空
+- 离线主机置灰不可选
 
 **中央命令编辑区**：
-- 等宽字体多行编辑器，带行号显示
-- **命令预设**下拉菜单：常用命令一键填入，预设可通过 API 管理
-- 超时滑块可调（10~300 秒）
+- 暗色代码编辑器（Tokyo Night 风格），带行号 + **Shell 语法高亮**（可开关）
+- **高危命令实时拦截**：检测到 `rm -rf`、`mkfs`、`dd 写盘`、`shutdown/reboot`、fork 炸弹等模式时显示红色警告条，执行前强制二次确认
+- **命令预设**下拉菜单 + 当前命令一键「存为预设」
 - 快捷键 `Ctrl+Enter` 直接执行
 
-**底部输出控制台**：
-- 每台主机一个 Tab，标题带状态指示（绿色=成功，红色=失败，蓝色脉冲=执行中）
-- Tokyo Night 暗色终端主题（与 SSH 终端一致）
-- 底部状态栏：总主机数、成功数、失败数、总耗时
+**执行选项条**：
+- 超时（10~300 秒）
+- **并发数限制**（0=不限，最大 50）
+- **分批滚动执行**（每批 2/3/5/10 台，一批完成再执行下一批）
+- **失败自动重试**（对失败主机自动重跑 1 次）
 
-**执行历史**（底部可折叠面板）：
-- 不切换 Tab，点击即展开
+**执行结果区**：
+- **总览条**：成功/失败/执行中/已跳过统计 + 实时分段进度条 + **停止执行**按钮（取消未开始的主机）
+- **三种视图**：
+  - 单机视图：主机结果列表（失败→执行中→已跳过→成功分组排序，失败主机 hover 显示「重试」）+ 终端输出面板
+  - 聚合视图：全部主机输出纵向堆叠，一次看全
+  - 对比视图：任选两台主机输出逐行对比，差异行高亮
+- 输出**关键字搜索高亮**、「只看失败」过滤、一键复制单台输出
+- **导出结果**：全部主机输出导出为 TXT
+- 单台耗时统计，状态栏显示总耗时 + 平均单机耗时
+
+**执行历史**（右侧抽屉）：
 - 支持搜索和状态筛选，分页展示
+- **复用命令**：一键回填命令并自动选中当时的主机
 - 记录每次执行的命令、主机、结果、操作人
 
+**技术实现**：
 - 基于 **WebSocket + paramiko**，实时返回每台主机的输出
 - WebSocket 端点：`/api/v1/batch-exec/ws/exec`
+- 客户端消息：`{ asset_ids, command, timeout, concurrency, batch_size }`；执行中发送 `{ "type": "exec_cancel" }` 可取消未开始的主机
+- 服务端推送：`exec_begin → exec_start / exec_result（每台，含耗时）/ exec_skip（被取消）→ exec_done（含 cancelled 标记）`
 
 ### 13. 巡检中心
 
@@ -392,13 +409,14 @@ docker run -d -p 9001:9001 \
 | 前端 | Vue 3 + TypeScript + Element Plus + Pinia + Vite 8 |
 | 后端 | FastAPI + SQLAlchemy + Pydantic |
 | 数据库 | MySQL 8 |
+| 缓存 | Redis 7（验证码存储 / JWT 黑名单 / 登录限流，不可用时自动降级为内存） |
 | 监控 | Prometheus + node_exporter |
 | 告警 | Alertmanager (webhook) |
 | 容器 | Kubernetes API（httpx 直连） |
 | Docker | Agent（HTTP 拉取模式） |
-| 部署 | Docker Compose（一键部署 MySQL + 后端 + 前端） |
+| 部署 | Docker Compose（一键部署 MySQL + Redis + 后端 + 前端） |
 | SSH | xterm.js + paramiko + WebSocket（终端 + SFTP 文件管理） |
-| 认证 | JWT (pbkdf2_sha256) + 图形验证码 (captcha) |
+| 认证 | JWT (pbkdf2_sha256 + jti 黑名单) + 图形验证码 (captcha) + 登录防爆破限流 |
 | AI | OpenAI 兼容 LLM API（SSE 流式 + function calling + Chat Completions/Responses 双模式） |
 | 调度 | APScheduler（Cron 定时巡检） |
 | 发布 | Jenkins REST API + SSH/SFTP 部署 |
@@ -412,13 +430,14 @@ my-project/
 ├── backend/
 │   └── app/
 │       ├── api/                # REST API
-│       │   ├── auth.py         # 认证
+│       │   ├── auth.py         # 认证（登录/登出/验证码/限流）
 │       │   ├── assets.py       # 资产管理
-│       │   ├── ssh.py          # SSH WebSocket + SFTP 文件管理
+│       │   ├── ssh_terminal.py # SSH WebSocket 终端
+│       │   ├── sftp.py         # SFTP 文件管理
+│       │   ├── ssh_common.py   # SSH 连接公共逻辑
 │       │   ├── ssh_keys.py     # SSH 密钥管理
 │       │   ├── monitoring.py   # 主机监控（Prometheus）
 │       │   ├── alertmanager.py # Alertmanager（告警规则/事件/Webhook）
-│       │   ├── alerts.py       # 告警管理
 │       │   ├── tickets.py      # 工单
 │       │   ├── containers.py   # 容器（K8s API 自动发现）
 │       │   ├── docker_mgmt.py  # Docker 监控（主机管理 + 容器查询）
@@ -434,9 +453,10 @@ my-project/
 │       │   ├── users.py        # 用户
 │       │   ├── roles.py        # 角色权限
 │       │   ├── audit.py        # 审计
-│       │   └── password.py     # 密码
-│       ├── core/               # 配置 + JWT + settings + scheduler
-│       ├── db/                 # 数据库连接与初始化
+│       │   ├── password.py     # 密码
+│       │   └── deps.py         # 依赖注入（JWT 校验 + 黑名单 + 权限）
+│       ├── core/               # 配置 + JWT (jti) + settings + scheduler + 安全开关
+│       ├── db/                 # 数据库连接与初始化 + Redis 连接池（懒加载/自动降级）
 │       ├── models/             # SQLAlchemy 模型
 │       │   ├── alert.py        # 告警
 │       │   ├── alert_event.py  # 告警事件
@@ -457,20 +477,25 @@ my-project/
 │           │   ├── llm_client.py   # OpenAI 兼容 LLM 客户端（SSE 流式 + function calling）
 │           │   ├── tools.py        # 工具定义 + handler 函数（10 种工具）
 │           │   ├── dispatcher.py   # 工具调度器（动态导入 + async/sync 自动检测）
+│           │   ├── titles.py       # 会话标题自动生成/优化
 │           │   └── conversations.py # 对话历史管理（MySQL 持久化）
 │           ├── deploy/         # 应用发布服务
-│           │   ├── apps.py     # 应用 CRUD
-│           │   ├── envs.py     # 环境 CRUD
+│           │   ├── applications.py # 应用 CRUD
+│           │   ├── app_envs.py # 应用-环境配置
+│           │   ├── configs.py  # 部署配置
 │           │   ├── records.py  # 发布记录 + 执行调度 + 回滚
 │           │   ├── approvals.py # 审批逻辑
-│           │   ├── jenkins.py  # Jenkins REST API 客户端
-│           │   └── ssh_deployer.py # SSH 文件上传 + 脚本执行
+│           │   ├── builder.py  # 构建产物管理
+│           │   ├── webhook.py  # 部署 Webhook
+│           │   └── strategies/ # 部署策略（Jenkins/SSH/Docker/K8s）
 │           ├── prometheus.py   # Prometheus 查询服务
 │           ├── alertmanager.py # Alertmanager 查询 + Webhook 处理
 │           ├── k8s.py          # Kubernetes API 客户端
 │           ├── docker_agent.py # Docker Agent 服务层
 │           ├── containers.py   # 容器数据服务
-│           ├── captcha.py      # 图形验证码生成与校验
+│           ├── captcha.py      # 图形验证码生成与校验（Redis 存储 + 内存降级）
+│           ├── token_blacklist.py # JWT 黑名单（登出即吊销，Redis TTL）
+│           ├── login_guard.py  # 登录防爆破（用户名+IP 计数，5 次锁 15 分钟）
 │           ├── batch_exec.py   # 批量 SSH 执行服务
 │           ├── patrol.py       # 巡检执行服务
 │           └── scheduler.py    # 定时任务执行服务
@@ -527,7 +552,7 @@ my-project/
 
 ## Docker Compose 部署（推荐）
 
-一键启动整个项目：MySQL + 后端 + 前端 + 可选 Agent。
+一键启动整个项目：MySQL + Redis + 后端 + 前端 + 可选 Agent。
 
 ```bash
 cd docker
@@ -559,7 +584,8 @@ docker compose --profile agent up -d
 | 服务 | 容器名 | 默认端口 | 说明 |
 |------|--------|---------|------|
 | mysql | ops-mysql | 3306 | MySQL 8.0，数据持久化到 volume |
-| backend | ops-backend | 8000 | FastAPI，等 mysql 健康后启动 |
+| redis | ops-redis | 6379 | Redis 7，密码认证 + AOF 持久化 |
+| backend | ops-backend | 8000 | FastAPI，等 mysql/redis 健康后启动 |
 | frontend | ops-frontend | 80（可自定义） | nginx 托管 SPA + 反代 API |
 | agent | ops-agent | 9001 | 可选，需 `--profile agent` 启动 |
 
@@ -615,6 +641,17 @@ export MYSQL_PASSWORD=123456
 export MYSQL_DATABASE=ops_platform
 ```
 
+Redis 配置同样支持环境变量覆盖（默认 `localhost:6379`）：
+
+```bash
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export REDIS_PASSWORD=123456
+export REDIS_DB=0
+```
+
+> Redis 不可用时验证码/黑名单/限流自动降级为进程内存实现，单机开发可不启动 Redis；多 worker 或多副本部署时必须使用 Redis。
+
 ---
 
 ## 依赖服务
@@ -622,6 +659,7 @@ export MYSQL_DATABASE=ops_platform
 | 服务 | 用途 | 配置位置 |
 |------|------|---------|
 | MySQL | 数据存储 | `backend/app/core/config.py` |
+| Redis | 验证码 / JWT 黑名单 / 登录限流 | `config.py` → `REDIS_*` 环境变量（可选，缺省降级内存） |
 | Prometheus | 主机指标采集 | 配置中心 UI 或 `config.py` → `PROMETHEUS_URL` |
 | Alertmanager | 告警推送 | 配置中心 UI 或 `config.py` → `ALERTMANAGER_URL` |
 | Kubernetes | 容器资源发现 | 集群接入时填写 API Server + Token |
@@ -730,8 +768,10 @@ docker push hub1.lczy.com/public/ops-agent:latest
 
 | 模块 | 端点 | 说明 |
 |------|------|------|
-| 认证 | `POST /auth/login` | 登录（需验证码） |
+| 认证 | `POST /auth/login` | 登录（需验证码，5 次失败锁 15 分钟） |
+| 认证 | `POST /auth/logout` | 登出（token 即时吊销） |
 | 认证 | `GET /auth/captcha` | 获取图形验证码 |
+| 认证 | `GET /auth/me` | 当前用户信息 + 权限 |
 | 资产 | `GET /assets/stats` | 资产状态统计 |
 | 资产 | `GET/POST/PUT/DELETE /assets/` | 资产 CRUD |
 | SSH 密钥 | `GET/POST/PUT/DELETE /ssh-keys/` | SSH 密钥 CRUD |

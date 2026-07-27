@@ -20,6 +20,21 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ops-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-123456} --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-123456}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ..
@@ -32,6 +47,10 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ops_platform}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-123456}
+      REDIS_DB: ${REDIS_DB:-0}
       ENABLE_SSH_TERMINAL: ${ENABLE_SSH_TERMINAL:-false}
       ENABLE_SFTP: ${ENABLE_SFTP:-false}
       ENABLE_BATCH_EXEC: ${ENABLE_BATCH_EXEC:-false}
@@ -41,6 +60,8 @@ services:
       - "8000:8000"
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   frontend:
@@ -67,3 +88,4 @@ services:
 
 volumes:
   mysql_data:
+  redis_data:

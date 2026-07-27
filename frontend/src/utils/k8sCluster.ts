@@ -15,6 +15,9 @@ export type PodLike = {
   status?: string
   reason?: string
   node?: string
+  restarts?: number
+  cpu_request?: number
+  mem_request?: number
 }
 
 export type DeploymentLike = {
@@ -23,7 +26,10 @@ export type DeploymentLike = {
 }
 
 export type NodeLike = {
+  name?: string
   status?: string
+  cpu?: string | number
+  memory?: string
 }
 
 export function buildClusterOverview(clusters: ClusterLike[]) {
@@ -86,6 +92,94 @@ export function filterClusterPods<T extends PodLike>(pods: T[], keyword: string)
     [item.name, item.namespace, item.status, item.reason, item.node]
       .some((value) => String(value || '').toLowerCase().includes(normalized)),
   )
+}
+
+const ABNORMAL_STATUSES = ['Running', 'Succeeded']
+
+export function isAbnormalPod(pod: PodLike) {
+  return !ABNORMAL_STATUSES.includes(pod.status || '')
+}
+
+export type PodQuickFilter = 'all' | 'abnormal' | 'crash' | 'pending' | 'oom' | 'restarts'
+
+export function matchPodQuickFilter(pod: PodLike, filter: PodQuickFilter) {
+  const status = pod.status || ''
+  const reason = pod.reason || ''
+  switch (filter) {
+    case 'abnormal':
+      return isAbnormalPod(pod)
+    case 'crash':
+      return /crashloopbackoff|error/i.test(status) || /crashloopbackoff/i.test(reason)
+    case 'pending':
+      return status === 'Pending'
+    case 'oom':
+      return /oomkilled/i.test(status) || /oomkilled/i.test(reason)
+    case 'restarts':
+      return (pod.restarts ?? 0) > 5
+    default:
+      return true
+  }
+}
+
+const MEM_UNIT_TO_MI: Record<string, number> = {
+  Ki: 1 / 1024,
+  Mi: 1,
+  Gi: 1024,
+  Ti: 1024 * 1024,
+  K: 1000 / 1048576,
+  M: 1e6 / 1048576,
+  G: 1e9 / 1048576,
+}
+
+export function parseMemToMi(value?: string | number): number {
+  if (value === undefined || value === null || value === '') return 0
+  if (typeof value === 'number') return value / 1048576
+  const v = String(value).trim()
+  for (const [suffix, factor] of Object.entries(MEM_UNIT_TO_MI)) {
+    if (v.endsWith(suffix)) {
+      const num = parseFloat(v.slice(0, -suffix.length))
+      return Number.isFinite(num) ? num * factor : 0
+    }
+  }
+  const num = parseFloat(v)
+  return Number.isFinite(num) ? num / 1048576 : 0
+}
+
+export function parseCpuCores(value?: string | number): number {
+  if (value === undefined || value === null || value === '') return 0
+  if (typeof value === 'number') return value
+  const v = String(value).trim()
+  if (v.endsWith('m')) {
+    const num = parseFloat(v.slice(0, -1))
+    return Number.isFinite(num) ? num / 1000 : 0
+  }
+  const num = parseFloat(v)
+  return Number.isFinite(num) ? num : 0
+}
+
+export type ResourceAllocation = {
+  cpuRequest: number
+  cpuCapacity: number
+  cpuPercent: number
+  memRequestMi: number
+  memCapacityMi: number
+  memPercent: number
+}
+
+/** 汇总一组 Pod 的 requests 与一组 Node 的 capacity，得出申请率。 */
+export function computeAllocation(nodes: NodeLike[], pods: PodLike[]): ResourceAllocation {
+  const cpuCapacity = nodes.reduce((sum, n) => sum + parseCpuCores(n.cpu), 0)
+  const memCapacityMi = nodes.reduce((sum, n) => sum + parseMemToMi(n.memory), 0)
+  const cpuRequest = pods.reduce((sum, p) => sum + (p.cpu_request ?? 0), 0)
+  const memRequestMi = pods.reduce((sum, p) => sum + (p.mem_request ?? 0), 0)
+  return {
+    cpuRequest,
+    cpuCapacity,
+    cpuPercent: cpuCapacity ? Math.round((cpuRequest / cpuCapacity) * 100) : 0,
+    memRequestMi,
+    memCapacityMi,
+    memPercent: memCapacityMi ? Math.round((memRequestMi / memCapacityMi) * 100) : 0,
+  }
 }
 
 export function summarizeClusterResources(resources: {

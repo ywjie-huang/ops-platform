@@ -6,6 +6,7 @@ from app.core.jwt import decode_access_token
 from app.db.database import get_db
 from app.models.user import User
 from app.services.permissions import get_permission_codes, has_permission
+from app.services.token_blacklist import is_revoked
 from app.services.users import get_user
 
 
@@ -51,6 +52,12 @@ def get_current_api_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="登录已过期，请重新登录",
+        )
+
+    if is_revoked(payload.get("jti")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录已失效，请重新登录",
         )
 
     user_id = payload.get("sub")
@@ -99,6 +106,9 @@ def optional_api_user(
 
     payload = decode_access_token(token)
     if payload is None:
+        return None
+
+    if is_revoked(payload.get("jti")):
         return None
 
     user_id = payload.get("sub")

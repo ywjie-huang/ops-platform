@@ -42,17 +42,28 @@ async def execute_on_hosts(
     command: str,
     send_message,
     timeout: int = 30,
+    concurrency: int = 0,
+    batch_size: int = 0,
+    cancel_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
     """
-    在多台主机上并发执行命令，通过 send_message 回调实时推送输出。
+    在多台主机上执行命令，通过 send_message 回调实时推送输出。
 
     hosts: [{"id": int, "name": str, "ip": str, "port": int, "user": str, "pwd": str}]
     send_message: async callable(data: dict) — WebSocket 消息回调
+    concurrency: 并发上限，0 表示不限制
+    batch_size: 分批滚动执行的批次大小，0 表示不分批
+    cancel_event: 取消信号，置位后跳过尚未开始的主机（进行中的主机无法中断）
     """
     loop = asyncio.get_event_loop()
     results: dict[str, dict] = {}
     success_count = 0
     fail_count = 0
+    skip_count = 0
+    semaphore = asyncio.Semaphore(concurrency) if concurrency and concurrency > 0 else None
+
+    def is_cancelled() -> bool:
+        return cancel_event is not None and cancel_event.is_set()
 
     async def run_one(host_info: dict):
         nonlocal success_count, fail_count
@@ -68,6 +79,8 @@ async def execute_on_hosts(
             "host_ip": ip,
         })
 
+        start = time.monotonic()
+
         # 在线程池中执行 SSH 命令
         result = await loop.run_in_executor(
             None,
@@ -80,6 +93,7 @@ async def execute_on_hosts(
             timeout,
         )
 
+        duration = round(time.monotonic() - start, 2)
         results[f"{host_id}"] = result
 
         if result["ok"] and result["exit_code"] == 0:
@@ -97,10 +111,44 @@ async def execute_on_hosts(
             "stderr": result["stderr"],
             "exit_code": result["exit_code"],
             "ok": result["ok"],
+            "duration": duration,
         })
 
-    # 并发执行所有主机
-    await asyncio.gather(*[run_one(h) for h in hosts])
+    async def run_guarded(host_info: dict):
+        """并发限制 + 取消检查。"""
+        nonlocal skip_count
+        if semaphore is not None:
+            async with semaphore:
+                if is_cancelled():
+                    skip_count += 1
+                    await send_message({
+                        "type": "exec_skip",
+                        "host_id": host_info["id"],
+                        "host_name": host_info["name"],
+                        "host_ip": host_info["ip"],
+                    })
+                    return
+                await run_one(host_info)
+        else:
+            await run_one(host_info)
+
+    if batch_size and batch_size > 0:
+        # 分批滚动执行：每批全部完成后再启动下一批
+        for i in range(0, len(hosts), batch_size):
+            if is_cancelled():
+                for h in hosts[i:]:
+                    skip_count += 1
+                    await send_message({
+                        "type": "exec_skip",
+                        "host_id": h["id"],
+                        "host_name": h["name"],
+                        "host_ip": h["ip"],
+                    })
+                break
+            chunk = hosts[i:i + batch_size]
+            await asyncio.gather(*[run_guarded(h) for h in chunk])
+    else:
+        await asyncio.gather(*[run_guarded(h) for h in hosts])
 
     # 通知全部完成
     summary = {
@@ -108,6 +156,8 @@ async def execute_on_hosts(
         "total": len(hosts),
         "success": success_count,
         "failed": fail_count,
+        "skipped": skip_count,
+        "cancelled": is_cancelled(),
     }
     await send_message(summary)
 
@@ -115,5 +165,7 @@ async def execute_on_hosts(
         "total": len(hosts),
         "success": success_count,
         "failed": fail_count,
+        "skipped": skip_count,
+        "cancelled": is_cancelled(),
         "results": results,
     }

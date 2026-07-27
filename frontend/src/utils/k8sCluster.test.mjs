@@ -61,3 +61,55 @@ test('summarizes detail anomalies and filters pods against multiple fields', () 
     hotspotNamespace: 'payment',
   })
 })
+
+const {
+  isAbnormalPod,
+  matchPodQuickFilter,
+  parseMemToMi,
+  parseCpuCores,
+  computeAllocation,
+} = await import('./k8sCluster.ts')
+
+test('parses k8s cpu and memory quantities', () => {
+  assert.equal(parseCpuCores('100m'), 0.1)
+  assert.equal(parseCpuCores('2'), 2)
+  assert.equal(parseCpuCores(4), 4)
+  assert.equal(parseCpuCores(''), 0)
+  assert.equal(parseMemToMi('256Mi'), 256)
+  assert.equal(parseMemToMi('1Gi'), 1024)
+  assert.equal(parseMemToMi('32768Ki'), 32)
+  assert.equal(parseMemToMi(''), 0)
+})
+
+test('matches pod quick filters', () => {
+  const crash = { status: 'CrashLoopBackOff', reason: 'BackOff', restarts: 27 }
+  const pending = { status: 'Pending', reason: 'FailedScheduling', restarts: 0 }
+  const oom = { status: 'Running', reason: 'OOMKilled', restarts: 8 }
+  const healthy = { status: 'Running', reason: '', restarts: 1 }
+
+  assert.equal(isAbnormalPod(crash), true)
+  assert.equal(isAbnormalPod(healthy), false)
+  assert.equal(matchPodQuickFilter(crash, 'crash'), true)
+  assert.equal(matchPodQuickFilter(pending, 'pending'), true)
+  assert.equal(matchPodQuickFilter(oom, 'oom'), true)
+  assert.equal(matchPodQuickFilter(crash, 'restarts'), true)
+  assert.equal(matchPodQuickFilter(healthy, 'restarts'), false)
+  assert.equal(matchPodQuickFilter(healthy, 'abnormal'), false)
+  assert.equal(matchPodQuickFilter(healthy, 'all'), true)
+})
+
+test('computes cluster allocation percent from requests and capacity', () => {
+  const nodes = [
+    { name: 'a', status: 'Ready', cpu: '8', memory: '32Gi' },
+    { name: 'b', status: 'Ready', cpu: '8', memory: '32768Mi' },
+  ]
+  const pods = [
+    { name: 'p1', cpu_request: 2, mem_request: 8192 },
+    { name: 'p2', cpu_request: 2, mem_request: 8192 },
+  ]
+  const alloc = computeAllocation(nodes, pods)
+  assert.equal(alloc.cpuCapacity, 16)
+  assert.equal(alloc.memCapacityMi, 65536)
+  assert.equal(alloc.cpuPercent, 25)
+  assert.equal(alloc.memPercent, 25)
+})

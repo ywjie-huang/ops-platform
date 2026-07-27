@@ -4,14 +4,16 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.jwt import create_access_token
+from app.core.jwt import create_access_token, decode_access_token
 from app.db.database import get_db
 from app.models.user import User
 from app.api.deps import get_client_ip, get_current_api_user
 from app.services.auth import authenticate_user
 from app.services.audit import write_log
 from app.services.captcha import generate, verify
+from app.services.login_guard import clear as clear_login_failures, is_locked, record_failure
 from app.services.permissions import build_permission_map
+from app.services.token_blacklist import revoke
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -49,6 +51,15 @@ def get_captcha():
 
 @router.post("/login")
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
+
+    locked, remaining = is_locked(body.username, client_ip)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"登录失败次数过多，请 {max(remaining // 60, 1)} 分钟后再试",
+        )
+
     if not verify(body.captcha_id, body.captcha_code):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -56,14 +67,16 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
     user = authenticate_user(db, body.username, body.password)
     if not user:
+        record_failure(body.username, client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="账号或密码不正确",
         )
+    clear_login_failures(body.username, client_ip)
     write_log(
         db, user=user, action="login", target_type="auth",
         target_name=user.username,
-        ip_address=get_client_ip(request),
+        ip_address=client_ip,
     )
     db.commit()
 
@@ -94,6 +107,14 @@ def get_me(current_user: User = Depends(get_current_api_user)):
 
 @router.post("/logout")
 def logout(request: Request, current_user: User = Depends(get_current_api_user), db: Session = Depends(get_db)):
+    # 吊销当前 token（加入黑名单，剩余有效期内拒绝访问）
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else request.cookies.get("access_token")
+    if token:
+        payload = decode_access_token(token)
+        if payload and payload.get("jti") and payload.get("exp"):
+            revoke(payload["jti"], float(payload["exp"]))
+
     write_log(
         db, user=current_user, action="logout", target_type="auth",
         target_name=current_user.username,
