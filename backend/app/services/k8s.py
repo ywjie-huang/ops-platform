@@ -20,8 +20,12 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = httpx.Timeout(connect=5, read=15, write=5, pool=5)
 
 
-def _headers(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+def _headers(token: str) -> dict[str, str]:
+    headers = {"Accept": "application/json"}
+    clean_token = (token or "").strip()
+    if clean_token:
+        headers["Authorization"] = f"Bearer {clean_token}"
+    return headers
 
 
 def _clean(url: str) -> str:

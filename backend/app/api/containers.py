@@ -99,6 +99,11 @@ def _sync_cluster_meta(cluster, info: dict) -> None:
         cluster.status_message = info.get("error", "连接失败")
 
 
+def _mark_cluster_token_missing(cluster) -> None:
+    cluster.status = "stopped"
+    cluster.status_message = "Token is not configured"
+
+
 def _require_cluster_by_name(db: Session, cluster_name: str):
     if cluster_name.isdigit():
         raise HTTPException(status_code=404, detail="集群不存在")
@@ -249,14 +254,18 @@ def api_create_cluster(
 
     endpoint = body.endpoint.strip()
     token = body.token.strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="API Server 地址不能为空")
 
-    # 先测试连接
-    info = test_connection(endpoint, token)
-    if not info.get("ok"):
-        raise HTTPException(status_code=400, detail=f"连接失败: {info.get('error', '未知错误')}")
+    cluster_info = None
+    if token:
+        # 先测试连接
+        info = test_connection(endpoint, token)
+        if not info.get("ok"):
+            raise HTTPException(status_code=400, detail=f"连接失败: {info.get('error', '未知错误')}")
 
-    # 获取完整集群信息
-    cluster_info = get_cluster_info(endpoint, token)
+        # 获取完整集群信息
+        cluster_info = get_cluster_info(endpoint, token)
 
     c = create_cluster(
         db,
@@ -267,8 +276,11 @@ def api_create_cluster(
         description=body.description.strip(),
     )
 
-    # 同步集群元数据
-    _sync_cluster_meta(c, cluster_info)
+    # 未配置 Token 时仅保存，等待后续补充凭据。
+    if cluster_info:
+        _sync_cluster_meta(c, cluster_info)
+    else:
+        _mark_cluster_token_missing(c)
     db.commit()
     db.refresh(c)
 
@@ -301,17 +313,24 @@ def api_update_cluster(
 
     endpoint = body.endpoint.strip()
     token = body.token.strip() or c.token  # 不填 token 则保留旧值
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="API Server 地址不能为空")
 
-    # 测试新连接
-    info = test_connection(endpoint, token)
-    if not info.get("ok"):
-        raise HTTPException(status_code=400, detail=f"连接失败: {info.get('error', '未知错误')}")
+    cluster_info = None
+    if token:
+        # 测试新连接
+        info = test_connection(endpoint, token)
+        if not info.get("ok"):
+            raise HTTPException(status_code=400, detail=f"连接失败: {info.get('error', '未知错误')}")
 
-    cluster_info = get_cluster_info(endpoint, token)
+        cluster_info = get_cluster_info(endpoint, token)
 
     update_cluster(db, c, name=name, endpoint=endpoint,
                    token=token, description=body.description.strip())
-    _sync_cluster_meta(c, cluster_info)
+    if cluster_info:
+        _sync_cluster_meta(c, cluster_info)
+    else:
+        _mark_cluster_token_missing(c)
     db.commit()
     db.refresh(c)
 

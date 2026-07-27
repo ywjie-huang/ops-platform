@@ -1,6 +1,35 @@
 from app.services import k8s
 
 
+def test_empty_k8s_token_omits_authorization_header(monkeypatch):
+    captured_headers = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"gitVersion": "v1.30.0"}
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def get(self, url, headers):
+            captured_headers.append(headers)
+            return FakeResponse()
+
+    monkeypatch.setattr(k8s.httpx, "Client", lambda **kwargs: FakeClient())
+
+    result = k8s.test_connection("https://k8s.example.com", "  ")
+
+    assert result["ok"] is True
+    assert captured_headers == [{"Accept": "application/json"}]
+
+
 def test_get_deployments_exposes_label_selector_for_pod_drilldown(monkeypatch):
     selector = {
         "matchLabels": {"app.kubernetes.io/name": "logstash"},

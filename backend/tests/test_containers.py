@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from app.api import docker_mgmt
 from app.api.docker_mgmt import _proxy_to_agent
-from app.api.containers import api_get_cluster, api_list_clusters
+from app.api.containers import ClusterCreate, api_create_cluster, api_get_cluster, api_list_clusters
 from app.models.container import ContainerCluster, ContainerDeployment, ContainerPod
 from app.services.containers import cluster_name_exists, refresh_cluster_connection_status
 from app.services.docker_agent import docker_host_name_exists
@@ -45,6 +45,41 @@ def test_refresh_cluster_connection_status_marks_invalid_token_stopped(monkeypat
 
         assert cluster.status == "stopped"
         assert cluster.status_message == "authentication failed"
+    finally:
+        db.close()
+
+
+def test_create_cluster_without_token_saves_pending_configuration(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("K8s connection must not be tested without a token")
+
+    monkeypatch.setattr("app.api.containers.test_connection", fail_if_called)
+    monkeypatch.setattr("app.api.containers.get_cluster_info", fail_if_called)
+    monkeypatch.setattr("app.api.containers.write_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.api.containers.get_client_ip", lambda request: "127.0.0.1")
+
+    db = SessionLocal()
+    try:
+        response = api_create_cluster(
+            ClusterCreate(
+                name="pending-k8s",
+                endpoint="https://k8s.example.com",
+                token="  ",
+                description="pending credential",
+            ),
+            request=None,
+            db=db,
+            current_user=None,
+        )
+
+        assert response["data"]["status"] == "stopped"
+        assert response["data"]["status_message"] == "Token is not configured"
+        cluster = db.query(ContainerCluster).filter_by(name="pending-k8s").one()
+        assert cluster.token == ""
     finally:
         db.close()
 
