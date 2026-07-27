@@ -792,6 +792,18 @@ interface K8sPod {
   cpu_request?: number
   mem_request?: number
   created_at?: string
+  labels?: Record<string, string>
+}
+
+interface K8sLabelSelectorExpression {
+  key: string
+  operator: string
+  values?: string[]
+}
+
+interface K8sLabelSelector {
+  matchLabels?: Record<string, string>
+  matchExpressions?: K8sLabelSelectorExpression[]
 }
 
 interface K8sNode {
@@ -828,6 +840,7 @@ interface K8sDeployment {
   replicas: number
   ready_replicas: number
   created_at?: string
+  selector?: K8sLabelSelector
 }
 
 interface K8sService {
@@ -922,6 +935,8 @@ const nowTick = ref(Date.now())
 const activeTab = ref((route.query.tab as string) || 'pods')
 const podFilter = ref<PodQuickFilter>((route.query.pf as PodQuickFilter) || 'all')
 const deployFilter = ref('')
+const deployFilterNamespace = ref('')
+const deployFilterSelector = ref<K8sLabelSelector | null>(null)
 const restartsOrder = ref<'' | 'asc' | 'desc'>('')
 const nsPage = ref(Number(route.query.nsp) || 1)
 const nsPageSize = ref(Number(route.query.nss) || 10)
@@ -1110,7 +1125,17 @@ const rootCauseChain = computed(() => {
 
 const filteredPods = computed(() => {
   let list = pods.value
-  if (deployFilter.value) list = list.filter((p) => p.name.startsWith(deployFilter.value))
+  if (deployFilter.value) {
+    const selector = deployFilterSelector.value
+    const hasSelector = Boolean(
+      Object.keys(selector?.matchLabels || {}).length || (selector?.matchExpressions || []).length,
+    )
+    list = list.filter((pod) => {
+      if (deployFilterNamespace.value && pod.namespace !== deployFilterNamespace.value) return false
+      if (hasSelector) return matchesDeploymentSelector(pod, selector)
+      return pod.name.startsWith(deployFilter.value)
+    })
+  }
   if (podNamespace.value) list = list.filter((p) => p.namespace === podNamespace.value)
   list = list.filter((p) => matchPodQuickFilter(p, podFilter.value))
   list = filterClusterPods(list, podSearch.value)
@@ -1441,14 +1466,47 @@ function toggleRestartsOrder() {
   restartsOrder.value = restartsOrder.value === 'desc' ? 'asc' : restartsOrder.value === 'asc' ? '' : 'desc'
 }
 
+function matchesDeploymentSelector(pod: K8sPod, selector: K8sLabelSelector | null) {
+  if (!selector) return false
+  const labels = pod.labels || {}
+  const hasLabel = (key: string) => Object.prototype.hasOwnProperty.call(labels, key)
+
+  for (const [key, value] of Object.entries(selector.matchLabels || {})) {
+    if (labels[key] !== value) return false
+  }
+
+  return (selector.matchExpressions || []).every((expression) => {
+    const exists = hasLabel(expression.key)
+    const values = expression.values || []
+    switch (expression.operator) {
+      case 'In':
+        return exists && values.includes(labels[expression.key])
+      case 'NotIn':
+        return !exists || !values.includes(labels[expression.key])
+      case 'Exists':
+        return exists
+      case 'DoesNotExist':
+        return !exists
+      default:
+        return false
+    }
+  })
+}
+
 function drilldownDeployment(row: K8sDeployment) {
   deployFilter.value = row.name
-  podNamespace.value = ''
+  deployFilterNamespace.value = row.namespace
+  deployFilterSelector.value = row.selector || null
+  podNamespace.value = row.namespace
+  podSearch.value = ''
   gotoTab('pods', 'all')
 }
 
 function clearDeployFilter() {
   deployFilter.value = ''
+  deployFilterNamespace.value = ''
+  deployFilterSelector.value = null
+  podNamespace.value = ''
 }
 
 function copyLogs() {

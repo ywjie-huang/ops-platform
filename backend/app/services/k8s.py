@@ -581,6 +581,7 @@ def get_deployments(endpoint: str, token: str) -> list[dict[str, Any]]:
             "status": dep_status,
             "created_at": meta.get("creationTimestamp", ""),
             "labels": meta.get("labels", {}),
+            "selector": spec.get("selector") or {},
         })
     return deployments
 
