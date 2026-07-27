@@ -1,5 +1,6 @@
 """容器管理 API — 对接 K8s API 自动发现资源。"""
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,15 +17,20 @@ from app.services.containers import (
     refresh_cluster_connection_status,
 )
 from app.services.k8s import (
+    build_kubeconfig,
     delete_pod,
+    drain_node,
     get_cluster_info,
     get_deployments,
+    get_events,
+    get_node_maintenance_preview,
     get_nodes,
     get_pod_events,
     get_pod_logs,
     get_pods,
     get_services,
     restart_deployment,
+    set_node_schedulable,
     test_connection,
 )
 
@@ -51,6 +57,16 @@ class ClusterUpdate(BaseModel):
 class ConnectionTest(BaseModel):
     endpoint: str
     token: str = ""
+
+
+class NodeCordonRequest(BaseModel):
+    confirm_node: str
+    unschedulable: bool = True
+
+
+class NodeDrainRequest(BaseModel):
+    confirm_node: str
+    grace_period_seconds: int = 30
 
 
 # ─── Helpers ────────────────────────────────────────────────
@@ -136,6 +152,81 @@ def api_get_cluster(
 ):
     c = _require_cluster_by_name(db, cluster_name)
     return {"code": 0, "data": _cluster_dict(c)}
+
+
+@router.get("/clusters/{cluster_name}/kubeconfig")
+def api_download_cluster_kubeconfig(
+    cluster_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """Download a kubeconfig generated from the saved cluster credential."""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法生成 kubeconfig")
+
+    write_log(
+        db,
+        user=current_user,
+        action="download",
+        target_type="container",
+        target_id=c.id,
+        target_name=c.name,
+        detail="下载 K8s kubeconfig",
+        ip_address=get_client_ip(request),
+    )
+    db.commit()
+
+    filename = f"{c.name}-kubeconfig.yaml"
+    return PlainTextResponse(
+        build_kubeconfig(c.name, c.endpoint, c.token),
+        media_type="application/x-yaml; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/clusters/{cluster_name}/test-connection")
+def api_test_saved_cluster_connection(
+    cluster_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """Test the current saved credential without ever returning its value."""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法测试连接")
+
+    result = test_connection(c.endpoint, c.token)
+    if result.get("ok"):
+        c.status = "running"
+        c.status_message = ""
+        c.version = result.get("version") or c.version
+    else:
+        c.status = "stopped"
+        c.status_message = result.get("error", "连接失败")
+
+    write_log(
+        db,
+        user=current_user,
+        action="test_connection",
+        target_type="container",
+        target_id=c.id,
+        target_name=c.name,
+        detail="测试 K8s 集群连接",
+        ip_address=get_client_ip(request),
+    )
+    db.commit()
+    return {
+        "code": 0,
+        "msg": "连接正常" if result.get("ok") else "连接失败",
+        "data": result,
+    }
 
 
 @router.post("/clusters")
@@ -291,6 +382,108 @@ def api_cluster_nodes(
     return {"code": 0, "data": nodes}
 
 
+@router.get("/clusters/{cluster_name}/nodes/{node_name}/maintenance-preview")
+def api_node_maintenance_preview(
+    cluster_name: str,
+    node_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    """Show the exact drain impact before a maintenance command can be submitted."""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法执行节点预检")
+    result = get_node_maintenance_preview(c.endpoint, c.token, node_name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "节点维护预检失败"))
+    return {"code": 0, "data": result}
+
+
+@router.post("/clusters/{cluster_name}/nodes/{node_name}/cordon")
+def api_cordon_cluster_node(
+    cluster_name: str,
+    node_name: str,
+    body: NodeCordonRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """Cordon or restore scheduling for a node after an explicit name confirmation."""
+    if body.confirm_node.strip() != node_name:
+        raise HTTPException(status_code=400, detail="确认节点名称不匹配")
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法修改节点状态")
+
+    result = set_node_schedulable(
+        c.endpoint,
+        c.token,
+        node_name,
+        unschedulable=body.unschedulable,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "节点调度状态更新失败"))
+
+    action_label = "Cordon" if body.unschedulable else "恢复调度"
+    write_log(
+        db,
+        user=current_user,
+        action="cordon" if body.unschedulable else "uncordon",
+        target_type="k8s_node",
+        target_name=f"{c.name}/{node_name}",
+        detail=f"{action_label} K8s 节点",
+        ip_address=get_client_ip(request),
+    )
+    db.commit()
+    return {"code": 0, "msg": f"{action_label} 已执行", "data": result}
+
+
+@router.post("/clusters/{cluster_name}/nodes/{node_name}/drain")
+def api_drain_cluster_node(
+    cluster_name: str,
+    node_name: str,
+    body: NodeDrainRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """Cordon a node and evict only Pods that pass the server-side preflight."""
+    if body.confirm_node.strip() != node_name:
+        raise HTTPException(status_code=400, detail="确认节点名称不匹配")
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法执行节点维护")
+
+    result = drain_node(
+        c.endpoint,
+        c.token,
+        node_name,
+        grace_period_seconds=body.grace_period_seconds,
+    )
+    if "preview" in result:
+        raise HTTPException(status_code=409, detail=result.get("error", "节点维护预检未通过"))
+    if not result.get("cordoned"):
+        raise HTTPException(status_code=400, detail=result.get("error", "节点驱逐失败"))
+
+    evicted = len(result.get("evicted", []))
+    failed = len(result.get("failed", []))
+    write_log(
+        db,
+        user=current_user,
+        action="drain",
+        target_type="k8s_node",
+        target_name=f"{c.name}/{node_name}",
+        detail=f"Drain K8s 节点，已提交 {evicted} 个 Pod 驱逐，失败 {failed} 个",
+        ip_address=get_client_ip(request),
+    )
+    db.commit()
+    return {
+        "code": 0,
+        "msg": "驱逐请求已提交" if not failed else "部分 Pod 未能提交驱逐",
+        "data": result,
+    }
+
+
 @router.get("/clusters/{cluster_name}/pods")
 def api_cluster_pods(
     cluster_name: str,
@@ -338,6 +531,19 @@ def api_pod_events(
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     return {"code": 0, "data": get_pod_events(c.endpoint, c.token, namespace, pod_name)}
+
+
+@router.get("/clusters/{cluster_name}/events")
+def api_cluster_events(
+    cluster_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    """获取集群级事件（全命名空间，按最后发生时间倒序）。"""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
+    return {"code": 0, "data": get_events(c.endpoint, c.token)}
 
 
 @router.delete("/clusters/{cluster_name}/pods/{namespace}/{pod_name}")

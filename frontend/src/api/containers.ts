@@ -10,6 +10,12 @@ export function updateCluster(name: string, data: { name: string; endpoint: stri
   return request.put(`/containers/clusters/${encodeURIComponent(name)}`, data)
 }
 export function deleteCluster(name: string) { return request.delete(`/containers/clusters/${encodeURIComponent(name)}`) }
+export function downloadClusterKubeconfig(name: string) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/kubeconfig`, { responseType: 'blob' })
+}
+export function testSavedClusterConnection(name: string) {
+  return request.post(`/containers/clusters/${encodeURIComponent(name)}/test-connection`)
+}
 
 // 连接测试
 export function testConnection(data: { endpoint: string; token?: string }) {
@@ -19,6 +25,15 @@ export function testConnection(data: { endpoint: string; token?: string }) {
 // 集群资源（实时从 K8s API 拉取）
 export function getClusterResources(name: string) { return request.get(`/containers/clusters/${encodeURIComponent(name)}/resources`) }
 export function getClusterNodes(name: string) { return request.get(`/containers/clusters/${encodeURIComponent(name)}/nodes`) }
+export function getNodeMaintenancePreview(name: string, nodeName: string) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/maintenance-preview`)
+}
+export function cordonClusterNode(name: string, nodeName: string, data: { confirm_node: string; unschedulable: boolean }) {
+  return request.post(`/containers/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/cordon`, data)
+}
+export function drainClusterNode(name: string, nodeName: string, data: { confirm_node: string; grace_period_seconds?: number }) {
+  return request.post(`/containers/clusters/${encodeURIComponent(name)}/nodes/${encodeURIComponent(nodeName)}/drain`, data)
+}
 export function getClusterPods(name: string, params?: { namespace?: string }) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods`, { params })
 }
@@ -33,6 +48,9 @@ export function getPodLogs(name: string, namespace: string, podName: string, par
 }
 export function getPodEvents(name: string, namespace: string, podName: string) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)
+}
+export function getClusterEvents(name: string) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/events`)
 }
 export function deleteClusterPod(name: string, namespace: string, podName: string) {
   return request.delete(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)

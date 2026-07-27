@@ -6,6 +6,7 @@ Kubernetes API 客户端
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime
 
 from app.core.config import CHINA_TZ
@@ -25,6 +26,34 @@ def _headers(token: str) -> dict:
 
 def _clean(url: str) -> str:
     return url.rstrip("/")
+
+
+def build_kubeconfig(cluster_name: str, endpoint: str, token: str) -> str:
+    """Build a portable kubeconfig without exposing the stored credential in JSON APIs."""
+    name = cluster_name or "kubernetes"
+    user_name = f"{name}-operator"
+    context_name = f"{name}-context"
+    quote_value = lambda value: json.dumps(value, ensure_ascii=False)
+
+    return (
+        "apiVersion: v1\n"
+        "kind: Config\n"
+        "clusters:\n"
+        f"  - name: {quote_value(name)}\n"
+        "    cluster:\n"
+        f"      server: {quote_value(endpoint)}\n"
+        "      insecure-skip-tls-verify: true\n"
+        "users:\n"
+        f"  - name: {quote_value(user_name)}\n"
+        "    user:\n"
+        f"      token: {quote_value(token)}\n"
+        "contexts:\n"
+        f"  - name: {quote_value(context_name)}\n"
+        "    context:\n"
+        f"      cluster: {quote_value(name)}\n"
+        f"      user: {quote_value(user_name)}\n"
+        f"current-context: {quote_value(context_name)}\n"
+    )
 
 
 # ─── 连接测试 ───────────────────────────────────────────────
@@ -60,6 +89,67 @@ def test_connection(endpoint: str, token: str) -> dict[str, Any]:
 
 
 # ─── 资源拉取 ───────────────────────────────────────────────
+
+
+def _parse_cpu_cores(value: Any) -> float:
+    """解析 K8s CPU 数量为核心数，如 '100m' -> 0.1，'2' -> 2.0。"""
+    if value is None:
+        return 0.0
+    v = str(value).strip()
+    if not v:
+        return 0.0
+    try:
+        if v.endswith("n"):
+            return float(v[:-1]) / 1e9
+        if v.endswith("u"):
+            return float(v[:-1]) / 1e6
+        if v.endswith("m"):
+            return float(v[:-1]) / 1000
+        return float(v)
+    except ValueError:
+        return 0.0
+
+
+_MEM_UNITS_MI = {
+    "Ki": 1 / 1024,
+    "Mi": 1.0,
+    "Gi": 1024.0,
+    "Ti": 1024 * 1024,
+    "Pi": 1024 * 1024 * 1024,
+    "K": 1000 / 1048576,
+    "M": 1e6 / 1048576,
+    "G": 1e9 / 1048576,
+}
+
+
+def _parse_mem_mi(value: Any) -> float:
+    """解析 K8s 内存数量为 Mi，如 '256Mi' -> 256，'1Gi' -> 1024。"""
+    if value is None:
+        return 0.0
+    v = str(value).strip()
+    if not v:
+        return 0.0
+    for suffix, factor in _MEM_UNITS_MI.items():
+        if v.endswith(suffix):
+            try:
+                return float(v[: -len(suffix)]) * factor
+            except ValueError:
+                return 0.0
+    try:
+        return float(v) / 1048576  # 裸数字按字节处理
+    except ValueError:
+        return 0.0
+
+
+def _pod_requests(spec: dict) -> tuple[float, float]:
+    """聚合 Pod 所有容器的 resources.requests，返回 (cpu 核数, 内存 Mi)。"""
+    cpu = 0.0
+    mem = 0.0
+    for c in spec.get("containers", []) or []:
+        requests = (c.get("resources") or {}).get("requests") or {}
+        cpu += _parse_cpu_cores(requests.get("cpu"))
+        mem += _parse_mem_mi(requests.get("memory"))
+    return cpu, mem
 
 
 def _get_list(endpoint: str, token: str, path: str) -> list[dict]:
@@ -124,6 +214,29 @@ def get_pod_events(endpoint: str, token: str, namespace: str, pod_name: str) -> 
     return events
 
 
+def get_events(endpoint: str, token: str, limit: int = 200) -> list[dict[str, Any]]:
+    """获取集群级事件（全命名空间），按最后发生时间倒序。"""
+    items = _get_list(endpoint, token, "/api/v1/events")
+    events = []
+    for item in items:
+        meta = item.get("metadata", {})
+        obj = item.get("involvedObject", {}) or {}
+        events.append({
+            "type": item.get("type", ""),
+            "reason": item.get("reason", ""),
+            "message": item.get("message", ""),
+            "count": item.get("count", 1),
+            "source": (item.get("source") or {}).get("component", ""),
+            "namespace": obj.get("namespace") or meta.get("namespace", ""),
+            "involved_kind": obj.get("kind", ""),
+            "involved_name": obj.get("name", ""),
+            "first_timestamp": item.get("firstTimestamp", ""),
+            "last_timestamp": item.get("lastTimestamp", ""),
+        })
+    events.sort(key=lambda e: e.get("last_timestamp") or "", reverse=True)
+    return events[: max(1, min(limit, 500))]
+
+
 def get_nodes(endpoint: str, token: str) -> list[dict[str, Any]]:
     """获取节点列表。"""
     items = _get_list(endpoint, token, "/api/v1/nodes")
@@ -151,6 +264,7 @@ def get_nodes(endpoint: str, token: str) -> list[dict[str, Any]]:
         nodes.append({
             "name": meta.get("name", ""),
             "status": ready,
+            "unschedulable": bool((item.get("spec") or {}).get("unschedulable", False)),
             "ip": internal_ip,
             "cpu": capacity.get("cpu", ""),
             "memory": capacity.get("memory", ""),
@@ -160,6 +274,160 @@ def get_nodes(endpoint: str, token: str) -> list[dict[str, Any]]:
             "labels": meta.get("labels", {}),
         })
     return nodes
+
+
+def _list_node_pod_resources(endpoint: str, token: str, node_name: str) -> dict[str, Any]:
+    """Load raw Pod resources for a maintenance preflight."""
+    url = f"{_clean(endpoint)}/api/v1/pods"
+    try:
+        with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
+            resp = client.get(
+                url,
+                headers=_headers(token),
+                params={"fieldSelector": f"spec.nodeName={node_name}"},
+            )
+            resp.raise_for_status()
+            return {"ok": True, "items": resp.json().get("items", [])}
+    except httpx.TimeoutException:
+        return {"ok": False, "error": "节点 Pod 预检超时"}
+    except httpx.HTTPStatusError as e:
+        return {"ok": False, "error": f"HTTP {e.response.status_code}"}
+    except Exception as e:
+        logger.error("K8s node pod preflight error [%s]: %s", node_name, e)
+        return {"ok": False, "error": str(e)}
+
+
+def _classify_node_pods(items: list[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    """Classify node Pods before drain so unsafe workloads are never silently evicted."""
+    result: dict[str, list[dict[str, str]]] = {"evictable": [], "skipped": [], "blocked": []}
+    terminal_phases = {"Succeeded", "Failed"}
+
+    for item in items:
+        meta = item.get("metadata") or {}
+        spec = item.get("spec") or {}
+        status = item.get("status") or {}
+        name = str(meta.get("name") or "")
+        namespace = str(meta.get("namespace") or "default")
+        pod = {"name": name, "namespace": namespace, "reason": ""}
+        annotations = meta.get("annotations") or {}
+        owner_refs = meta.get("ownerReferences") or []
+        controller = next((owner for owner in owner_refs if owner.get("controller")), None)
+        owner_kind = str((controller or {}).get("kind") or "")
+
+        if status.get("phase") in terminal_phases:
+            pod["reason"] = "已完成"
+            result["skipped"].append(pod)
+        elif annotations.get("kubernetes.io/config.mirror"):
+            pod["reason"] = "静态 Pod"
+            result["skipped"].append(pod)
+        elif owner_kind == "DaemonSet":
+            pod["reason"] = "DaemonSet 管理"
+            result["skipped"].append(pod)
+        elif not controller:
+            pod["reason"] = "未被控制器管理"
+            result["blocked"].append(pod)
+        elif any("emptyDir" in (volume or {}) for volume in (spec.get("volumes") or [])):
+            pod["reason"] = "使用 emptyDir 临时数据"
+            result["blocked"].append(pod)
+        else:
+            result["evictable"].append(pod)
+
+    return result
+
+
+def get_node_maintenance_preview(endpoint: str, token: str, node_name: str) -> dict[str, Any]:
+    """Return the real maintenance impact before a node is cordoned or drained."""
+    node = next((item for item in get_nodes(endpoint, token) if item["name"] == node_name), None)
+    if not node:
+        return {"ok": False, "error": "节点不存在或无法读取节点信息"}
+
+    pod_result = _list_node_pod_resources(endpoint, token, node_name)
+    if not pod_result.get("ok"):
+        return {"ok": False, "error": pod_result.get("error", "无法获取节点上的 Pod")}
+
+    classified = _classify_node_pods(pod_result["items"])
+    return {
+        "ok": True,
+        "node": node,
+        "pod_count": len(pod_result["items"]),
+        **classified,
+    }
+
+
+def set_node_schedulable(endpoint: str, token: str, node_name: str, *, unschedulable: bool) -> dict[str, Any]:
+    """Cordon or uncordon a node through the Kubernetes API."""
+    node = quote(node_name, safe="")
+    url = f"{_clean(endpoint)}/api/v1/nodes/{node}"
+    headers = {**_headers(token), "Content-Type": "application/merge-patch+json"}
+    try:
+        with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
+            resp = client.patch(url, headers=headers, json={"spec": {"unschedulable": unschedulable}})
+            resp.raise_for_status()
+            return {"ok": True, "unschedulable": unschedulable}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"ok": False, "error": "节点不存在"}
+        if e.response.status_code == 403:
+            return {"ok": False, "error": "权限不足，无法修改节点调度状态"}
+        return {"ok": False, "error": f"HTTP {e.response.status_code}"}
+    except Exception as e:
+        logger.error("K8s node scheduling update error [%s]: %s", node_name, e)
+        return {"ok": False, "error": str(e)}
+
+
+def drain_node(endpoint: str, token: str, node_name: str, *, grace_period_seconds: int = 30) -> dict[str, Any]:
+    """Cordon a node and submit eviction requests for Pods that passed preflight."""
+    preview = get_node_maintenance_preview(endpoint, token, node_name)
+    if not preview.get("ok"):
+        return preview
+    if preview["blocked"]:
+        return {
+            "ok": False,
+            "error": "预检发现不能安全驱逐的 Pod，请先处理阻塞项",
+            "preview": preview,
+        }
+
+    cordon_result = set_node_schedulable(endpoint, token, node_name, unschedulable=True)
+    if not cordon_result.get("ok"):
+        return cordon_result
+
+    evicted: list[dict[str, str]] = []
+    failed: list[dict[str, str]] = []
+    grace_period = max(0, min(grace_period_seconds, 600))
+    headers = {**_headers(token), "Content-Type": "application/json"}
+
+    with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
+        for pod in preview["evictable"]:
+            namespace = quote(pod["namespace"], safe="")
+            pod_name = quote(pod["name"], safe="")
+            url = f"{_clean(endpoint)}/api/v1/namespaces/{namespace}/pods/{pod_name}/eviction"
+            payload = {
+                "apiVersion": "policy/v1",
+                "kind": "Eviction",
+                "metadata": {"name": pod["name"], "namespace": pod["namespace"]},
+                "deleteOptions": {"gracePeriodSeconds": grace_period},
+            }
+            try:
+                resp = client.post(url, headers=headers, json=payload)
+                if 200 <= resp.status_code < 300:
+                    evicted.append(pod)
+                elif resp.status_code == 429:
+                    failed.append({**pod, "reason": "受 PodDisruptionBudget 限制"})
+                elif resp.status_code == 403:
+                    failed.append({**pod, "reason": "Token 缺少 eviction 权限"})
+                else:
+                    failed.append({**pod, "reason": f"HTTP {resp.status_code}"})
+            except Exception as e:
+                logger.error("K8s eviction error [%s/%s]: %s", pod["namespace"], pod["name"], e)
+                failed.append({**pod, "reason": str(e)})
+
+    return {
+        "ok": not failed,
+        "cordoned": True,
+        "evicted": evicted,
+        "skipped": preview["skipped"],
+        "failed": failed,
+    }
 
 
 def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
@@ -221,6 +489,8 @@ def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
         elif phase in {"Failed", "Pending", "Unknown"} and not reason:
             reason = phase
 
+        cpu_req, mem_req = _pod_requests(spec)
+
         pods.append({
             "name": meta.get("name", ""),
             "namespace": meta.get("namespace", "default"),
@@ -231,6 +501,8 @@ def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
             "pod_ip": status.get("podIP", ""),
             "images": images,
             "restarts": restarts,
+            "cpu_request": round(cpu_req, 3),
+            "mem_request": round(mem_req, 1),
             "created_at": meta.get("creationTimestamp", ""),
             "labels": meta.get("labels", {}),
         })
