@@ -1904,7 +1904,7 @@ button.summary-card {
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.92fr);
+  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.75fr);
   gap: 16px;
 }
 
