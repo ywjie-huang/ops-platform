@@ -19,10 +19,56 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(connect=5, read=10, write=5, pool=5)
 
+# Keep a dashboard refresh from opening one connection per metric/host at the
+# same time. The Prometheus endpoint is commonly exposed through a gateway
+# with a much lower upstream concurrency limit than the HTTP client default.
+_QUERY_CONCURRENCY = 8
+_RETRYABLE_STATUS_CODES = frozenset({502, 503, 504})
+_MAX_QUERY_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = 0.2
+
 # instance 标签缓存
 _instance_cache: dict[str, str] = {}
 _instance_cache_ts: float = 0
 _INSTANCE_CACHE_TTL = 60  # 60 秒刷新一次
+
+
+async def _request_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict[str, int | str],
+    limiter: asyncio.Semaphore,
+) -> httpx.Response:
+    """Send one query without overwhelming the Prometheus gateway."""
+    for attempt in range(_MAX_QUERY_ATTEMPTS):
+        try:
+            async with limiter:
+                resp = await client.get(url, params=params)
+            if resp.status_code in _RETRYABLE_STATUS_CODES and attempt < _MAX_QUERY_ATTEMPTS - 1:
+                await asyncio.sleep(_RETRY_BACKOFF_SECONDS * (2**attempt))
+                continue
+            resp.raise_for_status()
+            return resp
+        except httpx.TransportError:
+            if attempt >= _MAX_QUERY_ATTEMPTS - 1:
+                raise
+            await asyncio.sleep(_RETRY_BACKOFF_SECONDS * (2**attempt))
+        except httpx.HTTPStatusError as exc:
+            if (
+                exc.response.status_code not in _RETRYABLE_STATUS_CODES
+                or attempt >= _MAX_QUERY_ATTEMPTS - 1
+            ):
+                raise
+            await asyncio.sleep(_RETRY_BACKOFF_SECONDS * (2**attempt))
+    raise RuntimeError("Prometheus query retry loop exhausted")
+
+
+def _query_failure_reason(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    return type(exc).__name__
 
 
 async def _query_batch(exprs: dict[str, str], prom_url: str = "") -> dict[str, dict]:
@@ -32,25 +78,37 @@ async def _query_batch(exprs: dict[str, str], prom_url: str = "") -> dict[str, d
     if not base_url:
         return results
     url = f"{base_url}/api/v1/query"
+    limiter = asyncio.Semaphore(_QUERY_CONCURRENCY)
+    failures: list[tuple[str, str]] = []
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async def _do(name: str, expr: str):
             try:
-                resp = await client.get(url, params={"query": expr})
-                resp.raise_for_status()
+                resp = await _request_with_retry(client, url, {"query": expr}, limiter)
                 data = resp.json()
                 if data.get("status") == "success":
                     results[name] = data.get("data", {})
                 else:
                     results[name] = {"resultType": "vector", "result": []}
             except httpx.TimeoutException:
-                logger.warning("Prometheus query timeout: %s", name)
+                failures.append((name, "timeout"))
                 results[name] = {"resultType": "vector", "result": []}
             except Exception as e:
-                logger.warning("Prometheus query error [%s]: %s", name, e)
+                failures.append((name, _query_failure_reason(e)))
                 results[name] = {"resultType": "vector", "result": []}
 
         await asyncio.gather(*[_do(n, e) for n, e in exprs.items()])
+
+    if failures:
+        details = ", ".join(f"{name}: {reason}" for name, reason in failures[:8])
+        if len(failures) > 8:
+            details += f", ... +{len(failures) - 8} more"
+        logger.warning(
+            "Prometheus query batch had %d/%d failures: %s",
+            len(failures),
+            len(exprs),
+            details,
+        )
 
     return results
 
@@ -68,33 +126,47 @@ async def _query_range_batch(
     if not base_url:
         return results
     url = f"{base_url}/api/v1/query_range"
+    limiter = asyncio.Semaphore(_QUERY_CONCURRENCY)
+    failures: list[tuple[str, str]] = []
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async def _do(name: str, expr: str):
             try:
-                resp = await client.get(
+                resp = await _request_with_retry(
+                    client,
                     url,
-                    params={
+                    {
                         "query": expr,
                         "start": start,
                         "end": end,
                         "step": step,
                     },
+                    limiter,
                 )
-                resp.raise_for_status()
                 data = resp.json()
                 if data.get("status") == "success":
                     results[name] = data.get("data", {})
                 else:
                     results[name] = {"resultType": "matrix", "result": []}
             except httpx.TimeoutException:
-                logger.warning("Prometheus range query timeout: %s", name)
+                failures.append((name, "timeout"))
                 results[name] = {"resultType": "matrix", "result": []}
             except Exception as e:
-                logger.warning("Prometheus range query error [%s]: %s", name, e)
+                failures.append((name, _query_failure_reason(e)))
                 results[name] = {"resultType": "matrix", "result": []}
 
         await asyncio.gather(*[_do(n, e) for n, e in exprs.items()])
+
+    if failures:
+        details = ", ".join(f"{name}: {reason}" for name, reason in failures[:8])
+        if len(failures) > 8:
+            details += f", ... +{len(failures) - 8} more"
+        logger.warning(
+            "Prometheus range query batch had %d/%d failures: %s",
+            len(failures),
+            len(exprs),
+            details,
+        )
 
     return results
 
