@@ -32,16 +32,12 @@ docker push registry.example.com/ops/frontend:1.0.0
 2. Replace both image references in `base/backend.yaml` and `base/frontend.yaml`.
 3. If the registry is private, create an image-pull secret and add its name to
    each Deployment's `spec.template.spec.imagePullSecrets`.
-4. Create the runtime secret. Do not commit the generated Secret manifest.
+4. Copy `base/secret.example.yaml` to `base/secret.yaml`, set the three secret
+   values, and do not commit the generated file. It is ignored by Git and is
+   included automatically by `kustomization.yaml`.
 
 ```powershell
-kubectl apply -f k8s/base/namespace.yaml
-
-kubectl -n ops-platform create secret generic ops-secrets `
-  --from-literal=MYSQL_PASSWORD='replace-me' `
-  --from-literal=REDIS_PASSWORD='replace-me' `
-  --from-literal=SECRET_KEY='replace-with-a-long-random-value' `
-  --dry-run=client -o yaml | kubectl apply -f -
+Copy-Item k8s/base/secret.example.yaml k8s/base/secret.yaml
 ```
 
 `SECRET_KEY` must remain stable between upgrades. Changing it invalidates every

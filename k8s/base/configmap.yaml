@@ -6,11 +6,11 @@ metadata:
   labels:
     app.kubernetes.io/part-of: ops-platform
 data:
-  MYSQL_HOST: mysql.example.internal
+  MYSQL_HOST: 172.16.24.100
   MYSQL_PORT: "3306"
-  MYSQL_USER: ops_user
+  MYSQL_USER: root
   MYSQL_DATABASE: ops_platform
-  REDIS_HOST: redis.example.internal
+  REDIS_HOST: 172.16.24.100
   REDIS_PORT: "6379"
   REDIS_DB: "0"
   TZ: Asia/Shanghai
