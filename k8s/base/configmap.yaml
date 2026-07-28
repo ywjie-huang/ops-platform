@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ops-runtime-config
+  namespace: ops-platform
+  labels:
+    app.kubernetes.io/part-of: ops-platform
+data:
+  MYSQL_HOST: mysql.example.internal
+  MYSQL_PORT: "3306"
+  MYSQL_USER: ops_user
+  MYSQL_DATABASE: ops_platform
+  REDIS_HOST: redis.example.internal
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  TZ: Asia/Shanghai
+  CORS_ORIGINS: https://ops.example.com
+  ENABLE_SSH_TERMINAL: "false"
+  ENABLE_SFTP: "false"
+  ENABLE_BATCH_EXEC: "false"
+  ENABLE_DEPLOY_WEBHOOK: "false"

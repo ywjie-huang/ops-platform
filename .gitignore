@@ -9,6 +9,7 @@ backend/data/
 .env
 .env.*
 !.env.example
+k8s/**/secret.yaml
 .mypy_cache/
 .ruff_cache/
 dist/

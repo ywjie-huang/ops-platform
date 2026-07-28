@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import router as api_router
+from app.core.config import CORS_ORIGINS
 from app.db.database import SessionLocal
 from app.db.init_db import init_db
 from app.models import alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key, scheduled_task  # noqa: F401
@@ -26,7 +27,7 @@ app = FastAPI(title="运维管理系统 API", version="1.0.0")
 # CORS — 前后端分离
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应限制为具体域名
+    allow_origins=list(CORS_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

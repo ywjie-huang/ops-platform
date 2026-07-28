@@ -22,7 +22,12 @@ DATABASE_URL: Final = (
     f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
     f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
 )
-SECRET_KEY: Final = "dev-secret-key-change-me"
+SECRET_KEY: Final = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+CORS_ORIGINS: Final = tuple(
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+) or ("*",)
 DEMO_USERNAME: Final = "admin"
 DEMO_PASSWORD: Final = "admin123"
 

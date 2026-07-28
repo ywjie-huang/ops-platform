@@ -1,0 +1,81 @@
+# Kubernetes Deployment
+
+This directory deploys the Ops Management Platform into the `ops-platform`
+namespace with Kustomize. It intentionally deploys MySQL and Redis as external
+dependencies; use managed services or existing highly available instances for
+production.
+
+## Preconditions
+
+- Kubernetes cluster with a default `StorageClass` and an NGINX-compatible
+  Ingress controller.
+- Reachable MySQL 8.0 and Redis 7 instances.
+- Container images pushed to a registry available to the cluster.
+- A database account that can create the `ops_platform` database and apply the
+  schema migrations performed by the application's startup routine.
+
+## Configure
+
+Build and publish the two images from the repository root before updating the
+image references below:
+
+```powershell
+docker build -f backend/Dockerfile -t registry.example.com/ops/backend:1.0.0 .
+docker build -f frontend/Dockerfile -t registry.example.com/ops/frontend:1.0.0 .
+docker push registry.example.com/ops/backend:1.0.0
+docker push registry.example.com/ops/frontend:1.0.0
+```
+
+1. Edit `base/configmap.yaml` and replace the example database, Redis, and
+   public-domain values. `CORS_ORIGINS` must match the HTTPS domain in
+   `base/ingress.yaml`.
+2. Replace both image references in `base/backend.yaml` and `base/frontend.yaml`.
+3. If the registry is private, create an image-pull secret and add its name to
+   each Deployment's `spec.template.spec.imagePullSecrets`.
+4. Create the runtime secret. Do not commit the generated Secret manifest.
+
+```powershell
+kubectl apply -f k8s/base/namespace.yaml
+
+kubectl -n ops-platform create secret generic ops-secrets `
+  --from-literal=MYSQL_PASSWORD='replace-me' `
+  --from-literal=REDIS_PASSWORD='replace-me' `
+  --from-literal=SECRET_KEY='replace-with-a-long-random-value' `
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+`SECRET_KEY` must remain stable between upgrades. Changing it invalidates every
+existing login token. Generate it with a password manager or a cryptographically
+secure random generator.
+
+## Deploy and verify
+
+```powershell
+kubectl apply -k k8s/base
+kubectl -n ops-platform rollout status deployment/backend --timeout=5m
+kubectl -n ops-platform rollout status deployment/frontend --timeout=5m
+kubectl -n ops-platform get pods,svc,ingress,pvc
+kubectl -n ops-platform logs deployment/backend
+```
+
+Provision the TLS secret named `ops-platform-tls` before exposing the Ingress,
+or adjust `base/ingress.yaml` for your certificate controller. The frontend
+proxies `/api/`, `/health`, and WebSocket traffic to the Service named
+`backend`; do not rename that Service without changing `frontend/nginx.conf`.
+
+## Operating constraints
+
+- Keep the backend at one replica. It performs database initialization, runs an
+  in-memory APScheduler, and polls Docker agents during startup. The manifest
+  uses `Recreate` to prevent overlapping backend pods during an upgrade.
+- The backend stores uploaded deployment artifacts below `/app/data`; its PVC
+  is required. Use object storage before moving backend workloads to multiple
+  replicas.
+- Redis is required in production for shared captcha, login-rate-limit, and JWT
+  revocation state. Without it, the application intentionally falls back to
+  per-process memory, which is unsuitable for clustered operation.
+- The Docker Agent is for Docker hosts and mounts the host Docker socket. Do
+  not deploy it as part of this Kubernetes workload.
+
+To scale the backend safely, first move scheduling and Docker Agent polling to
+leader-elected or external workers and replace local artifact storage.
