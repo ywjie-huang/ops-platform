@@ -46,8 +46,9 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import SSHLoginForm from './SSHLoginForm.vue'
-import { buildAuthPayload, type LoginFormState } from './sshConnection'
+import { buildWebSocketAuthPayload, type LoginFormState } from './sshConnection'
 import type { SSHConnectionStatus, SSHPaneState } from './types'
+import { getToken } from '@/utils/auth'
 
 type ConnectFormData = {
   username: string
@@ -296,6 +297,16 @@ function connectSSH(formData: ConnectFormData) {
   props.pane.authMode = formData.authMode
   props.pane.lastError = null
 
+  const token = getToken()
+  if (!token) {
+    connecting.value = false
+    props.pane.lastError = 'Authentication required. Please sign in again.'
+    emitStatus('error')
+    ElMessage.error(props.pane.lastError)
+    terminal.write(`\r\n\x1b[31m${props.pane.lastError}\x1b[0m\r\n`)
+    return
+  }
+
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = new WebSocket(`${protocol}//${location.host}/api/v1/ws/ssh/${props.assetId}`)
   const generation = ++socketGeneration
@@ -308,7 +319,7 @@ function connectSSH(formData: ConnectFormData) {
 
     showLoginForm.value = false
     nextTick(fitTerminal)
-    const authData = buildAuthPayload(formData)
+    const authData = buildWebSocketAuthPayload(formData, token)
     currentKeyId.value = typeof authData.key_id === 'number' ? authData.key_id : undefined
     emit('key-change', props.pane.id, currentKeyId.value)
     socket.send(JSON.stringify(authData))
@@ -321,7 +332,7 @@ function connectSSH(formData: ConnectFormData) {
     }
 
     terminal?.write(event.data)
-    if (connecting.value) {
+    if (connecting.value && typeof event.data === 'string' && event.data.includes('\x1b[32m')) {
       connected.value = true
       connecting.value = false
       emitStatus('connected')
@@ -329,16 +340,24 @@ function connectSSH(formData: ConnectFormData) {
     }
   }
 
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     if (generation !== socketGeneration || ws !== socket) {
       return
     }
 
+    const hadConnected = connected.value
     connected.value = false
     connecting.value = false
     stopTimeCounter()
+    const wasConnecting = !hadConnected
+    const closeReason = event.reason || (wasConnecting ? 'Connection rejected by server.' : 'Connection closed.')
     props.pane.lastError = status.value === 'connecting' ? '连接已关闭' : null
-    emitStatus(status.value === 'connecting' ? 'error' : 'disconnected')
+    emitStatus(wasConnecting ? 'error' : 'disconnected')
+    if (wasConnecting) {
+      props.pane.lastError = closeReason
+      showLoginForm.value = true
+      ElMessage.error(closeReason)
+    }
     terminal?.write('\r\n\x1b[33m连接已关闭\x1b[0m\r\n')
   }
 

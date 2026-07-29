@@ -77,3 +77,13 @@ export function buildAuthPayload(formData: ConnectFormData) {
   authData.key_id = keyId
   return authData
 }
+
+export function buildWebSocketAuthPayload(
+  formData: ConnectFormData,
+  token: string,
+): Record<string, string | number> & { token: string } {
+  return {
+    ...buildAuthPayload(formData),
+    token,
+  }
+}

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 const {
   buildAuthPayload,
+  buildWebSocketAuthPayload,
   getInitialLoginState,
 } = await import('./sshConnection.ts')
 
@@ -78,5 +79,19 @@ test('includes key id for empty-password key auth payload', () => {
     username: 'ops',
     port: 22,
     key_id: 8,
+  })
+})
+
+test('adds the login token to the initial WebSocket authentication payload', () => {
+  assert.deepEqual(buildWebSocketAuthPayload({
+    username: 'ops',
+    password: '',
+    port: 22,
+    authMode: 'key-8',
+  }, 'access-token'), {
+    username: 'ops',
+    port: 22,
+    key_id: 8,
+    token: 'access-token',
   })
 })

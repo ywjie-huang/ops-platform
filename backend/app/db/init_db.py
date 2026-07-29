@@ -580,6 +580,7 @@ def _seed_admin_permissions(db: Session) -> None:
 
 def _seed_permissions(db: Session) -> None:
     permission_specs = [
+        ("SSH 终端连接", "ssh_terminal.connect", "ssh_terminal", "建立交互式 SSH 终端会话"),
         ("查看仪表盘", "dashboard.view", "dashboard", "查看首页仪表盘"),
         ("查看资产", "assets.view", "assets", "查看资产列表"),
         ("新增资产", "assets.create", "assets", "新增资产"),

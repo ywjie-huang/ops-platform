@@ -51,6 +51,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-123456}
       REDIS_DB: ${REDIS_DB:-0}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in docker/.env before starting}
       ENABLE_SSH_TERMINAL: ${ENABLE_SSH_TERMINAL:-false}
       ENABLE_SFTP: ${ENABLE_SFTP:-false}
       ENABLE_BATCH_EXEC: ${ENABLE_BATCH_EXEC:-false}

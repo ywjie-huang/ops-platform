@@ -8,12 +8,60 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core.jwt import decode_access_token
 from app.db.database import SessionLocal
 from app.models.asset import Asset
+from app.models.user import User
 from app.services.audit import write_log
+from app.services.permissions import has_permission
+from app.services.token_blacklist import is_revoked
+from app.services.users import get_user
 from app.api.ssh_common import _build_ssh_client, _get_ssh_key_sync
 
 logger = logging.getLogger(__name__)
+
+SSH_TERMINAL_PERMISSION = "ssh_terminal.connect"
+AUTH_TIMEOUT_SECONDS = 10
+
+
+def _authenticate_websocket_user(token: object) -> tuple[User | None, str | None]:
+    """Validate the token sent in the first WebSocket message before SSH use."""
+    if not isinstance(token, str) or not token.strip():
+        return None, "Authentication required"
+
+    payload = decode_access_token(token)
+    if payload is None:
+        return None, "Authentication failed"
+    if is_revoked(payload.get("jti")):
+        return None, "Session expired"
+
+    subject = payload.get("sub")
+    if isinstance(subject, bool):
+        return None, "Authentication failed"
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError):
+        return None, "Authentication failed"
+
+    db = SessionLocal()
+    try:
+        user = get_user(db, user_id)
+        if user is None:
+            return None, "Authentication failed"
+        if not has_permission(user, SSH_TERMINAL_PERMISSION):
+            return None, "SSH terminal permission required"
+        return user, None
+    finally:
+        db.close()
+
+
+async def _close_websocket(websocket: WebSocket, code: int, reason: str) -> None:
+    # RFC 6455 limits close reasons to 123 UTF-8 bytes.
+    safe_reason = reason.encode("utf-8")[:123].decode("utf-8", errors="ignore")
+    try:
+        await websocket.close(code=code, reason=safe_reason)
+    except RuntimeError:
+        pass
 
 router = APIRouter(tags=["SSH 终端"])
 
@@ -48,11 +96,27 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
     """WebSocket → SSH 桥接。"""
     await websocket.accept()
 
-    auth_msg = await websocket.receive_text()
     try:
+        auth_msg = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
         auth = json.loads(auth_msg)
+    except asyncio.TimeoutError:
+        await _close_websocket(websocket, 1008, "Authentication timed out")
+        return
+    except WebSocketDisconnect:
+        return
     except json.JSONDecodeError:
-        auth = {}
+        await _close_websocket(websocket, 1008, "Invalid authentication payload")
+        return
+
+    if not isinstance(auth, dict):
+        await _close_websocket(websocket, 1008, "Invalid authentication payload")
+        return
+
+    token = auth.pop("token", None)
+    current_user, auth_error = _authenticate_websocket_user(token)
+    if auth_error:
+        await _close_websocket(websocket, 1008, auth_error)
+        return
 
     asset = _get_asset_sync(asset_id)
     if asset is None:
@@ -82,7 +146,7 @@ async def ws_ssh(websocket: WebSocket, asset_id: int):
         key_id = auth.get("key_id")
         ssh_key = _get_ssh_key_sync(key_id) if key_id else None
         auth_method = f"密钥[{ssh_key.name}]" if ssh_key else "密码"
-        write_log(db, user=None, action="ssh_connect", target_type="asset",
+        write_log(db, user=current_user, action="ssh_connect", target_type="asset",
                   target_id=asset.id, target_name=asset.name,
                   ip_address=client_ip, detail=f"SSH 连接到 {asset.ip_address} ({auth_method})")
         db.commit()

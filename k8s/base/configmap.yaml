@@ -15,7 +15,7 @@ data:
   REDIS_DB: "0"
   TZ: Asia/Shanghai
   CORS_ORIGINS: https://ops.example.com
-  ENABLE_SSH_TERMINAL: "false"
+  ENABLE_SSH_TERMINAL: "true"
   ENABLE_SFTP: "false"
   ENABLE_BATCH_EXEC: "false"
   ENABLE_DEPLOY_WEBHOOK: "false"
