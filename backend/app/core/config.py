@@ -28,8 +28,14 @@ CORS_ORIGINS: Final = tuple(
     for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
     if origin.strip()
 ) or ("*",)
-DEMO_USERNAME: Final = "admin"
-DEMO_PASSWORD: Final = "admin123"
+DEFAULT_ADMIN_USERNAME: Final = "admin"
+DEFAULT_ADMIN_PASSWORD: Final = "admin123"
+INITIAL_ADMIN_USERNAME: Final = os.environ.get(
+    "INITIAL_ADMIN_USERNAME", DEFAULT_ADMIN_USERNAME
+).strip()
+INITIAL_ADMIN_PASSWORD: Final = os.environ.get(
+    "INITIAL_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD
+)
 
 # 构建产物存储目录
 DEPLOY_ARTIFACT_DIR: Final = DATA_DIR / "deploy_artifacts"

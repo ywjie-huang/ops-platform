@@ -62,6 +62,12 @@ spec:
                 secretKeyRef:
                   name: ops-secrets
                   key: SECRET_KEY
+            - name: INITIAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ops-secrets
+                  key: INITIAL_ADMIN_PASSWORD
+                  optional: true
           volumeMounts:
             - name: backend-data
               mountPath: /app/data

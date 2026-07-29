@@ -395,10 +395,14 @@ docker run -d -p 9001:9001 \
 
 ---
 
-## 默认登录账号
+## 初始管理员账号
 
-- 账号：`admin`
-- 密码：`admin123`
+- 默认账号：`admin`
+- 默认密码：`admin123`
+
+首次使用空数据库启动前，可在 Docker 的 `.env` 中设置
+`INITIAL_ADMIN_USERNAME` 和 `INITIAL_ADMIN_PASSWORD`。这两个值仅在
+`users` 表为空时创建初始管理员；后续修改不会重置已有密码或新增管理员。
 
 ---
 
@@ -557,7 +561,7 @@ my-project/
 ```bash
 cd docker
 cp .env.example .env
-# 按需修改 .env 中的密码和端口
+# 首次启动前，按需修改 .env 中的密码、端口和 INITIAL_ADMIN_USERNAME / INITIAL_ADMIN_PASSWORD
 docker compose up -d
 ```
 

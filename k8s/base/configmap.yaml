@@ -13,6 +13,7 @@ data:
   REDIS_HOST: 172.16.24.100
   REDIS_PORT: "6379"
   REDIS_DB: "0"
+  INITIAL_ADMIN_USERNAME: admin
   TZ: Asia/Shanghai
   CORS_ORIGINS: https://ops.example.com
   ENABLE_SSH_TERMINAL: "true"

@@ -6,7 +6,15 @@ from passlib.context import CryptContext
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
-from app.core.config import DEMO_PASSWORD, DEMO_USERNAME, MYSQL_DATABASE, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT, MYSQL_USER
+from app.core.config import (
+    INITIAL_ADMIN_PASSWORD,
+    INITIAL_ADMIN_USERNAME,
+    MYSQL_DATABASE,
+    MYSQL_HOST,
+    MYSQL_PASSWORD,
+    MYSQL_PORT,
+    MYSQL_USER,
+)
 from app.db.database import Base, engine
 from app.models.asset import Asset, generate_asset_public_id
 from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployBuild, DeployConfig, DeployEnvironment, DeployRecord
@@ -537,6 +545,11 @@ def init_db() -> None:
 
 
 def _seed_users(db: Session) -> None:
+    if not INITIAL_ADMIN_USERNAME:
+        raise RuntimeError("INITIAL_ADMIN_USERNAME cannot be empty")
+    if not INITIAL_ADMIN_PASSWORD:
+        raise RuntimeError("INITIAL_ADMIN_PASSWORD cannot be empty")
+
     admin_role = db.scalar(select(Role).where(Role.code == "super_admin"))
     if admin_role is None:
         admin_role = Role(
@@ -548,18 +561,23 @@ def _seed_users(db: Session) -> None:
         db.add(admin_role)
         db.flush()
 
-    existing_user = db.scalar(select(User).where(User.username == DEMO_USERNAME))
+    existing_user = db.scalar(select(User).where(User.username == INITIAL_ADMIN_USERNAME))
     if existing_user:
         if not existing_user.password_hash.startswith("$pbkdf2-sha256$"):
-            existing_user.password_hash = hash_password(DEMO_PASSWORD)
+            existing_user.password_hash = hash_password(INITIAL_ADMIN_PASSWORD)
         if admin_role not in existing_user.roles:
             existing_user.roles.append(admin_role)
         return
 
+    # Bootstrap credentials apply once; later environment changes never alter
+    # an initialized user set.
+    if db.scalar(select(User.id).limit(1)) is not None:
+        return
+
     db.add(
         User(
-            username=DEMO_USERNAME,
-            password_hash=hash_password(DEMO_PASSWORD),
+            username=INITIAL_ADMIN_USERNAME,
+            password_hash=hash_password(INITIAL_ADMIN_PASSWORD),
             full_name="系统管理员",
             roles=[admin_role],
         )

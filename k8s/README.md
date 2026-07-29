@@ -26,15 +26,16 @@ docker push registry.example.com/ops/backend:1.0.0
 docker push registry.example.com/ops/frontend:1.0.0
 ```
 
-1. Edit `base/configmap.yaml` and replace the example database, Redis, and
-   public-domain values. `CORS_ORIGINS` must match the HTTPS domain in
-   `base/ingress.yaml`.
+1. Edit `base/configmap.yaml` and replace the example database, Redis,
+   `INITIAL_ADMIN_USERNAME`, and public-domain values. `CORS_ORIGINS` must
+   match the HTTPS domain in `base/ingress.yaml`.
 2. Replace both image references in `base/backend.yaml` and `base/frontend.yaml`.
 3. If the registry is private, create an image-pull secret and add its name to
    each Deployment's `spec.template.spec.imagePullSecrets`.
-4. Copy `base/secret.example.yaml` to `base/secret.yaml`, set the three secret
+4. Copy `base/secret.example.yaml` to `base/secret.yaml`, set the four secret
    values, and do not commit the generated file. It is ignored by Git and is
-   included automatically by `kustomization.yaml`.
+   included automatically by `kustomization.yaml`. Set
+   `INITIAL_ADMIN_PASSWORD` before the first backend startup.
 
 ```powershell
 Copy-Item k8s/base/secret.example.yaml k8s/base/secret.yaml
@@ -43,6 +44,11 @@ Copy-Item k8s/base/secret.example.yaml k8s/base/secret.yaml
 `SECRET_KEY` must remain stable between upgrades. Changing it invalidates every
 existing login token. Generate it with a password manager or a cryptographically
 secure random generator.
+
+The initial administrator is created only when the `users` table is empty. The
+defaults are `admin` / `admin123`; change `INITIAL_ADMIN_USERNAME` and
+`INITIAL_ADMIN_PASSWORD` before the first startup. Changing either value later
+does not reset an existing password or create another administrator.
 
 ## Deploy and verify
 
