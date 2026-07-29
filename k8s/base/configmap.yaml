@@ -16,6 +16,6 @@ data:
   TZ: Asia/Shanghai
   CORS_ORIGINS: https://ops.example.com
   ENABLE_SSH_TERMINAL: "true"
-  ENABLE_SFTP: "false"
+  ENABLE_SFTP: "true"
   ENABLE_BATCH_EXEC: "false"
   ENABLE_DEPLOY_WEBHOOK: "false"

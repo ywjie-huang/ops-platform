@@ -4,6 +4,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import create_api_router
+from app.api import sftp
+from app.api import deps
 from app.api.deploy import validate_deploy_webhook_signature
 from app.core.security_controls import (
     EmergencyAccessControls,
@@ -69,6 +71,22 @@ def test_high_risk_routes_require_explicit_individual_enablement():
     assert any("/sftp/" in path for path in paths)
     assert "/api/v1/batch-exec/ws/exec" in paths
     assert any(path.startswith("/api/v1/ssh-keys") for path in paths)
+
+
+def test_sftp_routes_require_ssh_terminal_permission(monkeypatch):
+    user = object()
+    seen = {}
+
+    def has_permission(candidate, code):
+        seen["user"] = candidate
+        seen["code"] = code
+        return True
+
+    monkeypatch.setattr(deps, "has_permission", has_permission)
+    dependency = sftp.router.dependencies[0].dependency
+
+    assert dependency(user) is user
+    assert seen == {"user": user, "code": "ssh_terminal.connect"}
 
 
 def test_disabled_feature_guard_returns_service_unavailable():

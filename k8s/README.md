@@ -70,11 +70,11 @@ proxies `/api/`, `/health`, and WebSocket traffic to the Service named
 - Redis is required in production for shared captcha, login-rate-limit, and JWT
   revocation state. Without it, the application intentionally falls back to
   per-process memory, which is unsuitable for clustered operation.
-- The SSH terminal is enabled in this manifest, but each user still needs the
-  `ssh_terminal.connect` permission. The initial super-admin role receives it
-  during startup; assign it explicitly to every non-admin role that needs it.
-  Use HTTPS so the terminal's initial WebSocket authentication payload is not
-  exposed on the network.
+- The SSH terminal and SFTP file panel are enabled in this manifest, but each
+  user still needs the `ssh_terminal.connect` permission. The initial
+  super-admin role receives it during startup; assign it explicitly to every
+  non-admin role that needs it. Use HTTPS so the terminal's initial WebSocket
+  authentication payload is not exposed on the network.
 - The Docker Agent is for Docker hosts and mounts the host Docker socket. Do
   not deploy it as part of this Kubernetes workload.
 

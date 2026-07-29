@@ -8,16 +8,24 @@ from datetime import datetime
 from app.core.config import CHINA_TZ
 
 import paramiko
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.deps import api_permission_required, get_client_ip, get_current_api_user
 from app.db.database import get_db
 from app.models.asset import Asset
+from app.models.user import User
 from app.services.audit import write_log
 from app.api.ssh_common import _build_ssh_client
 
-router = APIRouter(prefix="/ssh", tags=["SFTP 文件管理"])
+SSH_TERMINAL_PERMISSION = "ssh_terminal.connect"
+
+router = APIRouter(
+    prefix="/ssh",
+    tags=["SFTP 文件管理"],
+    dependencies=[Depends(api_permission_required(SSH_TERMINAL_PERMISSION))],
+)
 
 
 # ── 工具函数 ──
@@ -121,10 +129,12 @@ def sftp_read(
 @router.post("/{asset_id}/sftp/write", summary="写入文件内容")
 def sftp_write(
     asset_id: int,
+    request: Request,
     path: str = Query(..., description="文件路径"),
     content: str = Form(...),
     key_id: int = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -140,6 +150,10 @@ def sftp_write(
         sftp = ssh.open_sftp()
         try:
             _sftp_write_file(sftp, path, content)
+            write_log(db, user=current_user, action="sftp_write", target_type="asset",
+                      target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request), detail=f"写入文件: {path}")
+            db.commit()
         finally:
             sftp.close()
     finally:
@@ -151,10 +165,12 @@ def sftp_write(
 @router.post("/{asset_id}/sftp/upload", summary="上传文件")
 async def sftp_upload(
     asset_id: int,
+    request: Request,
     path: str = Form(..., description="目标目录"),
     file: UploadFile = File(...),
     key_id: int = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -173,8 +189,9 @@ async def sftp_upload(
             content = await file.read()
             with sftp.open(remote_path, "wb") as f:
                 f.write(content)
-            write_log(db, user=None, action="sftp_upload", target_type="asset",
+            write_log(db, user=current_user, action="sftp_upload", target_type="asset",
                       target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request),
                       detail=f"上传文件: {remote_path} ({len(content)} bytes)")
             db.commit()
         finally:
@@ -188,9 +205,11 @@ async def sftp_upload(
 @router.get("/{asset_id}/sftp/download", summary="下载文件")
 def sftp_download(
     asset_id: int,
+    request: Request,
     path: str = Query(..., description="文件路径"),
     key_id: int = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -218,8 +237,9 @@ def sftp_download(
                 sftp.close()
                 ssh.close()
 
-            write_log(db, user=None, action="sftp_download", target_type="asset",
+            write_log(db, user=current_user, action="sftp_download", target_type="asset",
                       target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request),
                       detail=f"下载文件: {path} ({stat_info.st_size} bytes)")
             db.commit()
 
@@ -244,9 +264,11 @@ def sftp_download(
 @router.post("/{asset_id}/sftp/mkdir", summary="创建目录")
 def sftp_mkdir(
     asset_id: int,
+    request: Request,
     path: str = Query(..., description="目录路径"),
     key_id: int = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -262,6 +284,10 @@ def sftp_mkdir(
         sftp = ssh.open_sftp()
         try:
             sftp.mkdir(path)
+            write_log(db, user=current_user, action="sftp_mkdir", target_type="asset",
+                      target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request), detail=f"创建目录: {path}")
+            db.commit()
         finally:
             sftp.close()
     finally:
@@ -273,10 +299,12 @@ def sftp_mkdir(
 @router.post("/{asset_id}/sftp/remove", summary="删除文件/目录")
 def sftp_remove(
     asset_id: int,
+    request: Request,
     path: str = Query(..., description="路径"),
     is_dir: bool = Query(False),
     key_id: int = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -295,8 +323,9 @@ def sftp_remove(
                 sftp.rmdir(path)
             else:
                 sftp.remove(path)
-            write_log(db, user=None, action="sftp_delete", target_type="asset",
+            write_log(db, user=current_user, action="sftp_delete", target_type="asset",
                       target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request),
                       detail=f"删除{'目录' if is_dir else '文件'}: {path}")
             db.commit()
         finally:
@@ -310,10 +339,12 @@ def sftp_remove(
 @router.post("/{asset_id}/sftp/rename", summary="重命名")
 def sftp_rename(
     asset_id: int,
+    request: Request,
     old_path: str = Query(...),
     new_path: str = Query(...),
     key_id: int = Query(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
 ):
     asset = db.get(Asset, asset_id)
     if not asset:
@@ -329,6 +360,11 @@ def sftp_rename(
         sftp = ssh.open_sftp()
         try:
             sftp.rename(old_path, new_path)
+            write_log(db, user=current_user, action="sftp_rename", target_type="asset",
+                      target_id=asset.id, target_name=asset.name,
+                      ip_address=get_client_ip(request),
+                      detail=f"重命名: {old_path} -> {new_path}")
+            db.commit()
         finally:
             sftp.close()
     finally:
