@@ -260,6 +260,7 @@
             <el-option :value="500" label="500 行" />
             <el-option :value="1000" label="1000 行" />
           </el-select>
+          <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
         </div>
         <div class="log-scroll" v-loading="logsLoading">
           <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
@@ -310,6 +311,17 @@ const logsDrawerVisible = ref(false)
 const logsLoading = ref(false)
 const containerLogs = ref('')
 const logTailLines = ref(300)
+// 实际返回的日志行数：用于在工具栏展示，区分“日志就这么少”与“被上限截断”
+const logLineCount = computed(() => {
+  const text = containerLogs.value.trim()
+  return text ? text.split('\n').length : 0
+})
+const logCountLabel = computed(() => {
+  if (logsLoading.value || !containerLogs.value) return ''
+  const n = logLineCount.value
+  // 实际行数 == 请求行数，说明恰好命中 tail 上限，容器日志可能更多
+  return n >= logTailLines.value ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
+})
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -961,6 +973,11 @@ onDeactivated(stopAutoRefresh)
 }
 .log-tail-select {
   width: 110px;
+}
+.log-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .log-scroll {
   flex: 1;
