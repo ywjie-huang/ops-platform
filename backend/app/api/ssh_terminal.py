@@ -24,8 +24,15 @@ SSH_TERMINAL_PERMISSION = "ssh_terminal.connect"
 AUTH_TIMEOUT_SECONDS = 10
 
 
-def _authenticate_websocket_user(token: object) -> tuple[User | None, str | None]:
-    """Validate the token sent in the first WebSocket message before SSH use."""
+def _authenticate_websocket_user(
+    token: object,
+    permission: str = SSH_TERMINAL_PERMISSION,
+    permission_error: str = "SSH terminal permission required",
+) -> tuple[User | None, str | None]:
+    """Validate the token sent in the first WebSocket message before SSH use.
+
+    ``permission`` 为该 WS 端点要求的权限码；默认校验 SSH 终端连接权限。
+    """
     if not isinstance(token, str) or not token.strip():
         return None, "Authentication required"
 
@@ -48,8 +55,8 @@ def _authenticate_websocket_user(token: object) -> tuple[User | None, str | None
         user = get_user(db, user_id)
         if user is None:
             return None, "Authentication failed"
-        if not has_permission(user, SSH_TERMINAL_PERMISSION):
-            return None, "SSH terminal permission required"
+        if not has_permission(user, permission):
+            return None, permission_error
         return user, None
     finally:
         db.close()

@@ -236,6 +236,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
 import {
@@ -297,7 +298,11 @@ renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
 marked.setOptions({ breaks: true, gfm: true, renderer })
 
 function renderMarkdown(text: string): string {
-  return marked.parse(text) as string
+  // AI 回复与工具结果（工单内容、命令输出、告警等）可能包含用户可控文本，
+  // marked 默认保留原始 HTML，必须经 DOMPurify 净化后再 v-html，防止存储型 XSS。
+  return DOMPurify.sanitize(marked.parse(text) as string, {
+    USE_PROFILES: { html: true },
+  }) as string
 }
 
 const TOOL_NAMES: Record<string, string> = {

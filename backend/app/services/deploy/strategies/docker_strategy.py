@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -88,7 +89,7 @@ def execute_docker_deploy(
             return
 
         append_log(db, record, f"拉取镜像 {image}")
-        exit_code, out, err = ssh_exec(ssh, f"docker pull {image}", timeout=300)
+        exit_code, out, err = ssh_exec(ssh, f"docker pull {shlex.quote(image)}", timeout=300)
         if exit_code != 0:
             update_status(db, record, "failed")
             set_error(db, record, f"docker pull 失败: {err}")
@@ -102,52 +103,54 @@ def execute_docker_deploy(
             return
 
         append_log(db, record, f"停止旧容器 {container_name}")
-        ssh_exec(ssh, f"docker stop {container_name}", timeout=30)
+        ssh_exec(ssh, f"docker stop {shlex.quote(container_name)}", timeout=30)
         # 忽略 stop 错误（容器可能不存在）
 
         # ── 3. docker rm ──
         append_log(db, record, f"删除旧容器 {container_name}")
-        ssh_exec(ssh, f"docker rm {container_name}", timeout=15)
+        ssh_exec(ssh, f"docker rm {shlex.quote(container_name)}", timeout=15)
 
         # ── 4. docker run ──
         if is_cancelled(record.id):
             update_status(db, record, "cancelled")
             return
 
-        # 构建 docker run 命令
-        cmd_parts = ["docker run -d", f"--name {container_name}", "--restart unless-stopped"]
+        # 构建 docker run 命令（以 argv 形式累积，最后用 shlex.join 安全拼接，
+        # 确保所有用户可控字段都被正确转义，杜绝 shell 命令注入）
+        argv = ["docker", "run", "-d", "--name", container_name, "--restart", "unless-stopped"]
 
         # 端口映射
         if ports:
             for p in ports.split(","):
                 p = p.strip()
                 if p:
-                    cmd_parts.append(f"-p {p}")
+                    argv += ["-p", p]
 
         # 环境变量
         if env_vars:
             try:
                 env_dict = json.loads(env_vars)
                 for k, v in env_dict.items():
-                    cmd_parts.append(f"-e {k}={v}")
+                    argv += ["-e", f"{k}={v}"]
             except json.JSONDecodeError:
                 # 非 JSON 格式，按行解析
                 for line in env_vars.strip().split("\n"):
                     line = line.strip()
                     if "=" in line:
-                        cmd_parts.append(f"-e {line}")
+                        argv += ["-e", line]
 
         # 网络
         if network:
-            cmd_parts.append(f"--network {network}")
+            argv += ["--network", network]
 
-        # 额外参数
+        # 额外参数：用 shlex.split 拆成字面 token，再交给 shlex.join 统一转义，
+        # 这样原始字符串中的 shell 元字符会被当作字面参数而非命令分隔符。
         if extra_args:
-            cmd_parts.append(extra_args)
+            argv += shlex.split(extra_args)
 
-        cmd_parts.append(image)
+        argv.append(image)
 
-        run_cmd = " ".join(cmd_parts)
+        run_cmd = shlex.join(argv)
         append_log(db, record, f"启动新容器 {container_name}")
         exit_code, out, err = ssh_exec(ssh, run_cmd, timeout=120)
         if exit_code != 0:

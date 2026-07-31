@@ -257,6 +257,21 @@ READONLY_TOOLS = {
     "get_patrol_reports",
 }
 
+# 工具 → 所需权限码映射。AI 助手执行任何工具前都按此校验当前用户权限，
+# 避免无业务权限的账号通过对话绕过全站 RBAC。
+TOOL_PERMISSIONS: dict[str, str] = {
+    "query_assets": "assets.view",
+    "query_host_metrics": "monitoring.view",
+    "query_alerts": "monitoring.view",
+    "query_containers": "containers.view",
+    "query_k8s": "containers.view",
+    "query_tickets": "tickets.view",
+    "get_patrol_reports": "patrol.view",
+    "execute_command": "batch_exec.execute",
+    "run_patrol": "patrol.execute",
+    "create_ticket": "tickets.create",
+}
+
 # ─── 工具 handler 函数映射 ──────────────────────────────────
 
 TOOL_HANDLERS: dict[str, str] = {

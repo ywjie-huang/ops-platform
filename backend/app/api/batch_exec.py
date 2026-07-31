@@ -13,6 +13,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required
+from app.api.ssh_terminal import (
+    AUTH_TIMEOUT_SECONDS,
+    _authenticate_websocket_user,
+    _close_websocket,
+)
 from app.db.database import SessionLocal, get_db
 from app.models.asset import Asset
 from app.models.batch_exec import BatchExecution
@@ -24,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/batch-exec", tags=["批量执行"])
 websocket_router = APIRouter(prefix="/batch-exec", tags=["批量执行"])
+
+BATCH_EXEC_PERMISSION = "batch_exec.execute"
 
 
 # ─── WebSocket：实时批量执行 ────────────────────────────────
@@ -69,20 +76,39 @@ def _save_execution(command: str, asset_ids: list[int], asset_names: list[str],
 async def ws_batch_exec(websocket: WebSocket):
     """
     WebSocket 批量执行端点。
-    客户端发送：{ "asset_ids": [1,2,3], "command": "uptime", "timeout": 30,
-                 "concurrency": 5, "batch_size": 3 }
+    客户端首条消息（鉴权 + 执行指令）：
+        { "token": "<JWT>", "asset_ids": [1,2,3], "command": "uptime",
+          "timeout": 30, "concurrency": 5, "batch_size": 3 }
     执行中客户端可发送：{ "type": "exec_cancel" } 取消未开始的主机
     服务端推送：exec_start → exec_result（每台）→ exec_done
     """
     await websocket.accept()
 
+    # ── 鉴权：首条消息必须携带有效 token（与 SSH 终端 WS 一致） ──
     try:
-        # 等待客户端发送执行指令
-        raw = await websocket.receive_text()
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
         params = json.loads(raw)
-    except (json.JSONDecodeError, Exception) as e:
-        await websocket.send_text(json.dumps({"type": "error", "message": f"无效的请求: {e}"}))
-        await websocket.close()
+    except asyncio.TimeoutError:
+        await _close_websocket(websocket, 1008, "Authentication timed out")
+        return
+    except WebSocketDisconnect:
+        return
+    except (json.JSONDecodeError, Exception):
+        await _close_websocket(websocket, 1008, "Invalid authentication payload")
+        return
+
+    if not isinstance(params, dict):
+        await _close_websocket(websocket, 1008, "Invalid authentication payload")
+        return
+
+    token = params.pop("token", None)
+    current_user, auth_error = _authenticate_websocket_user(
+        token,
+        permission=BATCH_EXEC_PERMISSION,
+        permission_error="Batch exec permission required",
+    )
+    if auth_error:
+        await _close_websocket(websocket, 1008, auth_error)
         return
 
     asset_ids = params.get("asset_ids", [])
@@ -178,7 +204,7 @@ async def ws_batch_exec(websocket: WebSocket):
         asset_names=asset_names,
         success=result["success"],
         failed=result["failed"],
-        operator="",
+        operator=current_user.username,
     )
 
     try:

@@ -80,10 +80,14 @@ def api_list_conversations(
 def api_get_messages(
     conversation_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_api_user),
+    current_user: User = Depends(get_current_api_user),
 ):
     """获取对话的消息列表。"""
-    from app.services.ai.conversations import get_messages
+    from app.services.ai.conversations import get_conversation, get_messages
+
+    conv = get_conversation(db, conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        return {"code": 404, "msg": "对话不存在"}
 
     messages = get_messages(db, conversation_id)
     return {
@@ -107,10 +111,14 @@ def api_get_messages(
 def api_delete_conversation(
     conversation_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_api_user),
+    current_user: User = Depends(get_current_api_user),
 ):
     """删除对话。"""
-    from app.services.ai.conversations import delete_conversation
+    from app.services.ai.conversations import delete_conversation, get_conversation
+
+    conv = get_conversation(db, conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        return {"code": 404, "msg": "对话不存在"}
 
     delete_conversation(db, conversation_id)
     db.commit()
@@ -176,7 +184,7 @@ async def api_chat(
     # 获取或创建对话
     if body.conversation_id:
         conv = get_conversation(db, body.conversation_id)
-        if not conv:
+        if not conv or conv.user_id != current_user.id:
             async def error_stream():
                 yield _sse_event({"type": "error", "content": "对话不存在。"})
             return StreamingResponse(error_stream(), media_type="text/event-stream")
@@ -264,7 +272,7 @@ async def api_chat(
 
                 if is_readonly(tool_name):
                     yield _sse_event({"type": "tool_start", "tool": tool_name, "args": tool_args})
-                    result = await dispatch_tool(db, tool_name, tool_args)
+                    result = await dispatch_tool(db, tool_name, tool_args, current_user)
                     result_text = result.get("result", result.get("error", "执行失败"))
                     yield _sse_event({"type": "tool_result", "tool": tool_name, "result": result_text})
                     add_message(db, cid, "tool", result_text, tool_call_id=tool_call_id, tool_name=tool_name)
@@ -305,13 +313,14 @@ async def api_chat_confirm(
     body: ConfirmRequest,
     request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_api_user),
+    current_user: User = Depends(get_current_api_user),
 ):
     """确认执行写操作，继续 LLM 对话。"""
     from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.conversations import (
         add_message,
         build_llm_messages,
+        get_conversation,
         get_pending_action,
         remove_pending_action,
     )
@@ -326,13 +335,21 @@ async def api_chat_confirm(
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     cid = pending["conversation_id"]
+    # 归属校验：确认/拒绝必须由发起该对话的用户本人完成，且在消费 pending 之前校验，
+    # 避免攻击者通过探测他人 pending_id 将其消耗或代为执行写操作。
+    conv = get_conversation(db, cid)
+    if conv is None or conv.user_id != current_user.id:
+        async def error_stream():
+            yield _sse_event({"type": "error", "content": "该操作已过期或不存在。"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
     tool_name = pending["tool_name"]
     tool_args = pending["arguments"]
     tool_call_id = pending["tool_call_id"]
 
     remove_pending_action(body.pending_id)
 
-    result = await dispatch_tool(db, tool_name, tool_args)
+    result = await dispatch_tool(db, tool_name, tool_args, current_user)
     result_text = result.get("result", result.get("error", "执行失败"))
 
     add_message(db, cid, "tool", result_text, tool_call_id=tool_call_id, tool_name=tool_name)
@@ -381,13 +398,14 @@ async def api_chat_confirm(
 async def api_chat_reject(
     body: ConfirmRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_api_user),
+    current_user: User = Depends(get_current_api_user),
 ):
     """拒绝写操作，告知 LLM 用户拒绝了。"""
     from app.core.settings import get_llm_config, is_llm_configured
     from app.services.ai.conversations import (
         add_message,
         build_llm_messages,
+        get_conversation,
         get_pending_action,
         remove_pending_action,
     )
@@ -401,6 +419,13 @@ async def api_chat_reject(
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     cid = pending["conversation_id"]
+    # 归属校验：拒绝同样只能由该对话的所属用户发起。
+    conv = get_conversation(db, cid)
+    if conv is None or conv.user_id != current_user.id:
+        async def error_stream():
+            yield _sse_event({"type": "error", "content": "该操作已过期或不存在。"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
     tool_call_id = pending["tool_call_id"]
     remove_pending_action(body.pending_id)
 

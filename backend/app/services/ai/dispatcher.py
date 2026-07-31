@@ -8,7 +8,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.services.ai.tools import READONLY_TOOLS, TOOL_HANDLERS
+from app.models.user import User
+from app.services.ai.tools import READONLY_TOOLS, TOOL_HANDLERS, TOOL_PERMISSIONS
+from app.services.permissions import has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +19,13 @@ async def dispatch_tool(
     db: Session,
     tool_name: str,
     arguments: dict[str, Any],
+    user: User | None = None,
 ) -> dict[str, Any]:
     """
     执行一个工具调用（自动处理 sync/async handler）。
+
+    执行前会按 ``TOOL_PERMISSIONS`` 校验 ``user`` 是否具备该工具所需权限，
+    防止 AI 对话绕过全站 RBAC。
 
     返回:
         {"ok": True, "result": str, "readonly": True}  — 读操作，已执行
@@ -29,6 +35,11 @@ async def dispatch_tool(
     handler_path = TOOL_HANDLERS.get(tool_name)
     if not handler_path:
         return {"ok": False, "error": f"未知工具: {tool_name}"}
+
+    # 权限校验：未配置所需权限码的工具保持向后兼容（放行）。
+    required_permission = TOOL_PERMISSIONS.get(tool_name)
+    if required_permission and not has_permission(user, required_permission):
+        return {"ok": False, "error": f"没有执行该操作所需的权限 ({required_permission})"}
 
     # 动态导入 handler 函数
     module_path, func_name = handler_path.rsplit(".", 1)

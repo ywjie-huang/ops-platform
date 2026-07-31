@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import time
 
 import paramiko
@@ -71,7 +72,7 @@ def execute_ssh_deploy(
             return
 
         append_log(db, record, f"创建部署目录 {deploy_path}")
-        ssh_exec(ssh, f"mkdir -p {deploy_path}")
+        ssh_exec(ssh, f"mkdir -p {shlex.quote(deploy_path)}")
 
         # ── 3. 上传产物（回滚时如果远程文件已存在则跳过） ──
         if is_cancelled(record.id):
@@ -88,7 +89,7 @@ def execute_ssh_deploy(
             need_upload = True
             if is_rollback:
                 # 回滚：检查远程是否已有该文件
-                check_exit, _, _ = ssh_exec(ssh, f"test -f {remote_path}")
+                check_exit, _, _ = ssh_exec(ssh, f"test -f {shlex.quote(remote_path)}")
                 if check_exit == 0:
                     append_log(db, record, f"回滚: 远程文件已存在，跳过上传")
                     need_upload = False
@@ -104,7 +105,7 @@ def execute_ssh_deploy(
             original_filename = app_env.artifact_filename or ""
             if original_filename and original_filename != remote_filename:
                 symlink_path = f"{deploy_path}/{original_filename}"
-                ssh_exec(ssh, f"ln -sf {remote_filename} {symlink_path}")
+                ssh_exec(ssh, f"ln -sf {shlex.quote(remote_filename)} {shlex.quote(symlink_path)}")
                 append_log(db, record, f"软链接: {original_filename} → {remote_filename}")
         elif artifact_path:
             append_log(db, record, f"产物路径不存在，跳过上传: {artifact_path}")
@@ -118,7 +119,9 @@ def execute_ssh_deploy(
 
         if deploy_script:
             append_log(db, record, "执行部署脚本…")
-            full_script = f"cd {deploy_path} && {deploy_script}"
+            # deploy_path 是结构化字段，必须转义以防命令注入；
+            # deploy_script 本身就是用户预期的部署脚本，保持原样。
+            full_script = f"cd {shlex.quote(deploy_path)} && {deploy_script}"
             exit_code, stdout, stderr = ssh_exec(ssh, full_script, timeout=300)
 
             if stdout:
@@ -207,9 +210,10 @@ def _check_port_via_ssh(ssh, host: str, port: int, timeout: int = 30) -> bool:
 
     deadline = _time.time() + timeout
     # 优先用 nc（netcat），回退到 bash /dev/tcp
+    # host/port 来自配置字段，必须转义以防命令注入。
     check_cmd = (
-        f"for i in $(seq 1 {timeout}); do "
-        f"  nc -z -w1 {host} {port} 2>/dev/null && exit 0; "
+        f"for i in $(seq 1 {int(timeout)}); do "
+        f"  nc -z -w1 {shlex.quote(str(host))} {int(port)} 2>/dev/null && exit 0; "
         f"  sleep 1; "
         f"done; exit 1"
     )

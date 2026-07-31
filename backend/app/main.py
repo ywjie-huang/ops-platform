@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import router as api_router
-from app.core.config import CORS_ORIGINS
+from app.core.config import CORS_ORIGINS, SECRET_KEY_IS_DEFAULT
 from app.db.database import SessionLocal
 from app.db.init_db import init_db
 from app.models import alert_event, asset, audit, batch_exec, container, patrol, rbac, ticket, user, system_config, monitoring, ssh_key, scheduled_task  # noqa: F401
@@ -39,6 +39,12 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 def on_startup():
+    if SECRET_KEY_IS_DEFAULT:
+        logger.critical(
+            "SECRET_KEY 未配置或仍为不安全默认值，已生成随机临时密钥。"
+            "生产/多 worker 部署必须通过 SECRET_KEY 环境变量显式指定稳定的高熵密钥，"
+            "否则 JWT 无法在多实例间互验、且重启后所有会话失效。"
+        )
     init_db()
     # 启动定时任务调度器
     from app.core.scheduler import startup_scheduler

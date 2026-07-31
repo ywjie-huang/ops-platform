@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import timezone, timedelta
 from pathlib import Path
 from typing import Final
@@ -22,7 +23,24 @@ DATABASE_URL: Final = (
     f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
     f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
 )
-SECRET_KEY: Final = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+# JWT 签名密钥：绝不使用源码中公开的默认值（否则攻击者可伪造任意用户 token）。
+# 未显式配置或使用了已知不安全值时，退化为随机生成的临时密钥（仅供开发）。
+# 注意：随机密钥每次进程启动都会变化且多 worker 之间不共享，生产环境必须通过
+# SECRET_KEY 环境变量显式指定一个稳定的高熵密钥（见启动期告警）。
+_INSECURE_SECRET_VALUES: Final = frozenset({
+    "",
+    "dev-secret-key-change-me",
+    "change-me-in-production",
+})
+_raw_secret_key: Final = os.environ.get("SECRET_KEY", "").strip()
+SECRET_KEY: Final = (
+    _raw_secret_key
+    if (_raw_secret_key and _raw_secret_key not in _INSECURE_SECRET_VALUES)
+    else secrets.token_urlsafe(48)
+)
+SECRET_KEY_IS_DEFAULT: Final = bool(
+    (not _raw_secret_key) or (_raw_secret_key in _INSECURE_SECRET_VALUES)
+)
 CORS_ORIGINS: Final = tuple(
     origin.strip()
     for origin in os.environ.get("CORS_ORIGINS", "*").split(",")

@@ -353,6 +353,7 @@ import {
 import { getExecHistory, deleteExecHistory } from '@/api/batch_exec'
 import { getPresets, createPreset } from '@/api/batch_presets'
 import { getAssets } from '@/api/assets'
+import { getToken } from '@/utils/auth'
 
 // ─── v-click-outside 指令 ──────────────────────────────────
 const vClickOutside = {
@@ -616,6 +617,7 @@ function runExec(ids: number[], merge: boolean) {
 
   ws.onopen = () => {
     ws!.send(JSON.stringify({
+      token: getToken(),
       asset_ids: ids,
       command: command.value,
       timeout: timeout.value,
