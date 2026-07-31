@@ -239,30 +239,33 @@
       </aside>
     </div>
 
-    <el-dialog v-model="logsDialogVisible" width="860px">
-      <template #header="{ titleId, titleClass }">
-        <div class="dialog-header-bar">
-          <h3 :id="titleId" :class="titleClass">{{ logsDialogTitle }}</h3>
-          <div class="dialog-header-actions">
-            <el-button size="small" :loading="logsLoading" @click="fetchSelectedContainerLogs">刷新</el-button>
-            <el-button size="small" :disabled="!containerLogs" @click="copyLogs">复制</el-button>
-            <el-button size="small" :disabled="!containerLogs" @click="downloadLogs">下载</el-button>
-          </div>
+    <el-drawer v-model="logsDrawerVisible" size="720px" :with-header="false" destroy-on-close>
+      <div class="drawer-head">
+        <div class="drawer-head-copy">
+          <h3>{{ selectedContainer?.name || '容器' }}</h3>
+          <div class="drawer-sub">{{ selectedContainer?.image || '-' }} · {{ selectedContainer ? containerStatusLabel(selectedContainer.status) : '' }}</div>
         </div>
-      </template>
-      <div class="log-toolbar">
-        <span>最近</span>
-        <el-select v-model="logTailLines" size="small" class="log-tail-select" @change="fetchSelectedContainerLogs">
-          <el-option :value="100" label="100 行" />
-          <el-option :value="300" label="300 行" />
-          <el-option :value="500" label="500 行" />
-          <el-option :value="1000" label="1000 行" />
-        </el-select>
+        <div class="drawer-actions">
+          <el-button size="small" :loading="logsLoading" @click="fetchSelectedContainerLogs">刷新</el-button>
+          <el-button size="small" :disabled="!containerLogs" @click="copyLogs">复制</el-button>
+          <el-button size="small" :disabled="!containerLogs" @click="downloadLogs">下载</el-button>
+        </div>
       </div>
-      <div v-loading="logsLoading">
-        <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
+      <div class="drawer-body">
+        <div class="log-toolbar">
+          <span>最近</span>
+          <el-select v-model="logTailLines" size="small" class="log-tail-select" @change="fetchSelectedContainerLogs">
+            <el-option :value="100" label="100 行" />
+            <el-option :value="300" label="300 行" />
+            <el-option :value="500" label="500 行" />
+            <el-option :value="1000" label="1000 行" />
+          </el-select>
+        </div>
+        <div v-loading="logsLoading">
+          <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
+        </div>
       </div>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -303,7 +306,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const autoRefresh = ref(false)
 const selectedContainer = ref<any | null>(null)
-const logsDialogVisible = ref(false)
+const logsDrawerVisible = ref(false)
 const logsLoading = ref(false)
 const containerLogs = ref('')
 const logTailLines = ref(300)
@@ -313,7 +316,6 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 const containerSummary = computed(() => summarizeContainers(containers.value))
 const syncState = computed(() => getHostSyncState(host.value))
 const relativeSyncTime = computed(() => formatRelativeTime(host.value.last_heartbeat))
-const logsDialogTitle = computed(() => selectedContainer.value ? `容器日志：${selectedContainer.value.name}` : '容器日志')
 
 const syncValueClass = computed(() => {
   if (syncState.value === 'fresh') return ''
@@ -487,7 +489,7 @@ function containerStatusLabel(s: string) {
 async function openContainerLogs(row: any) {
   selectedContainer.value = row
   containerLogs.value = ''
-  logsDialogVisible.value = true
+  logsDrawerVisible.value = true
   await fetchSelectedContainerLogs()
 }
 
@@ -909,16 +911,34 @@ onDeactivated(stopAutoRefresh)
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
 }
-.dialog-header-bar {
+.drawer-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-color);
 }
-.dialog-header-actions {
+.drawer-head-copy {
+  min-width: 0;
+}
+.drawer-head-copy h3 {
+  margin: 0;
+  font-size: 15px;
+  word-break: break-all;
+}
+.drawer-sub {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.drawer-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex: none;
+}
+.drawer-body {
+  padding: 14px 18px;
 }
 .log-toolbar {
   display: flex;
