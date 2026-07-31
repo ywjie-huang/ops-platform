@@ -298,7 +298,10 @@
           </span>
         </div>
         <div class="log-scroll" v-loading="logsLoading">
-          <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选后的 Docker 容器日志' : 'Docker 容器日志'">{{ logDisplayText }}</pre>
+          <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选并高亮后的 Docker 容器日志' : 'Docker 容器日志'"><LogHighlightedText
+            v-if="normalizedLogKeyword && displayedContainerLogs"
+            :lines="highlightedContainerLogLines"
+          /><template v-else>{{ logDisplayText }}</template></pre>
         </div>
       </div>
     </el-drawer>
@@ -310,6 +313,7 @@ import { ref, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, Search } from '@element-plus/icons-vue'
+import LogHighlightedText from '@/components/LogHighlightedText'
 import {
   getDockerHost,
   deleteDockerHost,
@@ -323,6 +327,7 @@ import {
   deleteDockerContainer,
 } from '@/api/containers'
 import { getHostSyncState, secondsSince, sortContainersByRisk, summarizeContainers } from '@/utils/dockerMonitor'
+import { filterLogLines, highlightLogLines, normalizeLogKeyword } from '@/utils/logSearch'
 
 const THRESHOLD_WARN = 70
 const THRESHOLD_DANGER = 85
@@ -362,14 +367,12 @@ const logLineCount = computed(() => {
   const text = containerLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
-const normalizedLogKeyword = computed(() => logKeyword.value.trim().toLowerCase())
+const normalizedLogKeyword = computed(() => normalizeLogKeyword(logKeyword.value))
 const displayedContainerLogs = computed(() => {
-  const keyword = normalizedLogKeyword.value
-  if (!containerLogs.value || !keyword) return containerLogs.value
-  return containerLogs.value
-    .split('\n')
-    .filter((line) => line.toLowerCase().includes(keyword))
-    .join('\n')
+  return filterLogLines(containerLogs.value, normalizedLogKeyword.value)
+})
+const highlightedContainerLogLines = computed(() => {
+  return highlightLogLines(displayedContainerLogs.value, normalizedLogKeyword.value)
 })
 const displayedLogLineCount = computed(() => {
   const text = displayedContainerLogs.value.trim()
@@ -1133,6 +1136,12 @@ onUnmounted(() => {
 .log-keyword-input {
   flex: 1 1 180px;
   max-width: 240px;
+}
+:deep(.log-keyword-match) {
+  padding: 0 1px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--warning-color) 82%, var(--surface-color));
+  border-radius: 2px;
 }
 .log-count {
   color: var(--text-muted);

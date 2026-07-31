@@ -616,7 +616,10 @@
             </span>
           </div>
           <div class="log-scroll" v-loading="logsLoading">
-            <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选后的 Pod 日志' : 'Pod 日志'">{{ logDisplayText }}</pre>
+            <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选并高亮后的 Pod 日志' : 'Pod 日志'"><LogHighlightedText
+              v-if="normalizedLogKeyword && displayedPodLogs"
+              :lines="highlightedPodLogLines"
+            /><template v-else>{{ logDisplayText }}</template></pre>
           </div>
         </div>
         <div v-else class="events-pane" v-loading="eventsLoading">
@@ -786,6 +789,7 @@
 import { computed, reactive, ref, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
+import LogHighlightedText from '@/components/LogHighlightedText'
 import {
   ArrowLeft,
   CaretBottom,
@@ -827,6 +831,7 @@ import {
   type PodQuickFilter,
   type ResourceAllocation,
 } from '@/utils/k8sCluster'
+import { filterLogLines, highlightLogLines, normalizeLogKeyword } from '@/utils/logSearch'
 
 interface K8sPod {
   name: string
@@ -1044,14 +1049,12 @@ const podLogLineCount = computed(() => {
   const text = podLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
-const normalizedLogKeyword = computed(() => logKeyword.value.trim().toLowerCase())
+const normalizedLogKeyword = computed(() => normalizeLogKeyword(logKeyword.value))
 const displayedPodLogs = computed(() => {
-  const keyword = normalizedLogKeyword.value
-  if (!podLogs.value || !keyword) return podLogs.value
-  return podLogs.value
-    .split('\n')
-    .filter((line) => line.toLowerCase().includes(keyword))
-    .join('\n')
+  return filterLogLines(podLogs.value, normalizedLogKeyword.value)
+})
+const highlightedPodLogLines = computed(() => {
+  return highlightLogLines(displayedPodLogs.value, normalizedLogKeyword.value)
 })
 const displayedPodLogLineCount = computed(() => {
   const text = displayedPodLogs.value.trim()
@@ -2720,6 +2723,12 @@ button.summary-card {
 .log-keyword-input {
   flex: 1 1 180px;
   max-width: 240px;
+}
+:deep(.log-keyword-match) {
+  padding: 0 1px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--warning-color) 82%, var(--surface-color));
+  border-radius: 2px;
 }
 .log-count {
   color: var(--text-muted);
