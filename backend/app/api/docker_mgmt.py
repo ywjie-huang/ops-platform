@@ -3,7 +3,6 @@
 import asyncio
 import re
 import time
-from datetime import datetime, timezone
 from html import unescape
 
 import httpx
@@ -14,10 +13,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
-from app.api.sse_utils import sse_event
+from app.api.sse_auth import validate_stream_token
+from app.api.sse_utils import log_line_ts_to_unix, sse_event
 from app.core.config import CHINA_TZ
-from app.core.jwt import decode_access_token
-from app.db.database import SessionLocal, get_db
+from app.db.database import get_db
 from app.models.container import ContainerCluster
 from app.models.user import User
 from app.services.audit import write_log
@@ -33,9 +32,6 @@ from app.services.docker_agent import (
     sync_host_from_agent,
     update_docker_host,
 )
-from app.services.permissions import has_permission
-from app.services.token_blacklist import is_revoked
-from app.services.users import get_user
 
 router = APIRouter(prefix="/containers/docker", tags=["Docker 管理"])
 MAX_DOCKER_LOG_TAIL = 1000
@@ -337,60 +333,6 @@ def api_container_logs(
 # ─── SSE：近实时日志流 ─────────────────────────────────────
 
 
-def _validate_log_stream_token(token: str | None) -> tuple[User | None, str | None]:
-    """校验 ?token= 里的 JWT（EventSource 无法走标准依赖注入鉴权），返回 (user, err)。
-
-    复用 WebSocket 鉴权的同一套校验链：decode → 黑名单 → 取用户 → 权限。
-    """
-    if not token or not token.strip():
-        return None, "Authentication required"
-    payload = decode_access_token(token)
-    if payload is None:
-        return None, "Authentication failed"
-    if is_revoked(payload.get("jti")):
-        return None, "Session expired"
-    subject = payload.get("sub")
-    if isinstance(subject, bool):
-        return None, "Authentication failed"
-    try:
-        user_id = int(subject)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None, "Authentication failed"
-
-    db = SessionLocal()
-    try:
-        user = get_user(db, user_id)
-        if user is None:
-            return None, "Authentication failed"
-        if not has_permission(user, DOCKER_LOG_VIEW_PERMISSION):
-            return None, "Permission denied"
-        return user, None
-    finally:
-        db.close()
-
-
-_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
-
-
-def _line_ts_to_unix(line: str) -> int | None:
-    """解析 docker timestamps=True 行首时间戳到 unix 秒。
-
-    docker 产出形如 ``2026-07-31T10:23:45.123456789Z <text>``，只取到秒
-    （规避纳秒小数 fromisoformat 解析坑；docker 自身也按秒过滤）。
-    """
-    m = _TS_RE.match(line or "")
-    if not m:
-        return None
-    try:
-        return int(
-            datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")
-            .replace(tzinfo=timezone.utc)
-            .timestamp()
-        )
-    except ValueError:
-        return None
-
-
 @router.get("/hosts/{host_name}/containers/{container_id}/logs/stream")
 async def api_container_logs_stream(
     host_name: str,
@@ -407,7 +349,7 @@ async def api_container_logs_stream(
     鉴权失败直接 401（EventSource 规范：首次响应非 200 → CLOSED 且不自动重连，
     不会造成无限重连）。
     """
-    user, err = _validate_log_stream_token(token)
+    user, err = validate_stream_token(token, DOCKER_LOG_VIEW_PERMISSION)
     if err is not None or user is None:
         raise HTTPException(status_code=401, detail=err or "Authentication required")
 
@@ -460,7 +402,7 @@ async def _log_event_stream(
             prev_batch = set(batch_lines)
 
             if new_lines:
-                timestamps = [ts for ts in (_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
+                timestamps = [ts for ts in (log_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
                 if timestamps:
                     last_ts = max(timestamps)
                 yield sse_event({

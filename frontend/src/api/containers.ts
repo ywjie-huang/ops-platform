@@ -44,8 +44,25 @@ export function getClusterServices(name: string, params?: { namespace?: string }
 export function getClusterDeployments(name: string, params?: { namespace?: string }) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/deployments`, { params })
 }
-export function getPodLogs(name: string, namespace: string, podName: string, params?: { tail_lines?: number }) {
+export function getPodLogs(
+  name: string,
+  namespace: string,
+  podName: string,
+  params?: { tail_lines?: number; since?: number; until?: number },
+) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs`, { params })
+}
+
+// EventSource 无法使用 axios 实例（不能自定义请求头），单独拼全 URL + token
+export function buildPodLogStreamUrl(name: string, namespace: string, podName: string, sinceUnix: number): string {
+  const base = (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1'
+  const token = getToken() || ''
+  const params = new URLSearchParams({
+    token,
+    since: String(sinceUnix),
+    interval: '2',
+  })
+  return `${base}/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs/stream?${params.toString()}`
 }
 export function getPodEvents(name: string, namespace: string, podName: string) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)

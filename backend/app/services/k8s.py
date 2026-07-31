@@ -170,14 +170,35 @@ def _get_list(endpoint: str, token: str, path: str) -> list[dict]:
         return []
 
 
-def get_pod_logs(endpoint: str, token: str, namespace: str, pod_name: str, tail_lines: int = 200) -> dict[str, Any]:
-    """获取 Pod 日志。"""
+def get_pod_logs(
+    endpoint: str,
+    token: str,
+    namespace: str,
+    pod_name: str,
+    tail_lines: int = 200,
+    since_seconds: int | None = None,
+    timestamps: bool = True,
+) -> dict[str, Any]:
+    """获取 Pod 日志。
+
+    tail_lines: 末尾行数（行数模式上限 1000）。
+    since_seconds: 仅取最近 N 秒的日志（时间段模式；此时 tail_lines 作为行数上限放宽到 5000）。
+    timestamps: 行首带时间戳（默认开启，与 Docker 一致；实时跟随去重也依赖它）。
+    """
     ns = quote(namespace, safe="")
     pod = quote(pod_name, safe="")
     url = f"{_clean(endpoint)}/api/v1/namespaces/{ns}/pods/{pod}/log"
+    params: dict[str, Any] = {"allContainers": "true"}
+    if since_seconds and since_seconds > 0:
+        params["sinceSeconds"] = int(since_seconds)
+        params["tailLines"] = max(1, min(int(tail_lines or 5000), 5000))
+    else:
+        params["tailLines"] = max(1, min(int(tail_lines or 200), 1000))
+    if timestamps:
+        params["timestamps"] = "true"
     try:
         with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
-            resp = client.get(url, headers=_headers(token), params={"tailLines": max(1, min(tail_lines, 1000)), "allContainers": "true"})
+            resp = client.get(url, headers=_headers(token), params=params)
             resp.raise_for_status()
             return {"ok": True, "logs": resp.text}
     except httpx.HTTPStatusError as e:

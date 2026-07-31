@@ -1,10 +1,15 @@
 """容器管理 API — 对接 K8s API 自动发现资源。"""
+import asyncio
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
+from app.api.sse_auth import validate_stream_token
+from app.api.sse_utils import log_line_ts_to_unix, sse_event
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -524,17 +529,115 @@ def api_pod_logs(
     namespace: str,
     pod_name: str,
     tail_lines: int = 200,
+    since: int | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("containers.view")),
 ):
-    """获取 Pod 日志。"""
+    """获取 Pod 日志：按行数（tail_lines）或按时间段（since，unix 秒）。"""
     c = _require_cluster_by_name(db, cluster_name)
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
-    result = get_pod_logs(c.endpoint, c.token, namespace, pod_name, tail_lines)
+
+    # since=0 表示"全部"：不加时间过滤，仅用大行数上限；否则换算成相对秒
+    if since is not None and since > 0:
+        since_seconds = max(1, int(time.time()) - int(since))
+    else:
+        since_seconds = None
+    result = get_pod_logs(c.endpoint, c.token, namespace, pod_name, tail_lines=tail_lines, since_seconds=since_seconds)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "获取 Pod 日志失败"))
-    return {"code": 0, "data": {"logs": result.get("logs", "")}}
+    return {"code": 0, "data": {"logs": result.get("logs", ""), "since": since}}
+
+
+@router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/logs/stream")
+async def api_pod_logs_stream(
+    cluster_name: str,
+    namespace: str,
+    pod_name: str,
+    request: Request,
+    token: str | None = None,
+    since: int | None = None,
+    interval: int = 2,
+    db: Session = Depends(get_db),
+):
+    """SSE 近实时 Pod 日志流：每 interval 秒拉取 since 之后的日志并推送新行。
+
+    EventSource 无法自定义请求头，鉴权用 ``?token=<JWT>``，复用 containers.view 权限。
+    鉴权失败直接 401（EventSource 规范：首次非 200 → CLOSED 且不自动重连）。
+    """
+    user, err = validate_stream_token(token, "containers.view")
+    if err is not None or user is None:
+        raise HTTPException(status_code=401, detail=err or "Authentication required")
+
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
+    interval = max(1, min(int(interval), 30))
+
+    return StreamingResponse(
+        _pod_log_event_stream(c.endpoint, c.token, namespace, pod_name, since, interval, request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _pod_log_event_stream(
+    endpoint: str,
+    token: str,
+    namespace: str,
+    pod_name: str,
+    since_arg: int | None,
+    interval: int,
+    request: Request,
+):
+    """轮询 K8s /log（sinceSeconds），对相邻批次做秒级去重后以 SSE 推送新行。"""
+    last_ts = int(since_arg) if since_arg is not None else int(time.time())
+    prev_batch: set[str] = set()
+    yield sse_event({"type": "ready", "since": last_ts})
+
+    tick = 0
+    while True:
+        if await request.is_disconnected():
+            break
+        try:
+            # get_pod_logs 为同步 httpx 调用，丢到线程池避免阻塞事件循环
+            result = await asyncio.to_thread(
+                get_pod_logs,
+                endpoint, token, namespace, pod_name,
+                tail_lines=1000,
+                since_seconds=max(1, int(time.time()) - last_ts),
+            )
+            if not result.get("ok"):
+                yield sse_event({"type": "error", "message": result.get("error", "拉取失败")})
+                await asyncio.sleep(interval)
+                continue
+            raw = result.get("logs", "") or ""
+        except Exception as e:
+            yield sse_event({"type": "error", "message": f"K8s 拉取失败: {e}"})
+            await asyncio.sleep(interval)
+            continue
+
+        batch_lines = raw.splitlines() if raw else []
+        new_lines = [ln for ln in batch_lines if ln not in prev_batch]
+        prev_batch = set(batch_lines)
+
+        if new_lines:
+            timestamps = [ts for ts in (log_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
+            if timestamps:
+                last_ts = max(timestamps)
+            yield sse_event({
+                "type": "append",
+                "lines": "\n".join(new_lines),
+                "count": len(new_lines),
+            })
+
+        tick += 1
+        if tick % 15 == 0:
+            yield sse_event({"type": "heartbeat"})
+
+        await asyncio.sleep(interval)
+
+    yield sse_event({"type": "done"})
 
 
 @router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/events")

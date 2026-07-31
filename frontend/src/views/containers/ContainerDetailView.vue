@@ -569,10 +569,53 @@
         <button type="button" class="tab-button" :class="{ active: drawerTab === 'events' }" @click="drawerTab = 'events'">事件</button>
       </div>
       <div class="drawer-body">
-        <div v-if="drawerTab === 'logs'" v-loading="logsLoading">
-          <pre class="log-box" tabindex="0" role="log" aria-label="Pod 日志">{{ podLogs || '暂无日志' }}</pre>
+        <div v-if="drawerTab === 'logs'" class="logs-pane">
+          <div class="log-toolbar">
+            <el-radio-group v-model="logMode" size="small" @change="onLogModeChange">
+              <el-radio-button value="lines">按行数</el-radio-button>
+              <el-radio-button value="time">按时间段</el-radio-button>
+            </el-radio-group>
+            <el-select
+              v-if="logMode === 'lines'"
+              v-model="logTailLines"
+              size="small"
+              class="log-tail-select"
+              @change="loadPodLogs"
+            >
+              <el-option :value="100" label="100 行" />
+              <el-option :value="300" label="300 行" />
+              <el-option :value="500" label="500 行" />
+              <el-option :value="1000" label="1000 行" />
+            </el-select>
+            <el-select
+              v-else
+              v-model="logTimeWindow"
+              size="small"
+              class="log-tail-select"
+              @change="loadPodLogs"
+            >
+              <el-option :value="300" label="近 5 分钟" />
+              <el-option :value="900" label="近 15 分钟" />
+              <el-option :value="1800" label="近 30 分钟" />
+              <el-option :value="3600" label="近 1 小时" />
+              <el-option :value="0" label="全部" />
+            </el-select>
+            <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
+            <span class="log-live">
+              <el-switch
+                v-model="liveFollow"
+                size="small"
+                inline-prompt
+                active-text="实时"
+                @change="onLiveFollowChange"
+              />
+            </span>
+          </div>
+          <div class="log-scroll" v-loading="logsLoading">
+            <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" aria-label="Pod 日志">{{ podLogs || '暂无日志' }}</pre>
+          </div>
         </div>
-        <div v-else v-loading="eventsLoading">
+        <div v-else class="events-pane" v-loading="eventsLoading">
           <el-table :data="pagedPodEvents" stripe empty-text="暂无事件" aria-label="Pod 事件列表">
             <el-table-column prop="type" label="类型" width="90" align="center">
               <template #default="{ row }">
@@ -736,7 +779,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onActivated, onDeactivated } from 'vue'
+import { computed, reactive, ref, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
@@ -765,6 +808,7 @@ import {
   getNodeMaintenancePreview,
   getPodEvents,
   getPodLogs,
+  buildPodLogStreamUrl,
   restartClusterDeployment,
   testSavedClusterConnection,
   updateCluster,
@@ -981,6 +1025,30 @@ const drawerTab = ref<'logs' | 'events'>('logs')
 const logsLoading = ref(false)
 const eventsLoading = ref(false)
 const podLogs = ref('')
+const logMode = ref<'lines' | 'time'>('lines')
+const logTailLines = ref(300)
+const logTimeWindow = ref(900) // 近 15 分钟
+const liveFollow = ref(false)
+const logScrollRef = ref<HTMLElement | null>(null)
+// 时间段模式 K8s 侧行数上限（与后端约定一致）
+const LOG_TIME_MAX_LINES = 5000
+// 实时跟随保留的最大行数，避免 DOM 无限增长
+const LIVE_LOG_MAX_LINES = 5000
+let logEs: EventSource | null = null
+let liveSince = 0
+const podLogLineCount = computed(() => {
+  const text = podLogs.value.trim()
+  return text ? text.split('\n').length : 0
+})
+const logCountLabel = computed(() => {
+  if (logsLoading.value || liveFollow.value || !podLogs.value) return ''
+  const n = podLogLineCount.value
+  if (logMode.value === 'time') {
+    if (logTimeWindow.value === 0) return `共 ${n} 行`
+    return n >= LOG_TIME_MAX_LINES ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
+  }
+  return n >= logTailLines.value ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
+})
 const podEvents = ref<PodEvent[]>([])
 const eventPage = ref(1)
 const eventPageSize = ref(10)
@@ -1216,8 +1284,18 @@ watch(depNamespace, () => { depPage.value = 1 })
 watch(svcSearch, () => { svcPage.value = 1 })
 watch(svcNamespace, () => { svcPage.value = 1 })
 watch([eventType, eventNs, eventSearch], () => { evPage.value = 1 })
+watch(drawerVisible, (v) => {
+  if (!v) {
+    stopPodLiveFollow()
+    liveFollow.value = false
+  }
+})
 watch(drawerTab, (tab) => {
   if (!drawerVisible.value || !selectedPod.value) return
+  if (tab !== 'logs') {
+    stopPodLiveFollow()
+    liveFollow.value = false
+  }
   if (tab === 'logs' && !podLogs.value) loadPodLogs()
   if (tab === 'events' && !podEvents.value.length) loadPodEvents()
 })
@@ -1544,6 +1622,9 @@ function openNamespaceDetail(row: K8sNamespace) {
 }
 
 function openPodDrawer(row: K8sPod, tab: 'logs' | 'events') {
+  // 切 pod 必须先关闭旧连接
+  stopPodLiveFollow()
+  liveFollow.value = false
   selectedPod.value = row
   podLogs.value = ''
   podEvents.value = []
@@ -1556,14 +1637,92 @@ function openPodDrawer(row: K8sPod, tab: 'logs' | 'events') {
 
 async function loadPodLogs() {
   if (!selectedPod.value) return
+  // 手动刷新/切换条件进入快照模式：停掉实时
+  stopPodLiveFollow()
+  liveFollow.value = false
   logsLoading.value = true
   try {
-    const res: any = await getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, { tail_lines: 300 })
+    let res: any
+    if (logMode.value === 'time') {
+      const since = logTimeWindow.value === 0 ? 0 : Math.floor(Date.now() / 1000) - logTimeWindow.value
+      res = await getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, { since })
+    } else {
+      res = await getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, { tail_lines: logTailLines.value })
+    }
     podLogs.value = res.data?.logs || ''
+    await nextTick(() => scrollPodLogToBottom(true))
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载日志失败')
   } finally {
     logsLoading.value = false
+  }
+}
+
+// ─── 实时跟随（SSE） ───────────────────────────────────────
+function startPodLiveFollow() {
+  if (!selectedPod.value) return
+  stopPodLiveFollow()
+  liveSince = Math.floor(Date.now() / 1000)
+  const url = buildPodLogStreamUrl(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, liveSince)
+  podLogs.value = ''
+  logEs = new EventSource(url)
+  logEs.onmessage = (ev) => {
+    let data: any
+    try {
+      data = JSON.parse(ev.data)
+    } catch {
+      return
+    }
+    if (data.type === 'append') {
+      const add = data.lines || ''
+      if (!add) return
+      podLogs.value = podLogs.value ? `${podLogs.value}\n${add}` : add
+      trimPodLogsTail()
+      nextTick(() => scrollPodLogToBottom(false))
+    } else if (data.type === 'error') {
+      ElMessage.warning(data.message || '实时拉取出错')
+    }
+    // ready / heartbeat / done 不需要前端处理
+  }
+  logEs.onerror = () => {
+    // 401（未登录/无权限）→ readyState=CLOSED 且不自动重连；暂态网络错误由浏览器自动重连
+    if (logEs && logEs.readyState === EventSource.CLOSED) {
+      ElMessage.error('实时连接已断开，请检查登录状态或权限')
+      liveFollow.value = false
+      stopPodLiveFollow()
+    }
+  }
+}
+
+function stopPodLiveFollow() {
+  if (logEs) {
+    logEs.close()
+    logEs = null
+  }
+}
+
+function onLiveFollowChange(val: boolean | string | number) {
+  if (val) startPodLiveFollow()
+  else stopPodLiveFollow()
+}
+
+function onLogModeChange() {
+  stopPodLiveFollow()
+  liveFollow.value = false
+  loadPodLogs()
+}
+
+function scrollPodLogToBottom(force = false) {
+  const el = logScrollRef.value
+  if (!el) return
+  const nearBottom = force || el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  if (nearBottom) el.scrollTop = el.scrollHeight
+}
+
+function trimPodLogsTail() {
+  const lines = podLogs.value.split('\n')
+  if (lines.length > LIVE_LOG_MAX_LINES) {
+    podLogs.value = lines.slice(lines.length - LIVE_LOG_MAX_LINES).join('\n')
   }
 }
 
@@ -1725,6 +1884,12 @@ onDeactivated(() => {
     clearInterval(ticker)
     ticker = null
   }
+  stopPodLiveFollow()
+  liveFollow.value = false
+})
+
+onUnmounted(() => {
+  stopPodLiveFollow()
 })
 </script>
 
@@ -2503,7 +2668,54 @@ button.summary-card {
 }
 
 .drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 14px 18px;
+}
+:deep(.el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+.logs-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.events-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.log-tail-select {
+  width: 120px;
+}
+.log-count {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.log-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.log-scroll {
+  flex: 1;
+  min-height: 0;
 }
 
 .dialog-notice {
@@ -2611,8 +2823,7 @@ button.summary-card {
 }
 
 .log-box {
-  min-height: 320px;
-  max-height: 560px;
+  height: 100%;
   margin: 0;
   padding: 14px;
   overflow: auto;
