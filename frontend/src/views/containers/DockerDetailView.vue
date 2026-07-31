@@ -261,7 +261,7 @@
             <el-option :value="1000" label="1000 行" />
           </el-select>
         </div>
-        <div v-loading="logsLoading">
+        <div class="log-scroll" v-loading="logsLoading">
           <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
         </div>
       </div>
@@ -937,7 +937,18 @@ onDeactivated(stopAutoRefresh)
   gap: 6px;
   flex: none;
 }
+:deep(.el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
 .drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 14px 18px;
 }
 .log-toolbar {
@@ -951,9 +962,12 @@ onDeactivated(stopAutoRefresh)
 .log-tail-select {
   width: 110px;
 }
+.log-scroll {
+  flex: 1;
+  min-height: 0;
+}
 .log-box {
-  min-height: 320px;
-  max-height: 560px;
+  height: 100%;
   margin: 0;
   padding: 14px;
   overflow: auto;
