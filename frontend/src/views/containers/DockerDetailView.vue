@@ -247,8 +247,8 @@
         </div>
         <div class="drawer-actions">
           <el-button size="small" :loading="logsLoading" @click="fetchSelectedContainerLogs">刷新</el-button>
-          <el-button size="small" :disabled="!containerLogs" @click="copyLogs">复制</el-button>
-          <el-button size="small" :disabled="!containerLogs" @click="downloadLogs">下载</el-button>
+          <el-button size="small" :disabled="!displayedContainerLogs" @click="copyLogs">复制</el-button>
+          <el-button size="small" :disabled="!displayedContainerLogs" @click="downloadLogs">下载</el-button>
         </div>
       </div>
       <div class="drawer-body">
@@ -282,6 +282,15 @@
             <el-option :value="3600" label="近 1 小时" />
             <el-option :value="0" label="全部" />
           </el-select>
+          <el-input
+            v-model="logKeyword"
+            size="small"
+            clearable
+            class="log-keyword-input"
+            placeholder="筛选关键字"
+            :prefix-icon="Search"
+            aria-label="筛选 Docker 容器日志关键字"
+          />
           <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
           <span class="log-live" :class="{ 'is-live': liveActive }" role="status" :aria-label="liveActive ? '实时日志跟随中' : '实时连接已断开'">
             <i class="live-dot" aria-hidden="true"></i>
@@ -289,7 +298,7 @@
           </span>
         </div>
         <div class="log-scroll" v-loading="logsLoading">
-          <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
+          <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选后的 Docker 容器日志' : 'Docker 容器日志'">{{ logDisplayText }}</pre>
         </div>
       </div>
     </el-drawer>
@@ -300,7 +309,7 @@
 import { ref, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, Search } from '@element-plus/icons-vue'
 import {
   getDockerHost,
   deleteDockerHost,
@@ -337,6 +346,7 @@ const selectedContainer = ref<any | null>(null)
 const logsDrawerVisible = ref(false)
 const logsLoading = ref(false)
 const containerLogs = ref('')
+const logKeyword = ref('')
 const logMode = ref<'lines' | 'time'>('lines')
 const logTailLines = ref(300)
 const logTimeWindow = ref(900) // 近 15 分钟
@@ -352,8 +362,26 @@ const logLineCount = computed(() => {
   const text = containerLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
+const normalizedLogKeyword = computed(() => logKeyword.value.trim().toLowerCase())
+const displayedContainerLogs = computed(() => {
+  const keyword = normalizedLogKeyword.value
+  if (!containerLogs.value || !keyword) return containerLogs.value
+  return containerLogs.value
+    .split('\n')
+    .filter((line) => line.toLowerCase().includes(keyword))
+    .join('\n')
+})
+const displayedLogLineCount = computed(() => {
+  const text = displayedContainerLogs.value.trim()
+  return text ? text.split('\n').length : 0
+})
+const logDisplayText = computed(() => {
+  if (displayedContainerLogs.value) return displayedContainerLogs.value
+  return containerLogs.value && normalizedLogKeyword.value ? '未找到匹配日志' : '暂无日志'
+})
 const logCountLabel = computed(() => {
   if (logsLoading.value || !containerLogs.value) return ''
+  if (normalizedLogKeyword.value) return `匹配 ${displayedLogLineCount.value} / ${logLineCount.value} 行`
   return `共 ${logLineCount.value} 行`
 })
 
@@ -537,6 +565,7 @@ async function openContainerLogs(row: any) {
   stopLiveFollow()
   selectedContainer.value = row
   containerLogs.value = ''
+  logKeyword.value = ''
   logsDrawerVisible.value = true
   await fetchSelectedContainerLogs()
 }
@@ -617,6 +646,11 @@ function scrollLogToBottom(force = false) {
   if (nearBottom) el.scrollTop = el.scrollHeight
 }
 
+function scrollLogToTop() {
+  const el = logScrollRef.value
+  if (el) el.scrollTop = 0
+}
+
 function trimLogsTail() {
   const lines = containerLogs.value.split('\n')
   if (lines.length > LIVE_LOG_MAX_LINES) {
@@ -625,16 +659,16 @@ function trimLogsTail() {
 }
 
 function copyLogs() {
-  if (!containerLogs.value) return
-  navigator.clipboard.writeText(containerLogs.value).then(
+  if (!displayedContainerLogs.value) return
+  navigator.clipboard.writeText(displayedContainerLogs.value).then(
     () => ElMessage.success('已复制到剪贴板'),
     () => ElMessage.error('复制失败'),
   )
 }
 
 function downloadLogs() {
-  if (!containerLogs.value || !selectedContainer.value) return
-  const blob = new Blob([containerLogs.value], { type: 'text/plain' })
+  if (!displayedContainerLogs.value || !selectedContainer.value) return
+  const blob = new Blob([displayedContainerLogs.value], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -745,6 +779,9 @@ watch(hostName, loadHostDetail)
 // 抽屉关闭必须关闭 EventSource（destroy-on-close 只销毁 DOM，不关连接）
 watch(logsDrawerVisible, (v) => {
   if (!v) stopLiveFollow()
+})
+watch(logKeyword, () => {
+  nextTick(scrollLogToTop)
 })
 
 onActivated(loadHostDetail)
@@ -1093,6 +1130,10 @@ onUnmounted(() => {
 .log-tail-select {
   width: 120px;
 }
+.log-keyword-input {
+  flex: 1 1 180px;
+  max-width: 240px;
+}
 .log-count {
   color: var(--text-muted);
   font-size: 12px;
@@ -1176,6 +1217,9 @@ onUnmounted(() => {
   .header-actions,
   .container-tools {
     flex-wrap: wrap;
+  }
+  .log-keyword-input {
+    max-width: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

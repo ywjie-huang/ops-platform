@@ -560,8 +560,8 @@
           <div class="drawer-sub">{{ selectedPod?.namespace || '-' }} · {{ selectedPod?.node || '-' }}</div>
         </div>
         <div v-if="drawerTab === 'logs'" class="drawer-actions">
-          <el-button size="small" @click="copyLogs">复制</el-button>
-          <el-button size="small" @click="downloadLogs">下载</el-button>
+          <el-button size="small" :disabled="!displayedPodLogs" @click="copyLogs">复制</el-button>
+          <el-button size="small" :disabled="!displayedPodLogs" @click="downloadLogs">下载</el-button>
         </div>
       </div>
       <div class="tabs-row drawer-tabs" role="tablist">
@@ -600,6 +600,15 @@
               <el-option :value="3600" label="近 1 小时" />
               <el-option :value="0" label="全部" />
             </el-select>
+            <el-input
+              v-model="logKeyword"
+              size="small"
+              clearable
+              class="log-keyword-input"
+              placeholder="筛选关键字"
+              :prefix-icon="Search"
+              aria-label="筛选 Pod 日志关键字"
+            />
             <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
             <span class="log-live" :class="{ 'is-live': liveActive }" role="status" :aria-label="liveActive ? '实时日志跟随中' : '实时连接已断开'">
               <i class="live-dot" aria-hidden="true"></i>
@@ -607,7 +616,7 @@
             </span>
           </div>
           <div class="log-scroll" v-loading="logsLoading">
-            <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" aria-label="Pod 日志">{{ podLogs || '暂无日志' }}</pre>
+            <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" :aria-label="normalizedLogKeyword ? '筛选后的 Pod 日志' : 'Pod 日志'">{{ logDisplayText }}</pre>
           </div>
         </div>
         <div v-else class="events-pane" v-loading="eventsLoading">
@@ -788,6 +797,7 @@ import {
   EditPen,
   Link,
   Refresh,
+  Search,
   Tools,
   WarningFilled,
 } from '@element-plus/icons-vue'
@@ -1020,6 +1030,7 @@ const drawerTab = ref<'logs' | 'events'>('logs')
 const logsLoading = ref(false)
 const eventsLoading = ref(false)
 const podLogs = ref('')
+const logKeyword = ref('')
 const logMode = ref<'lines' | 'time'>('lines')
 const logTailLines = ref(300)
 const logTimeWindow = ref(900) // 近 15 分钟
@@ -1033,8 +1044,26 @@ const podLogLineCount = computed(() => {
   const text = podLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
+const normalizedLogKeyword = computed(() => logKeyword.value.trim().toLowerCase())
+const displayedPodLogs = computed(() => {
+  const keyword = normalizedLogKeyword.value
+  if (!podLogs.value || !keyword) return podLogs.value
+  return podLogs.value
+    .split('\n')
+    .filter((line) => line.toLowerCase().includes(keyword))
+    .join('\n')
+})
+const displayedPodLogLineCount = computed(() => {
+  const text = displayedPodLogs.value.trim()
+  return text ? text.split('\n').length : 0
+})
+const logDisplayText = computed(() => {
+  if (displayedPodLogs.value) return displayedPodLogs.value
+  return podLogs.value && normalizedLogKeyword.value ? '未找到匹配日志' : '暂无日志'
+})
 const logCountLabel = computed(() => {
   if (logsLoading.value || !podLogs.value) return ''
+  if (normalizedLogKeyword.value) return `匹配 ${displayedPodLogLineCount.value} / ${podLogLineCount.value} 行`
   return `共 ${podLogLineCount.value} 行`
 })
 const podEvents = ref<PodEvent[]>([])
@@ -1272,6 +1301,9 @@ watch(depNamespace, () => { depPage.value = 1 })
 watch(svcSearch, () => { svcPage.value = 1 })
 watch(svcNamespace, () => { svcPage.value = 1 })
 watch([eventType, eventNs, eventSearch], () => { evPage.value = 1 })
+watch(logKeyword, () => {
+  nextTick(scrollPodLogToTop)
+})
 watch(drawerVisible, (v) => {
   if (!v) stopPodLiveFollow()
 })
@@ -1573,16 +1605,16 @@ function clearDeployFilter() {
 }
 
 function copyLogs() {
-  if (!podLogs.value) return
-  navigator.clipboard.writeText(podLogs.value).then(
+  if (!displayedPodLogs.value) return
+  navigator.clipboard.writeText(displayedPodLogs.value).then(
     () => ElMessage.success('已复制到剪贴板'),
     () => ElMessage.error('复制失败'),
   )
 }
 
 function downloadLogs() {
-  if (!podLogs.value || !selectedPod.value) return
-  const blob = new Blob([podLogs.value], { type: 'text/plain' })
+  if (!displayedPodLogs.value || !selectedPod.value) return
+  const blob = new Blob([displayedPodLogs.value], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -1611,6 +1643,7 @@ function openPodDrawer(row: K8sPod, tab: 'logs' | 'events') {
   stopPodLiveFollow()
   selectedPod.value = row
   podLogs.value = ''
+  logKeyword.value = ''
   podEvents.value = []
   eventPage.value = 1
   drawerTab.value = tab
@@ -1693,6 +1726,11 @@ function scrollPodLogToBottom(force = false) {
   if (!el) return
   const nearBottom = force || el.scrollHeight - el.scrollTop - el.clientHeight < 60
   if (nearBottom) el.scrollTop = el.scrollHeight
+}
+
+function scrollPodLogToTop() {
+  const el = logScrollRef.value
+  if (el) el.scrollTop = 0
 }
 
 function trimPodLogsTail() {
@@ -2679,6 +2717,10 @@ button.summary-card {
 .log-tail-select {
   width: 120px;
 }
+.log-keyword-input {
+  flex: 1 1 180px;
+  max-width: 240px;
+}
 .log-count {
   color: var(--text-muted);
   font-size: 12px;
@@ -2869,6 +2911,10 @@ button.summary-card {
   .tool-search,
   .tool-count {
     width: 100%;
+  }
+
+  .log-keyword-input {
+    max-width: none;
   }
 
   .detail-header-actions {
