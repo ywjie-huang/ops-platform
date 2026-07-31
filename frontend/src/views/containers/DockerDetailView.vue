@@ -253,7 +253,7 @@
       </div>
       <div class="drawer-body">
         <div class="log-toolbar">
-          <el-radio-group v-model="logMode" size="small" @change="onLogModeChange">
+          <el-radio-group v-model="logMode" size="small" @change="fetchSelectedContainerLogs">
             <el-radio-button value="lines">按行数</el-radio-button>
             <el-radio-button value="time">按时间段</el-radio-button>
           </el-radio-group>
@@ -283,14 +283,9 @@
             <el-option :value="0" label="全部" />
           </el-select>
           <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
-          <span class="log-live">
-            <el-switch
-              v-model="liveFollow"
-              size="small"
-              inline-prompt
-              active-text="实时"
-              @change="onLiveFollowChange"
-            />
+          <span class="log-live" :class="{ 'is-live': liveActive }" role="status" :aria-label="liveActive ? '实时日志跟随中' : '实时连接已断开'">
+            <i class="live-dot" aria-hidden="true"></i>
+            {{ liveActive ? '实时中' : '已断开' }}
           </span>
         </div>
         <div class="log-scroll" v-loading="logsLoading">
@@ -345,29 +340,21 @@ const containerLogs = ref('')
 const logMode = ref<'lines' | 'time'>('lines')
 const logTailLines = ref(300)
 const logTimeWindow = ref(900) // 近 15 分钟
-const liveFollow = ref(false)
+const liveActive = ref(false)
 const logScrollRef = ref<HTMLElement | null>(null)
-// 时间段模式 Agent 侧行数上限（与后端/Agent 约定一致）
-const LOG_TIME_MAX_LINES = 5000
 // 实时跟随保留的最大行数，避免 DOM 无限增长
 const LIVE_LOG_MAX_LINES = 5000
 let logEs: EventSource | null = null
 let liveSince = 0
 
-// 实际返回的日志行数：用于在工具栏展示，区分“日志就这么少”与“被上限截断”
+// 实际返回的日志行数：用于在工具栏展示
 const logLineCount = computed(() => {
   const text = containerLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
 const logCountLabel = computed(() => {
-  if (logsLoading.value || liveFollow.value || !containerLogs.value) return ''
-  const n = logLineCount.value
-  if (logMode.value === 'time') {
-    if (logTimeWindow.value === 0) return `共 ${n} 行`
-    return n >= LOG_TIME_MAX_LINES ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
-  }
-  // 实际行数 == 请求行数，说明恰好命中 tail 上限，容器日志可能更多
-  return n >= logTailLines.value ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
+  if (logsLoading.value || !containerLogs.value) return ''
+  return `共 ${logLineCount.value} 行`
 })
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -548,7 +535,6 @@ function containerStatusLabel(s: string) {
 async function openContainerLogs(row: any) {
   // 切容器必须先关闭旧连接
   stopLiveFollow()
-  liveFollow.value = false
   selectedContainer.value = row
   containerLogs.value = ''
   logsDrawerVisible.value = true
@@ -557,9 +543,8 @@ async function openContainerLogs(row: any) {
 
 async function fetchSelectedContainerLogs() {
   if (!selectedContainer.value) return
-  // 手动刷新/切换条件进入快照模式：停掉实时
+  // 重新加载快照前停掉旧的实时连接（随后会重新开启）
   stopLiveFollow()
-  liveFollow.value = false
   logsLoading.value = true
   try {
     let res: any
@@ -576,16 +561,19 @@ async function fetchSelectedContainerLogs() {
   } finally {
     logsLoading.value = false
   }
+  // 以快照为起点开启近实时跟随（追加新行，不清空已有内容）
+  if (logsDrawerVisible.value) startLiveFollow()
 }
 
 // ─── 实时跟随（SSE） ───────────────────────────────────────
 function startLiveFollow() {
   if (!selectedContainer.value) return
   stopLiveFollow()
+  // 以「现在」为游标；快照内容保留在前，新行追加其后
   liveSince = Math.floor(Date.now() / 1000)
   const url = buildDockerLogStreamUrl(hostName.value, selectedContainer.value.container_id, liveSince)
-  containerLogs.value = ''
   logEs = new EventSource(url)
+  liveActive.value = true
   logEs.onmessage = (ev) => {
     let data: any
     try {
@@ -607,29 +595,19 @@ function startLiveFollow() {
   logEs.onerror = () => {
     // 401（未登录/无权限）→ readyState=CLOSED 且不自动重连；暂态网络错误由浏览器自动重连
     if (logEs && logEs.readyState === EventSource.CLOSED) {
+      liveActive.value = false
       ElMessage.error('实时连接已断开，请检查登录状态或权限')
-      liveFollow.value = false
       stopLiveFollow()
     }
   }
 }
 
 function stopLiveFollow() {
+  liveActive.value = false
   if (logEs) {
     logEs.close()
     logEs = null
   }
-}
-
-function onLiveFollowChange(val: boolean | string | number) {
-  if (val) startLiveFollow()
-  else stopLiveFollow()
-}
-
-function onLogModeChange() {
-  stopLiveFollow()
-  liveFollow.value = false
-  fetchSelectedContainerLogs()
 }
 
 function scrollLogToBottom(force = false) {
@@ -766,10 +744,7 @@ let activeLoadRef = ''
 watch(hostName, loadHostDetail)
 // 抽屉关闭必须关闭 EventSource（destroy-on-close 只销毁 DOM，不关连接）
 watch(logsDrawerVisible, (v) => {
-  if (!v) {
-    stopLiveFollow()
-    liveFollow.value = false
-  }
+  if (!v) stopLiveFollow()
 })
 
 onActivated(loadHostDetail)
@@ -777,7 +752,6 @@ onActivated(loadHostDetail)
 onDeactivated(() => {
   stopAutoRefresh()
   stopLiveFollow()
-  liveFollow.value = false
 })
 
 onUnmounted(() => {
@@ -1127,6 +1101,30 @@ onUnmounted(() => {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border-color) 55%, transparent);
+}
+.log-live.is-live {
+  color: color-mix(in srgb, var(--success-color) 65%, var(--text-primary));
+  background: color-mix(in srgb, var(--success-color) 12%, transparent);
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.log-live.is-live .live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 .log-scroll {
   flex: 1;
@@ -1178,6 +1176,11 @@ onUnmounted(() => {
   .header-actions,
   .container-tools {
     flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log-live.is-live .live-dot {
+    animation: none;
   }
 }
 </style>
