@@ -326,7 +326,40 @@ def test_container_logs_proxy_clamps_tail_and_returns_logs(monkeypatch):
             _=None,
         )
 
-        assert response == {"code": 0, "data": {"logs": "line-1\nline-2", "tail": 1000}}
+        assert response == {"code": 0, "data": {"logs": "line-1\nline-2", "tail": 1000, "since": None, "until": None}}
         assert calls == [("127.0.0.1:9001", "GET", "/containers/abc123def456/logs?tail=1000")]
+    finally:
+        db.close()
+
+
+def test_container_logs_since_mode_passes_since_without_tail(monkeypatch):
+    """时间段模式：传 since 时透传给 Agent，且不传 tail（由 Agent 用大默认）。"""
+    engine = create_engine("sqlite:///:memory:")
+    _create_container_tables(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    calls = []
+
+    def fake_proxy(host: ContainerCluster, method: str, path: str):
+        calls.append((host.endpoint, method, path))
+        return {"logs": "later-line", "tail": None}
+
+    monkeypatch.setattr("app.api.docker_mgmt._proxy_to_agent", fake_proxy)
+
+    db = SessionLocal()
+    try:
+        host = ContainerCluster(name="docker-01", provider="docker", endpoint="127.0.0.1:9001")
+        db.add(host)
+        db.commit()
+
+        response = docker_mgmt.api_container_logs(
+            host.name,
+            "abc123def456",
+            since=12345,
+            db=db,
+            _=None,
+        )
+
+        assert response == {"code": 0, "data": {"logs": "later-line", "tail": None, "since": 12345, "until": None}}
+        assert calls == [("127.0.0.1:9001", "GET", "/containers/abc123def456/logs?since=12345")]
     finally:
         db.close()

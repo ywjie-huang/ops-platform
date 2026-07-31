@@ -1,4 +1,5 @@
 import request from './request'
+import { getToken } from '@/utils/auth'
 
 // 集群管理
 export function getClusters(params?: { keyword?: string }) { return request.get('/containers/clusters', { params }) }
@@ -83,8 +84,24 @@ export function getDockerContainers(params?: { keyword?: string; status?: string
 export function getHostContainers(hostName: string, params?: { keyword?: string; status?: string }) {
   return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers`, { params })
 }
-export function getDockerContainerLogs(hostName: string, containerId: string, params?: { tail_lines?: number }) {
+export function getDockerContainerLogs(
+  hostName: string,
+  containerId: string,
+  params?: { tail_lines?: number; since?: number; until?: number },
+) {
   return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/logs`, { params })
+}
+
+// EventSource 无法使用 axios 实例（不能自定义请求头），单独拼全 URL + token
+export function buildDockerLogStreamUrl(hostName: string, containerId: string, sinceUnix: number): string {
+  const base = (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1'
+  const token = getToken() || ''
+  const params = new URLSearchParams({
+    token,
+    since: String(sinceUnix),
+    interval: '2',
+  })
+  return `${base}/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/logs/stream?${params.toString()}`
 }
 
 // Docker 容器操作

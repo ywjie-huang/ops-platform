@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_api_user
+from app.api.sse_utils import sse_event as _sse_event
 from app.db.database import get_db
 from app.models.user import User
 
@@ -465,8 +466,3 @@ async def api_chat_reject(
         yield _sse_event({"type": "done", "conversation_id": cid})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-def _sse_event(data: dict[str, Any]) -> str:
-    """格式化 SSE 事件。"""
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"

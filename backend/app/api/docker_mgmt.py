@@ -1,16 +1,23 @@
 """Docker 管理 API — 平台端 Docker 主机管理 / 容器查询 / 容器操作 / 主动拉取。"""
 
+import asyncio
 import re
+import time
+from datetime import datetime, timezone
 from html import unescape
 
+import httpx
 import requests as http_requests
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
+from app.api.sse_utils import sse_event
 from app.core.config import CHINA_TZ
-from app.db.database import get_db
+from app.core.jwt import decode_access_token
+from app.db.database import SessionLocal, get_db
 from app.models.container import ContainerCluster
 from app.models.user import User
 from app.services.audit import write_log
@@ -26,9 +33,13 @@ from app.services.docker_agent import (
     sync_host_from_agent,
     update_docker_host,
 )
+from app.services.permissions import has_permission
+from app.services.token_blacklist import is_revoked
+from app.services.users import get_user
 
 router = APIRouter(prefix="/containers/docker", tags=["Docker 管理"])
 MAX_DOCKER_LOG_TAIL = 1000
+DOCKER_LOG_VIEW_PERMISSION = "containers.view"
 
 
 # ─── Schemas ───────────────────────────────────────────────
@@ -290,14 +301,181 @@ def api_container_logs(
     host_name: str,
     container_id: str,
     tail_lines: int = 300,
+    since: int | None = None,
+    until: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(api_permission_required("containers.view")),
+    _: User = Depends(api_permission_required(DOCKER_LOG_VIEW_PERMISSION)),
 ):
+    """拉取容器日志：按行数（tail_lines）或按时间段（since/until，unix 秒）。"""
     h = _require_docker_host_by_name(db, host_name)
 
-    tail = _normalize_log_tail_lines(tail_lines)
-    result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/logs?tail={tail}")
-    return {"code": 0, "data": {"logs": result.get("logs", ""), "tail": result.get("tail", tail)}}
+    params = []
+    if since is not None:
+        params.append(f"since={int(since)}")
+        if until is not None:
+            params.append(f"until={int(until)}")
+        # since 模式不传 tail，由 Agent 用 5000 行大默认（时间窗做主过滤）
+        tail_echo: int | None = None
+    else:
+        tail = _normalize_log_tail_lines(tail_lines)
+        params.append(f"tail={tail}")
+        tail_echo = tail
+
+    qs = "&".join(params)
+    result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/logs?{qs}")
+    return {
+        "code": 0,
+        "data": {
+            "logs": result.get("logs", ""),
+            "tail": result.get("tail", tail_echo),
+            "since": since,
+            "until": until,
+        },
+    }
+
+
+# ─── SSE：近实时日志流 ─────────────────────────────────────
+
+
+def _validate_log_stream_token(token: str | None) -> tuple[User | None, str | None]:
+    """校验 ?token= 里的 JWT（EventSource 无法走标准依赖注入鉴权），返回 (user, err)。
+
+    复用 WebSocket 鉴权的同一套校验链：decode → 黑名单 → 取用户 → 权限。
+    """
+    if not token or not token.strip():
+        return None, "Authentication required"
+    payload = decode_access_token(token)
+    if payload is None:
+        return None, "Authentication failed"
+    if is_revoked(payload.get("jti")):
+        return None, "Session expired"
+    subject = payload.get("sub")
+    if isinstance(subject, bool):
+        return None, "Authentication failed"
+    try:
+        user_id = int(subject)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None, "Authentication failed"
+
+    db = SessionLocal()
+    try:
+        user = get_user(db, user_id)
+        if user is None:
+            return None, "Authentication failed"
+        if not has_permission(user, DOCKER_LOG_VIEW_PERMISSION):
+            return None, "Permission denied"
+        return user, None
+    finally:
+        db.close()
+
+
+_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
+
+
+def _line_ts_to_unix(line: str) -> int | None:
+    """解析 docker timestamps=True 行首时间戳到 unix 秒。
+
+    docker 产出形如 ``2026-07-31T10:23:45.123456789Z <text>``，只取到秒
+    （规避纳秒小数 fromisoformat 解析坑；docker 自身也按秒过滤）。
+    """
+    m = _TS_RE.match(line or "")
+    if not m:
+        return None
+    try:
+        return int(
+            datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")
+            .replace(tzinfo=timezone.utc)
+            .timestamp()
+        )
+    except ValueError:
+        return None
+
+
+@router.get("/hosts/{host_name}/containers/{container_id}/logs/stream")
+async def api_container_logs_stream(
+    host_name: str,
+    container_id: str,
+    request: Request,
+    token: str | None = None,
+    since: int | None = None,
+    interval: int = 2,
+    db: Session = Depends(get_db),
+):
+    """SSE 近实时日志流：每 interval 秒向 Agent 轮询 since 之后的日志并推送新行。
+
+    EventSource 无法自定义请求头，因此鉴权用 ``?token=<JWT>``。
+    鉴权失败直接 401（EventSource 规范：首次响应非 200 → CLOSED 且不自动重连，
+    不会造成无限重连）。
+    """
+    user, err = _validate_log_stream_token(token)
+    if err is not None or user is None:
+        raise HTTPException(status_code=401, detail=err or "Authentication required")
+
+    h = _require_docker_host_by_name(db, host_name)
+    interval = max(1, min(int(interval), 30))
+
+    return StreamingResponse(
+        _log_event_stream(h.endpoint, container_id, since, interval, request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _log_event_stream(
+    endpoint: str,
+    container_id: str,
+    since_arg: int | None,
+    interval: int,
+    request: Request,
+):
+    """轮询 Agent 的 /logs?since= 端点，对相邻批次做秒级去重后以 SSE 推送新行。"""
+    # endpoint 以字符串传入：生成器生命周期长于 DB 会话，避免访问已 detach 的模型对象
+    base = endpoint if endpoint.startswith("http") else f"http://{endpoint}"
+    url = f"{base}/containers/{container_id}/logs"
+
+    # 初始游标：优先用前端传入的 since，否则取服务端当前时间
+    last_ts = int(since_arg) if since_arg is not None else int(time.time())
+    prev_batch: set[str] = set()  # 仅与上一批比较（docker since 按秒截断含本秒 → 同秒旧行会重复）
+    timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+
+    yield sse_event({"type": "ready", "since": last_ts})
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        tick = 0
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                resp = await client.get(url, params={"since": last_ts, "tail": 1000})
+                data = resp.json()
+                raw = data.get("logs", "") or ""
+            except (httpx.HTTPError, ValueError) as e:
+                # 单次拉取失败不致命：发 error 事件后继续，等待下一轮
+                yield sse_event({"type": "error", "message": f"Agent 拉取失败: {e}"})
+                await asyncio.sleep(interval)
+                continue
+
+            batch_lines = raw.splitlines() if raw else []
+            new_lines = [ln for ln in batch_lines if ln not in prev_batch]
+            prev_batch = set(batch_lines)
+
+            if new_lines:
+                timestamps = [ts for ts in (_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
+                if timestamps:
+                    last_ts = max(timestamps)
+                yield sse_event({
+                    "type": "append",
+                    "lines": "\n".join(new_lines),
+                    "count": len(new_lines),
+                })
+
+            tick += 1
+            if tick % 15 == 0:  # ~30s 心跳，防代理掐断空闲连接
+                yield sse_event({"type": "heartbeat"})
+
+            await asyncio.sleep(interval)
+
+    yield sse_event({"type": "done"})
 
 
 # ─── 容器操作（代理到 Agent）─────────────────────────────────

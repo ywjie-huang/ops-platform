@@ -253,17 +253,48 @@
       </div>
       <div class="drawer-body">
         <div class="log-toolbar">
-          <span>最近</span>
-          <el-select v-model="logTailLines" size="small" class="log-tail-select" @change="fetchSelectedContainerLogs">
+          <el-radio-group v-model="logMode" size="small" @change="onLogModeChange">
+            <el-radio-button value="lines">按行数</el-radio-button>
+            <el-radio-button value="time">按时间段</el-radio-button>
+          </el-radio-group>
+          <el-select
+            v-if="logMode === 'lines'"
+            v-model="logTailLines"
+            size="small"
+            class="log-tail-select"
+            @change="fetchSelectedContainerLogs"
+          >
             <el-option :value="100" label="100 行" />
             <el-option :value="300" label="300 行" />
             <el-option :value="500" label="500 行" />
             <el-option :value="1000" label="1000 行" />
           </el-select>
+          <el-select
+            v-else
+            v-model="logTimeWindow"
+            size="small"
+            class="log-tail-select"
+            @change="fetchSelectedContainerLogs"
+          >
+            <el-option :value="300" label="近 5 分钟" />
+            <el-option :value="900" label="近 15 分钟" />
+            <el-option :value="1800" label="近 30 分钟" />
+            <el-option :value="3600" label="近 1 小时" />
+            <el-option :value="0" label="全部" />
+          </el-select>
           <span class="log-count" v-if="logCountLabel">{{ logCountLabel }}</span>
+          <span class="log-live">
+            <el-switch
+              v-model="liveFollow"
+              size="small"
+              inline-prompt
+              active-text="实时"
+              @change="onLiveFollowChange"
+            />
+          </span>
         </div>
         <div class="log-scroll" v-loading="logsLoading">
-          <pre class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
+          <pre ref="logScrollRef" class="log-box" tabindex="0" role="log" aria-label="Docker 容器日志">{{ containerLogs || '暂无日志' }}</pre>
         </div>
       </div>
     </el-drawer>
@@ -271,7 +302,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
@@ -281,6 +312,7 @@ import {
   refreshDockerHost,
   getHostContainers,
   getDockerContainerLogs,
+  buildDockerLogStreamUrl,
   startDockerContainer,
   stopDockerContainer,
   restartDockerContainer,
@@ -310,15 +342,30 @@ const selectedContainer = ref<any | null>(null)
 const logsDrawerVisible = ref(false)
 const logsLoading = ref(false)
 const containerLogs = ref('')
+const logMode = ref<'lines' | 'time'>('lines')
 const logTailLines = ref(300)
+const logTimeWindow = ref(900) // 近 15 分钟
+const liveFollow = ref(false)
+const logScrollRef = ref<HTMLElement | null>(null)
+// 时间段模式 Agent 侧行数上限（与后端/Agent 约定一致）
+const LOG_TIME_MAX_LINES = 5000
+// 实时跟随保留的最大行数，避免 DOM 无限增长
+const LIVE_LOG_MAX_LINES = 5000
+let logEs: EventSource | null = null
+let liveSince = 0
+
 // 实际返回的日志行数：用于在工具栏展示，区分“日志就这么少”与“被上限截断”
 const logLineCount = computed(() => {
   const text = containerLogs.value.trim()
   return text ? text.split('\n').length : 0
 })
 const logCountLabel = computed(() => {
-  if (logsLoading.value || !containerLogs.value) return ''
+  if (logsLoading.value || liveFollow.value || !containerLogs.value) return ''
   const n = logLineCount.value
+  if (logMode.value === 'time') {
+    if (logTimeWindow.value === 0) return `共 ${n} 行`
+    return n >= LOG_TIME_MAX_LINES ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
+  }
   // 实际行数 == 请求行数，说明恰好命中 tail 上限，容器日志可能更多
   return n >= logTailLines.value ? `共 ${n} 行（已达上限，可能更多）` : `共 ${n} 行`
 })
@@ -499,6 +546,9 @@ function containerStatusLabel(s: string) {
 }
 
 async function openContainerLogs(row: any) {
+  // 切容器必须先关闭旧连接
+  stopLiveFollow()
+  liveFollow.value = false
   selectedContainer.value = row
   containerLogs.value = ''
   logsDrawerVisible.value = true
@@ -507,14 +557,92 @@ async function openContainerLogs(row: any) {
 
 async function fetchSelectedContainerLogs() {
   if (!selectedContainer.value) return
+  // 手动刷新/切换条件进入快照模式：停掉实时
+  stopLiveFollow()
+  liveFollow.value = false
   logsLoading.value = true
   try {
-    const res: any = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
+    let res: any
+    if (logMode.value === 'time') {
+      const since = logTimeWindow.value === 0 ? 0 : Math.floor(Date.now() / 1000) - logTimeWindow.value
+      res = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { since })
+    } else {
+      res = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
+    }
     containerLogs.value = res.data?.logs || ''
+    await nextTick(() => scrollLogToBottom(true))
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载日志失败')
   } finally {
     logsLoading.value = false
+  }
+}
+
+// ─── 实时跟随（SSE） ───────────────────────────────────────
+function startLiveFollow() {
+  if (!selectedContainer.value) return
+  stopLiveFollow()
+  liveSince = Math.floor(Date.now() / 1000)
+  const url = buildDockerLogStreamUrl(hostName.value, selectedContainer.value.container_id, liveSince)
+  containerLogs.value = ''
+  logEs = new EventSource(url)
+  logEs.onmessage = (ev) => {
+    let data: any
+    try {
+      data = JSON.parse(ev.data)
+    } catch {
+      return
+    }
+    if (data.type === 'append') {
+      const add = data.lines || ''
+      if (!add) return
+      containerLogs.value = containerLogs.value ? `${containerLogs.value}\n${add}` : add
+      trimLogsTail()
+      nextTick(() => scrollLogToBottom(false))
+    } else if (data.type === 'error') {
+      ElMessage.warning(data.message || '实时拉取出错')
+    }
+    // ready / heartbeat / done 不需要前端处理
+  }
+  logEs.onerror = () => {
+    // 401（未登录/无权限）→ readyState=CLOSED 且不自动重连；暂态网络错误由浏览器自动重连
+    if (logEs && logEs.readyState === EventSource.CLOSED) {
+      ElMessage.error('实时连接已断开，请检查登录状态或权限')
+      liveFollow.value = false
+      stopLiveFollow()
+    }
+  }
+}
+
+function stopLiveFollow() {
+  if (logEs) {
+    logEs.close()
+    logEs = null
+  }
+}
+
+function onLiveFollowChange(val: boolean | string | number) {
+  if (val) startLiveFollow()
+  else stopLiveFollow()
+}
+
+function onLogModeChange() {
+  stopLiveFollow()
+  liveFollow.value = false
+  fetchSelectedContainerLogs()
+}
+
+function scrollLogToBottom(force = false) {
+  const el = logScrollRef.value
+  if (!el) return
+  const nearBottom = force || el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  if (nearBottom) el.scrollTop = el.scrollHeight
+}
+
+function trimLogsTail() {
+  const lines = containerLogs.value.split('\n')
+  if (lines.length > LIVE_LOG_MAX_LINES) {
+    containerLogs.value = lines.slice(lines.length - LIVE_LOG_MAX_LINES).join('\n')
   }
 }
 
@@ -636,10 +764,26 @@ function stopAutoRefresh() {
 
 let activeLoadRef = ''
 watch(hostName, loadHostDetail)
+// 抽屉关闭必须关闭 EventSource（destroy-on-close 只销毁 DOM，不关连接）
+watch(logsDrawerVisible, (v) => {
+  if (!v) {
+    stopLiveFollow()
+    liveFollow.value = false
+  }
+})
 
 onActivated(loadHostDetail)
 
-onDeactivated(stopAutoRefresh)
+onDeactivated(() => {
+  stopAutoRefresh()
+  stopLiveFollow()
+  liveFollow.value = false
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
+  stopLiveFollow()
+})
 </script>
 
 <style scoped>
@@ -966,18 +1110,23 @@ onDeactivated(stopAutoRefresh)
 .log-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
   color: var(--text-secondary);
   font-size: 13px;
 }
 .log-tail-select {
-  width: 110px;
+  width: 120px;
 }
 .log-count {
-  margin-left: auto;
   color: var(--text-muted);
   font-size: 12px;
+}
+.log-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
 }
 .log-scroll {
   flex: 1;

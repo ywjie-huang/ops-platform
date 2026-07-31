@@ -23,6 +23,7 @@ import os
 import platform
 import re
 import time
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Lock
 from typing import Any
@@ -36,6 +37,7 @@ import psutil
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "9001"))
 DEFAULT_LOG_TAIL = 300
 MAX_LOG_TAIL = 1000
+MAX_LOG_TAIL_WITH_SINCE = 5000  # 时间段模式：时间窗做主过滤后，行数上限放宽
 
 logging.basicConfig(
     level=logging.INFO,
@@ -196,17 +198,67 @@ def normalize_tail_lines(value: Any, default: int = DEFAULT_LOG_TAIL) -> int:
     return max(1, min(tail_lines, MAX_LOG_TAIL))
 
 
-def read_container_logs(container_id: str, tail_lines: int = DEFAULT_LOG_TAIL) -> str:
+def _parse_log_time(value: Any) -> datetime | None:
+    """把 since/until 解析为 tz-aware UTC datetime；失败返回 None。
+
+    接受：unix 秒(int/str)（主路径，后端/前端都传秒），或 ISO8601 字符串(带/不带 Z)。
+    """
+    if value is None:
+        return None
+    # 1) unix 秒
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        pass
+    # 2) ISO8601 字符串
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            try:
+                dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except ValueError:
+                return None
+    return None
+
+
+def read_container_logs(
+    container_id: str,
+    tail_lines: Any = DEFAULT_LOG_TAIL,
+    since: Any = None,
+    until: Any = None,
+) -> str:
     if not _docker_client:
         raise RuntimeError("docker client not available")
 
+    since_dt = _parse_log_time(since)
+    until_dt = _parse_log_time(until)
+
+    if since_dt is None:
+        # 纯按行数模式：tail 钳到 [1, MAX_LOG_TAIL]
+        tail = normalize_tail_lines(tail_lines)
+    else:
+        # 时间段模式：时间窗做主过滤，tail 放宽上限到 MAX_LOG_TAIL_WITH_SINCE
+        try:
+            tail = max(1, min(int(tail_lines or MAX_LOG_TAIL_WITH_SINCE), MAX_LOG_TAIL_WITH_SINCE))
+        except (TypeError, ValueError):
+            tail = MAX_LOG_TAIL_WITH_SINCE
+
+    kwargs: dict[str, Any] = {
+        "stdout": True,
+        "stderr": True,
+        "timestamps": True,
+        "tail": tail,
+    }
+    if since_dt is not None:
+        kwargs["since"] = since_dt
+    if until_dt is not None:
+        kwargs["until"] = until_dt
+
     container = _docker_client.containers.get(container_id)
-    raw = container.logs(
-        stdout=True,
-        stderr=True,
-        tail=normalize_tail_lines(tail_lines),
-        timestamps=True,
-    )
+    raw = container.logs(**kwargs)
     if isinstance(raw, bytes):
         return raw.decode("utf-8", errors="replace")
     return str(raw or "")
@@ -275,10 +327,20 @@ class AgentHandler(BaseHTTPRequestHandler):
 
         elif m := re.match(r'^/containers/([a-f0-9]{12,64})/logs$', path):
             query = parse_qs(parsed.query)
-            tail_lines = normalize_tail_lines((query.get("tail") or [DEFAULT_LOG_TAIL])[0])
+            tail_raw = (query.get("tail") or [None])[0]
+            since_raw = (query.get("since") or [None])[0]
+            until_raw = (query.get("until") or [None])[0]
             try:
-                logs = read_container_logs(m.group(1), tail_lines)
-                self._json_response({"status": "ok", "logs": logs, "tail": tail_lines})
+                logs = read_container_logs(
+                    m.group(1), tail_lines=tail_raw, since=since_raw, until=until_raw
+                )
+                self._json_response({
+                    "status": "ok",
+                    "logs": logs,
+                    "tail": tail_raw,
+                    "since": since_raw,
+                    "until": until_raw,
+                })
             except docker.errors.NotFound:
                 self._json_response({"error": f"容器 {m.group(1)} 不存在"}, 404)
             except Exception as e:
