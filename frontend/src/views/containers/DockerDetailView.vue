@@ -327,6 +327,7 @@
         </div>
       </div>
       <div class="drawer-body inspect-body" v-loading="inspectLoading">
+        <div class="inspect-scroll">
         <template v-if="inspectData">
           <section class="inspect-section">
             <h4 class="inspect-section-title">基本信息</h4>
@@ -469,6 +470,7 @@
           </section>
         </template>
         <el-empty v-else-if="!inspectLoading" description="暂无详情数据" />
+        </div>
       </div>
     </el-drawer>
   </div>
@@ -1522,32 +1524,46 @@ onUnmounted(() => {
 }
 /* ─── 容器 inspect 详情 ─── */
 .inspect-body {
+  padding: 0;
+  overflow: hidden;
+}
+.inspect-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--bg-color);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 .inspect-section {
+  flex: none;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  background: var(--bg-color);
+  border-radius: 10px;
+  background: var(--surface-color);
   overflow: hidden;
 }
 .inspect-section-title {
   margin: 0;
-  padding: 10px 14px;
+  padding: 11px 14px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
   color: var(--text-primary);
-  background: var(--surface-color);
   border-bottom: 1px solid var(--border-color);
 }
 .inspect-section.collapsible .inspect-section-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  background: var(--surface-color);
-  border-bottom: 1px solid var(--border-color);
+  padding: 11px 14px;
   cursor: pointer;
   user-select: none;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s ease-out;
+}
+.inspect-section.collapsible .inspect-section-head:hover {
+  background: var(--bg-color);
 }
 .inspect-section.collapsible .inspect-section-head:focus-visible {
   outline: none;
@@ -1557,9 +1573,10 @@ onUnmounted(() => {
   flex: 1;
   padding: 0;
   border: 0;
-  background: transparent;
 }
 .inspect-section-summary {
+  flex: none;
+  max-width: 55%;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -1581,26 +1598,38 @@ onUnmounted(() => {
 .inspect-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 16px;
+  gap: 10px 18px;
   margin: 0;
 }
 .inspect-field {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: baseline;
+  gap: 10px;
 }
 .inspect-field-wide {
   grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
 }
 .inspect-field dt {
+  flex: none;
+  width: 72px;
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.6;
+}
+.inspect-field-wide dt {
+  width: auto;
 }
 .inspect-field dd {
   margin: 0;
+  flex: 1;
+  min-width: 0;
   color: var(--text-primary);
   font-size: 13px;
+  line-height: 1.6;
   word-break: break-word;
 }
 .kv-list {
@@ -1608,47 +1637,61 @@ onUnmounted(() => {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
 }
 .kv-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 180px) 1fr auto;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+}
+.kv-item:last-child {
+  border-bottom: 0;
 }
 .kv-item-block {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 .kv-key {
   color: var(--text-secondary);
-  flex: none;
-  max-width: 40%;
+  font-size: 12px;
+  word-break: break-all;
+  min-width: 0;
 }
 .kv-value {
   color: var(--text-primary);
-  flex: 1;
+  font-size: 13px;
+  word-break: break-all;
   min-width: 0;
 }
 .kv-value.masked {
   color: var(--text-muted);
   letter-spacing: 1px;
+  font-size: 12px;
 }
 .kv-reveal {
   flex: none;
-  padding: 0 4px;
   height: auto;
+  padding: 0;
+  font-size: 12px;
 }
 .kv-arrow {
   color: var(--text-muted);
-  margin: 0 4px;
+  margin: 0 6px;
 }
 .kv-empty {
   color: var(--text-muted);
   font-size: 13px;
+  padding: 7px 0;
 }
 .inspect-sub {
-  margin-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
   display: grid;
   gap: 4px;
 }
@@ -1663,12 +1706,14 @@ onUnmounted(() => {
   .inspect-grid {
     grid-template-columns: 1fr;
   }
-  .kv-key {
-    max-width: 45%;
+  .kv-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .inspect-caret {
+  .inspect-caret,
+  .inspect-section.collapsible .inspect-section-head {
     transition: none;
   }
 }
