@@ -205,9 +205,10 @@
               <el-table-column label="创建时间" width="150" align="center">
                 <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="150" align="center" fixed="right">
+              <el-table-column label="操作" width="210" align="center" fixed="right">
                 <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="openPodDrawer(row, 'logs')">日志</el-button>
+                  <el-button link type="primary" size="small" @click="openPodDetail(row)">详情</el-button>
+                  <el-button link type="info" size="small" @click="openPodDrawer(row, 'logs')">日志</el-button>
                   <el-button link type="info" size="small" @click="openPodDrawer(row, 'events')">事件</el-button>
                   <el-button link type="danger" size="small" @click="confirmDeletePod(row)">删除</el-button>
                 </template>
@@ -650,6 +651,196 @@
       </div>
     </el-drawer>
 
+    <el-drawer v-model="podDetailVisible" size="780px" :with-header="false" destroy-on-close>
+      <div class="drawer-head">
+        <div class="drawer-head-copy">
+          <h3>{{ detailPod?.name || 'Pod 详情' }}</h3>
+          <div class="drawer-sub">
+            {{ detailMeta.namespace || '-' }} ·
+            <el-tag :type="phaseTagType" size="small" effect="plain">{{ detailPhase }}</el-tag>
+            · 节点 {{ detailSpec.nodeName || '-' }}
+          </div>
+        </div>
+        <div class="drawer-actions">
+          <el-button size="small" :loading="podDetailLoading" @click="loadPodDetail">刷新</el-button>
+        </div>
+      </div>
+      <div class="drawer-body inspect-body" v-loading="podDetailLoading">
+        <div class="inspect-scroll">
+          <template v-if="detailPodData">
+            <section class="inspect-section">
+              <h4 class="inspect-section-title">基本信息</h4>
+              <dl class="inspect-grid">
+                <div class="inspect-field inspect-field-wide"><dt>UID</dt><dd class="mono break-all">{{ detailMeta.uid || '-' }}</dd></div>
+                <div class="inspect-field"><dt>命名空间</dt><dd>{{ detailMeta.namespace || '-' }}</dd></div>
+                <div class="inspect-field"><dt>节点</dt><dd class="mono">{{ detailSpec.nodeName || '-' }}</dd></div>
+                <div class="inspect-field"><dt>Pod IP</dt><dd class="mono">{{ detailStatus.podIP || '-' }}</dd></div>
+                <div class="inspect-field"><dt>Host IP</dt><dd class="mono">{{ detailStatus.hostIP || '-' }}</dd></div>
+                <div class="inspect-field"><dt>QoS</dt><dd>{{ detailStatus.qosClass || '-' }}</dd></div>
+                <div class="inspect-field"><dt>创建时间</dt><dd>{{ formatTime(detailMeta.creationTimestamp) }}</dd></div>
+                <div class="inspect-field"><dt>启动时间</dt><dd>{{ formatTime(detailStatus.startTime) }}</dd></div>
+              </dl>
+            </section>
+
+            <section class="inspect-section">
+              <h4 class="inspect-section-title">控制器 / 网络 / 调度</h4>
+              <dl class="inspect-grid">
+                <div class="inspect-field inspect-field-wide"><dt>所属控制器</dt><dd>{{ detailOwnersText }}</dd></div>
+                <div class="inspect-field"><dt>重启策略</dt><dd>{{ detailSpec.restartPolicy || '-' }}</dd></div>
+                <div class="inspect-field"><dt>DNS 策略</dt><dd>{{ detailSpec.dnsPolicy || '-' }}</dd></div>
+                <div class="inspect-field"><dt>ServiceAccount</dt><dd class="mono">{{ detailSpec.serviceAccountName || '-' }}</dd></div>
+                <div class="inspect-field"><dt>hostNetwork</dt><dd>{{ detailSpec.hostNetwork ? '是' : '否' }}</dd></div>
+                <div class="inspect-field"><dt>优先级类</dt><dd>{{ detailSpec.priorityClassName || '-' }}</dd></div>
+              </dl>
+              <div v-if="detailNodeSelectorText !== '-'" class="inspect-sub">
+                <div class="inspect-sub-title">nodeSelector</div>
+                <div class="mono break-all">{{ detailNodeSelectorText }}</div>
+              </div>
+              <div v-if="detailTolerations.length" class="inspect-sub">
+                <div class="inspect-sub-title">容忍（{{ detailTolerations.length }}）</div>
+                <div v-for="(t, i) in detailTolerations" :key="i" class="mono break-all">{{ t }}</div>
+              </div>
+            </section>
+
+            <section class="inspect-section">
+              <h4 class="inspect-section-title">状态（{{ detailPhase }}）</h4>
+              <div class="inspect-conditions">
+                <div v-for="(c, i) in detailConditions" :key="i" class="condition-row">
+                  <el-tag :type="c.status === 'True' ? 'success' : 'info'" size="small" effect="plain">{{ c.type }}</el-tag>
+                  <span class="cond-status mono">{{ c.status }}</span>
+                  <span v-if="c.reason" class="cond-reason">{{ c.reason }}</span>
+                  <span v-if="c.message" class="cond-message">{{ c.message }}</span>
+                </div>
+                <div v-if="!detailConditions.length" class="kv-empty">无状态信息</div>
+              </div>
+            </section>
+
+            <template v-for="group in detailContainerGroups" :key="group.label">
+              <section v-for="(c, idx) in group.list" :key="`${group.label}-${idx}`" class="inspect-section collapsible">
+                <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed(c.foldKey)" @click="toggleSection(c.foldKey)" @keyup.enter="toggleSection(c.foldKey)">
+                  <h4 class="inspect-section-title">{{ group.label }} {{ c.name }}</h4>
+                  <span class="inspect-section-summary">{{ c.state.label }} · 重启 {{ c.status?.restartCount ?? 0 }}</span>
+                  <el-icon class="inspect-caret" :class="{ open: !isSectionCollapsed(c.foldKey) }" aria-hidden="true"><ArrowDown /></el-icon>
+                </header>
+                <div v-show="!isSectionCollapsed(c.foldKey)" class="inspect-section-body">
+                  <dl class="inspect-grid">
+                    <div class="inspect-field inspect-field-wide"><dt>镜像</dt><dd class="mono break-all">{{ c.spec.image || '-' }}</dd></div>
+                    <div class="inspect-field inspect-field-wide"><dt>镜像 ID</dt><dd class="mono break-all">{{ c.status?.imageID || '-' }}</dd></div>
+                    <div class="inspect-field"><dt>状态</dt><dd><el-tag :type="c.state.tag" size="small">{{ c.state.label }}</el-tag></dd></div>
+                    <div class="inspect-field"><dt>就绪</dt><dd>{{ c.status?.ready ? '是' : '否' }}</dd></div>
+                    <div class="inspect-field"><dt>重启</dt><dd class="mono" :class="{ 'text-danger': (c.status?.restartCount ?? 0) > 5 }">{{ c.status?.restartCount ?? 0 }}</dd></div>
+                    <div class="inspect-field"><dt>拉取策略</dt><dd>{{ c.spec.imagePullPolicy || '-' }}</dd></div>
+                  </dl>
+                  <div v-if="c.state.detail" class="inspect-sub">
+                    <div class="inspect-sub-title">状态详情</div>
+                    <div class="mono break-all">{{ c.state.detail }}</div>
+                  </div>
+                  <dl class="inspect-grid sub-grid">
+                    <div class="inspect-field inspect-field-wide"><dt>command</dt><dd class="mono break-all">{{ joinCmd(c.spec.command) }}</dd></div>
+                    <div class="inspect-field inspect-field-wide"><dt>args</dt><dd class="mono break-all">{{ joinCmd(c.spec.args) }}</dd></div>
+                    <div class="inspect-field"><dt>端口</dt><dd class="mono break-all">{{ formatPorts(c.spec.ports) }}</dd></div>
+                    <div class="inspect-field"><dt>工作目录</dt><dd class="mono">{{ c.spec.workingDir || '-' }}</dd></div>
+                    <div class="inspect-field"><dt>TTY</dt><dd>{{ c.spec.tty ? '是' : '否' }}</dd></div>
+                  </dl>
+                  <div class="inspect-sub">
+                    <div class="inspect-sub-title">资源 requests / limits</div>
+                    <div class="mono break-all">requests {{ c.resources.requests }} · limits {{ c.resources.limits }}</div>
+                  </div>
+                  <div v-if="c.probes.length" class="inspect-sub">
+                    <div class="inspect-sub-title">探针</div>
+                    <div v-for="p in c.probes" :key="p.kind" class="mono break-all"><b>{{ p.kind }}</b> · {{ p.probe }} <span class="cond-message">{{ p.timing }}</span></div>
+                  </div>
+                  <div v-if="c.env.length" class="inspect-sub">
+                    <div class="inspect-sub-title">环境变量（{{ c.env.length }}）</div>
+                    <ul class="kv-list">
+                      <li v-for="item in c.env" :key="item.key" class="kv-item">
+                        <span class="kv-key mono break-all">{{ item.key }}</span>
+                        <span class="kv-value mono break-all" :class="{ masked: item.sensitive && !revealedEnvKeys.has(`${c.name}/${item.key}`) }">{{ envDisplayValue(item, c.name) }}</span>
+                        <el-button v-if="item.sensitive" link size="small" class="kv-reveal" :aria-label="revealedEnvKeys.has(`${c.name}/${item.key}`) ? `隐藏 ${item.key}` : `显示 ${item.key}`" @click="toggleEnvReveal(`${c.name}/${item.key}`)">{{ revealedEnvKeys.has(`${c.name}/${item.key}`) ? '隐藏' : '显示' }}</el-button>
+                      </li>
+                    </ul>
+                  </div>
+                  <div v-if="c.mounts.length" class="inspect-sub">
+                    <div class="inspect-sub-title">卷挂载（{{ c.mounts.length }}）</div>
+                    <ul class="kv-list">
+                      <li v-for="(m, mi) in c.mounts" :key="mi" class="kv-item kv-item-block">
+                        <span class="mono break-all">{{ m.name }} <span class="kv-arrow">→</span> {{ m.path }}<template v-if="m.subPath"> · subPath {{ m.subPath }}</template></span>
+                        <el-tag v-if="m.readOnly" size="small" type="info">只读</el-tag>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+            </template>
+
+            <section class="inspect-section collapsible">
+              <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('volumes')" @click="toggleSection('volumes')" @keyup.enter="toggleSection('volumes')">
+                <h4 class="inspect-section-title">卷 Volumes</h4>
+                <span class="inspect-section-summary">{{ detailVolumes.length }} 项</span>
+                <el-icon class="inspect-caret" :class="{ open: !isSectionCollapsed('volumes') }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!isSectionCollapsed('volumes')" class="inspect-section-body">
+                <ul class="kv-list">
+                  <li v-for="(v, i) in detailVolumes" :key="i" class="kv-item kv-item-block">
+                    <span class="mono break-all"><b>{{ v.name }}</b> · {{ v.type }}<template v-if="v.detail"> · {{ v.detail }}</template></span>
+                  </li>
+                  <li v-if="!detailVolumes.length" class="kv-empty">无卷</li>
+                </ul>
+              </div>
+            </section>
+
+            <section class="inspect-section collapsible">
+              <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('events')" @click="toggleSection('events')" @keyup.enter="toggleSection('events')">
+                <h4 class="inspect-section-title">事件</h4>
+                <span class="inspect-section-summary">{{ detailPodEvents.length }} 条 · Warning {{ detailPodEventsWarningCount }}</span>
+                <el-icon class="inspect-caret" :class="{ open: !isSectionCollapsed('events') }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!isSectionCollapsed('events')" class="inspect-section-body">
+                <div class="inspect-event-list">
+                  <div v-for="(ev, i) in detailPodEvents" :key="i" class="inspect-event-item">
+                    <i class="event-dot" :class="eventDotClass(ev.type)" aria-hidden="true"></i>
+                    <div class="inspect-event-body">
+                      <strong>{{ ev.reason || '-' }}</strong>
+                      <p>{{ ev.message || '-' }}</p>
+                      <span class="event-sub">×{{ ev.count ?? 1 }} · {{ formatTime(ev.last_timestamp) }}</span>
+                    </div>
+                  </div>
+                  <el-empty v-if="!detailPodEvents.length" description="暂无事件" :image-size="48" />
+                </div>
+              </div>
+            </section>
+
+            <section class="inspect-section collapsible">
+              <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('labels')" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
+                <h4 class="inspect-section-title">标签 / 注解</h4>
+                <span class="inspect-section-summary">{{ detailLabelCount }}</span>
+                <el-icon class="inspect-caret" :class="{ open: !isSectionCollapsed('labels') }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!isSectionCollapsed('labels')" class="inspect-section-body">
+                <div class="inspect-sub-title">标签（{{ detailLabels.length }}）</div>
+                <ul class="kv-list">
+                  <li v-for="item in detailLabels" :key="item.key" class="kv-item">
+                    <span class="kv-key mono break-all">{{ item.key }}</span>
+                    <span class="kv-value mono break-all">{{ item.value || '(空)' }}</span>
+                  </li>
+                  <li v-if="!detailLabels.length" class="kv-empty">无标签</li>
+                </ul>
+                <div class="inspect-sub-title sub-title-gap">注解（{{ detailAnnotations.length }}）</div>
+                <ul class="kv-list">
+                  <li v-for="item in detailAnnotations" :key="item.key" class="kv-item">
+                    <span class="kv-key mono break-all">{{ item.key }}</span>
+                    <span class="kv-value mono break-all">{{ item.value || '(空)' }}</span>
+                  </li>
+                  <li v-if="!detailAnnotations.length" class="kv-empty">无注解</li>
+                </ul>
+              </div>
+            </section>
+          </template>
+          <el-empty v-else-if="!podDetailLoading" description="暂无详情数据" />
+        </div>
+      </div>
+    </el-drawer>
+
     <el-dialog v-model="svcDetailVisible" :title="svcDialogTitle" width="600px">
       <el-descriptions v-if="selectedService" :column="1" border>
         <el-descriptions-item label="名称">{{ selectedService.name }}</el-descriptions-item>
@@ -791,6 +982,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import LogHighlightedText from '@/components/LogHighlightedText'
 import {
+  ArrowDown,
   ArrowLeft,
   CaretBottom,
   CaretTop,
@@ -815,6 +1007,7 @@ import {
   getClusterEvents,
   getClusterResources,
   getNodeMaintenancePreview,
+  getPodDetail,
   getPodEvents,
   getPodLogs,
   buildPodLogStreamUrl,
@@ -1753,6 +1946,237 @@ async function loadPodEvents() {
     ElMessage.error(e?.response?.data?.detail || '加载事件失败')
   } finally {
     eventsLoading.value = false
+  }
+}
+
+// ─── Pod 详情（对标 Docker inspect）────────────────────────
+type ContainerStateTag = 'success' | 'warning' | 'danger' | 'info'
+interface PodEnvItem { key: string; value: string; sensitive: boolean }
+interface PodMountItem { name: string; path: string; readOnly: boolean; subPath: string }
+interface PodProbeItem { kind: string; probe: string; timing: string }
+interface PodDetailContainer {
+  foldKey: string
+  name: string
+  spec: any
+  status: any
+  state: { label: string; tag: ContainerStateTag; detail: string }
+  resources: { requests: string; limits: string }
+  env: PodEnvItem[]
+  mounts: PodMountItem[]
+  probes: PodProbeItem[]
+}
+
+const podDetailVisible = ref(false)
+const podDetailLoading = ref(false)
+const detailPod = ref<K8sPod | null>(null)
+const detailPodData = ref<any>(null)
+const detailPodEvents = ref<PodEvent[]>([])
+const revealedEnvKeys = ref<Set<string>>(new Set())
+const detailCollapse = reactive<Record<string, boolean>>({})
+
+const SENSITIVE_ENV_RE = /(pass(word|wd)?|secret|token|api[-_]?key|credential|private[-_]?key|access[-_]?key|auth)/i
+
+function isSectionCollapsed(key: string) {
+  return detailCollapse[key] === true
+}
+function toggleSection(key: string) {
+  detailCollapse[key] = !isSectionCollapsed(key)
+}
+
+const detailMeta = computed(() => detailPodData.value?.metadata || {})
+const detailSpec = computed(() => detailPodData.value?.spec || {})
+const detailStatus = computed(() => detailPodData.value?.status || {})
+const detailPhase = computed(() => detailStatus.value.phase || '-')
+const phaseTagType = computed(() => {
+  const phase = detailPhase.value
+  if (phase === 'Running' || phase === 'Succeeded') return 'success'
+  if (phase === 'Failed') return 'danger'
+  return 'warning'
+})
+const detailOwnersText = computed(() => {
+  const refs = detailMeta.value.ownerReferences || []
+  if (!refs.length) return '无（独立 Pod）'
+  return refs.map((r: any) => `${r.kind}/${r.name}`).join('，')
+})
+const detailNodeSelectorText = computed(() => {
+  const ns = detailSpec.value.nodeSelector
+  if (!ns) return '-'
+  return Object.entries(ns).map(([k, v]) => `${k}=${v}`).join('，')
+})
+const detailTolerations = computed(() => {
+  const list = detailSpec.value.tolerations || []
+  return list.map((t: any) => {
+    let s = t.key || '*'
+    if (t.operator === 'Equal' || (!t.operator && t.value != null)) s += `=${t.value ?? ''}`
+    else if (t.operator === 'Exists') s += ' Exists'
+    if (t.effect) s += ` · ${t.effect}`
+    if (t.tolerationSeconds != null) s += ` · ${t.tolerationSeconds}s`
+    return s
+  })
+})
+const detailConditions = computed(() => detailStatus.value.conditions || [])
+const detailVolumes = computed(() => (detailSpec.value.volumes || []).map((v: any) => formatVolume(v)))
+const detailLabels = computed(() => labelEntries(detailMeta.value.labels))
+const detailAnnotations = computed(() => labelEntries(detailMeta.value.annotations))
+const detailLabelCount = computed(() => `${detailLabels.value.length} 标签 · ${detailAnnotations.value.length} 注解`)
+const detailPodEventsWarningCount = computed(() => detailPodEvents.value.filter((e) => e.type === 'Warning').length)
+
+function labelEntries(obj?: Record<string, any>) {
+  if (!obj) return []
+  return Object.entries(obj).map(([key, value]) => ({ key, value: String(value ?? '') }))
+}
+
+function joinCmd(list?: string[] | null) {
+  return Array.isArray(list) && list.length ? list.join(' ') : '-'
+}
+function formatPorts(ports?: any[]) {
+  if (!ports || !ports.length) return '-'
+  return ports.map((p) => {
+    let s = String(p.containerPort)
+    if (p.hostPort) s += `→${p.hostPort}`
+    if (p.protocol && p.protocol !== 'TCP') s += `/${p.protocol}`
+    if (p.name) s += ` (${p.name})`
+    return s
+  }).join('，')
+}
+function formatResources(resources?: any) {
+  const fmt = (m: any) => m && Object.keys(m).length ? Object.entries(m).map(([k, v]) => `${k}=${v}`).join('，') : '-'
+  return { requests: fmt(resources?.requests), limits: fmt(resources?.limits) }
+}
+function formatContainerState(status?: any): { label: string; tag: ContainerStateTag; detail: string } {
+  const state = status?.state || {}
+  if (state.running) return { label: 'Running', tag: 'success', detail: '启动于 ' + formatTime(state.running.startedAt) }
+  if (state.waiting) return { label: state.waiting.reason || 'Waiting', tag: 'warning', detail: state.waiting.message || '' }
+  if (state.terminated) {
+    const t = state.terminated
+    return { label: t.reason || 'Terminated', tag: t.exitCode === 0 ? 'info' : 'danger', detail: `退出码 ${t.exitCode ?? '-'}` + (t.finishedAt ? ` · 完成于 ${formatTime(t.finishedAt)}` : '') }
+  }
+  return { label: '未启动', tag: 'info', detail: '' }
+}
+function formatProbe(probe?: any): { probe: string; timing: string } | null {
+  if (!probe) return null
+  const parts: string[] = []
+  if (probe.httpGet) parts.push(`HTTP GET ${probe.httpGet.path || '/'}:${probe.httpGet.port}`)
+  else if (probe.exec) parts.push('EXEC ' + (probe.exec.command || []).join(' '))
+  else if (probe.tcpSocket) parts.push(`TCP :${probe.tcpSocket.port}`)
+  else if (probe.grpc) parts.push(`gRPC :${probe.grpc.port}`)
+  else parts.push('未知类型')
+  const timing: string[] = []
+  if (probe.initialDelaySeconds) timing.push(`初始 ${probe.initialDelaySeconds}s`)
+  if (probe.periodSeconds) timing.push(`间隔 ${probe.periodSeconds}s`)
+  if (probe.timeoutSeconds) timing.push(`超时 ${probe.timeoutSeconds}s`)
+  if (probe.successThreshold) timing.push(`成功 ${probe.successThreshold}`)
+  if (probe.failureThreshold) timing.push(`失败 ${probe.failureThreshold}`)
+  return { probe: parts.join(' · '), timing: timing.join(' · ') }
+}
+function buildProbes(spec: any): PodProbeItem[] {
+  const out: PodProbeItem[] = []
+  for (const kind of ['liveness', 'readiness', 'startup']) {
+    const f = formatProbe(spec[`${kind}Probe`])
+    if (f) out.push({ kind, probe: f.probe, timing: f.timing })
+  }
+  return out
+}
+function podEnvItems(env?: any[]): PodEnvItem[] {
+  if (!env || !env.length) return []
+  return env.map((e: any) => ({
+    key: e.name || '',
+    value: e.value != null ? String(e.value) : (e.valueFrom ? '(值来自引用)' : ''),
+    sensitive: SENSITIVE_ENV_RE.test(e.name || ''),
+  }))
+}
+function envDisplayValue(item: PodEnvItem, containerName: string) {
+  const key = `${containerName}/${item.key}`
+  if (item.sensitive && !revealedEnvKeys.value.has(key)) return '••••••••'
+  return item.value || '(空)'
+}
+function toggleEnvReveal(key: string) {
+  const next = new Set(revealedEnvKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  revealedEnvKeys.value = next
+}
+function formatMounts(mounts?: any[]): PodMountItem[] {
+  if (!mounts || !mounts.length) return []
+  return mounts.map((m: any) => ({ name: m.name || '', path: m.mountPath || '', readOnly: !!m.readOnly, subPath: m.subPath || '' }))
+}
+function formatVolume(v: any) {
+  const name = v?.name || '-'
+  const type = Object.keys(v || {}).find((k) => k !== 'name') || ''
+  return { name, type: type || '-', detail: type ? formatVolumeDetail(type, v[type]) : '' }
+}
+function formatVolumeDetail(type: string, spec: any) {
+  if (!spec) return ''
+  switch (type) {
+    case 'configMap': return spec.name ? `configMap/${spec.name}` : ''
+    case 'secret': return spec.secretName ? `secret/${spec.secretName}` : ''
+    case 'persistentVolumeClaim': return spec.claimName ? `PVC/${spec.claimName}` : ''
+    case 'emptyDir': return spec.medium === 'Memory' ? 'emptyDir(内存)' : ''
+    case 'hostPath': return spec.path ? `hostPath ${spec.path}` : ''
+    case 'nfs': return spec.server ? `nfs ${spec.server}:${spec.path || ''}` : ''
+    case 'csi': return spec.driver ? `csi/${spec.driver}` : ''
+    default: return ''
+  }
+}
+function buildDetailContainer(c: any, statusMap: Map<string, any>, foldPrefix: string): PodDetailContainer {
+  const status = statusMap.get(c.name)
+  return {
+    foldKey: `${foldPrefix}:${c.name || ''}`,
+    name: c.name || '',
+    spec: c,
+    status,
+    state: formatContainerState(status),
+    resources: formatResources(c.resources),
+    env: podEnvItems(c.env),
+    mounts: formatMounts(c.volumeMounts),
+    probes: buildProbes(c),
+  }
+}
+const detailContainers = computed<PodDetailContainer[]>(() => {
+  const pod = detailPodData.value
+  if (!pod) return []
+  const statusMap = new Map<string, any>((pod.status?.containerStatuses || []).map((s: any) => [s.name, s]))
+  return (pod.spec?.containers || []).map((c: any) => buildDetailContainer(c, statusMap, 'c'))
+})
+const detailInitContainers = computed<PodDetailContainer[]>(() => {
+  const pod = detailPodData.value
+  if (!pod) return []
+  const statusMap = new Map<string, any>((pod.status?.initContainerStatuses || []).map((s: any) => [s.name, s]))
+  return (pod.spec?.initContainers || []).map((c: any) => buildDetailContainer(c, statusMap, 'i'))
+})
+const detailContainerGroups = computed(() => {
+  const groups: { label: string; list: PodDetailContainer[] }[] = []
+  if (detailContainers.value.length) groups.push({ label: '容器', list: detailContainers.value })
+  if (detailInitContainers.value.length) groups.push({ label: '初始化容器', list: detailInitContainers.value })
+  return groups
+})
+
+async function openPodDetail(row: K8sPod) {
+  stopPodLiveFollow()
+  drawerVisible.value = false
+  detailPod.value = row
+  detailPodData.value = null
+  detailPodEvents.value = []
+  revealedEnvKeys.value = new Set()
+  Object.keys(detailCollapse).forEach((k) => delete detailCollapse[k])
+  detailCollapse.volumes = true
+  detailCollapse.events = true
+  detailCollapse.labels = true
+  podDetailVisible.value = true
+  await loadPodDetail()
+}
+async function loadPodDetail() {
+  if (!detailPod.value) return
+  podDetailLoading.value = true
+  try {
+    const res: any = await getPodDetail(clusterName.value, detailPod.value.namespace, detailPod.value.name)
+    detailPodData.value = res.data?.pod || null
+    detailPodEvents.value = res.data?.events || []
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载 Pod 详情失败')
+    detailPodData.value = null
+  } finally {
+    podDetailLoading.value = false
   }
 }
 
@@ -2890,6 +3314,261 @@ button.summary-card {
 
 .log-box:focus-visible {
   box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* ─── Pod 详情抽屉 ─── */
+.inspect-body {
+  padding: 0;
+  overflow: hidden;
+}
+.inspect-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--bg-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.inspect-section {
+  flex: none;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-color);
+  overflow: hidden;
+}
+.inspect-section-title {
+  margin: 0;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+.inspect-section.collapsible .inspect-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s ease-out;
+}
+.inspect-section.collapsible .inspect-section-head:hover {
+  background: var(--bg-color);
+}
+.inspect-section.collapsible .inspect-section-head:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+.inspect-section-head .inspect-section-title {
+  flex: 1;
+  padding: 0;
+  border: 0;
+}
+.inspect-section-summary {
+  flex: none;
+  max-width: 55%;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspect-caret {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.2s ease-out;
+}
+.inspect-caret.open {
+  transform: rotate(180deg);
+}
+.inspect-section-body {
+  padding: 12px 14px;
+}
+.inspect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+.inspect-grid.sub-grid {
+  margin-top: 10px;
+}
+.inspect-field {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.inspect-field-wide {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+.inspect-field dt {
+  flex: none;
+  width: 72px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.inspect-field-wide dt {
+  width: auto;
+}
+.inspect-field dd {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.inspect-sub {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  display: grid;
+  gap: 4px;
+}
+.inspect-sub-title {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.sub-title-gap {
+  margin-top: 10px;
+}
+.inspect-conditions {
+  display: grid;
+  gap: 8px;
+}
+.condition-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cond-status {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.cond-reason {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.cond-message {
+  color: var(--text-muted);
+  font-size: 12px;
+  min-width: 0;
+  word-break: break-all;
+}
+.inspect-event-list {
+  display: grid;
+  gap: 2px;
+}
+.inspect-event-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+}
+.inspect-event-item:last-child {
+  border-bottom: 0;
+}
+.inspect-event-body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+.inspect-event-body strong {
+  font-size: 13px;
+}
+.inspect-event-body p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+.kv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.kv-item {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+}
+.kv-item:last-child {
+  border-bottom: 0;
+}
+.kv-item-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kv-key {
+  color: var(--text-secondary);
+  font-size: 12px;
+  word-break: break-all;
+  min-width: 0;
+}
+.kv-value {
+  color: var(--text-primary);
+  font-size: 13px;
+  word-break: break-all;
+  min-width: 0;
+}
+.kv-value.masked {
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+.kv-reveal {
+  flex: none;
+  height: auto;
+  padding: 0;
+  font-size: 12px;
+}
+.kv-arrow {
+  color: var(--text-muted);
+  margin: 0 6px;
+}
+.kv-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 7px 0;
+}
+.break-all {
+  word-break: break-all;
+}
+@media (max-width: 768px) {
+  .inspect-grid {
+    grid-template-columns: 1fr;
+  }
+  .kv-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspect-caret,
+  .inspect-section.collapsible .inspect-section-head {
+    transition: none;
+  }
 }
 
 @media (max-width: 1200px) {

@@ -534,6 +534,39 @@ def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
     return pods
 
 
+def get_pod_detail(endpoint: str, token: str, namespace: str, pod_name: str) -> dict[str, Any]:
+    """获取单个 Pod 的完整 manifest + 关联事件，原样透传，由前端分区渲染。
+
+    K8s 没有 docker inspect 那样的单一聚合对象，单个 Pod 的完整对象
+    （metadata + spec + status）即为对等物：信息量足够，且高度结构化。
+    同时带上 Pod 相关事件（镜像拉取失败、调度失败、探针失败、OOM 等），
+    让前端一次请求拿全，避免发两次。
+    """
+    ns = quote(namespace, safe="")
+    pod = quote(pod_name, safe="")
+    url = f"{_clean(endpoint)}/api/v1/namespaces/{ns}/pods/{pod}"
+    try:
+        with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
+            resp = client.get(url, headers=_headers(token))
+            resp.raise_for_status()
+            raw_pod = resp.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"ok": False, "error": "Pod 不存在"}
+        if e.response.status_code == 403:
+            return {"ok": False, "error": "权限不足，无法读取 Pod 详情"}
+        return {"ok": False, "error": f"HTTP {e.response.status_code}"}
+    except Exception as e:
+        logger.error("K8s pod detail error [%s/%s]: %s", namespace, pod_name, e)
+        return {"ok": False, "error": str(e)}
+
+    return {
+        "ok": True,
+        "pod": raw_pod,
+        "events": get_pod_events(endpoint, token, namespace, pod_name),
+    }
+
+
 def get_services(endpoint: str, token: str) -> list[dict[str, Any]]:
     """获取 Service 列表。"""
     items = _get_list(endpoint, token, "/api/v1/services")

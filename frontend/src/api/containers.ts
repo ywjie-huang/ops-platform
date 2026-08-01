@@ -67,6 +67,9 @@ export function buildPodLogStreamUrl(name: string, namespace: string, podName: s
 export function getPodEvents(name: string, namespace: string, podName: string) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)
 }
+export function getPodDetail(name: string, namespace: string, podName: string) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
+}
 export function getClusterEvents(name: string) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/events`)
 }

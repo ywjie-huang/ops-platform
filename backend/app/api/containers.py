@@ -31,6 +31,7 @@ from app.services.k8s import (
     get_node_maintenance_preview,
     get_nodes,
     get_pod_events,
+    get_pod_detail,
     get_pod_logs,
     get_pods,
     get_services,
@@ -653,6 +654,24 @@ def api_pod_events(
     if not c.token:
         raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
     return {"code": 0, "data": get_pod_events(c.endpoint, c.token, namespace, pod_name)}
+
+
+@router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}")
+def api_pod_detail(
+    cluster_name: str,
+    namespace: str,
+    pod_name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    """获取 Pod 详情：完整 manifest + 关联事件，前端分区渲染（对标 Docker inspect）。"""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
+    result = get_pod_detail(c.endpoint, c.token, namespace, pod_name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "获取 Pod 详情失败"))
+    return {"code": 0, "data": {"pod": result.get("pod", {}), "events": result.get("events", [])}}
 
 
 @router.get("/clusters/{cluster_name}/events")
