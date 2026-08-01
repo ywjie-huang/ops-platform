@@ -253,7 +253,7 @@ function draftCredentialPayload(p: LLMProfile) {
     api_key: (p.api_key || '').trim(),
     model: p.model.trim(),
     api_mode: p.api_mode || 'chat_completions',
-    reasoning_effort: p.reasoning_effort || '',
+    reasoning_effort: (p.reasoning_effort || '') as '' | 'low' | 'medium' | 'high',
     provider: p.provider || '',
     profile_id: p.id,
   }

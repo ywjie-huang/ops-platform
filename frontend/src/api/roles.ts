@@ -1,6 +1,6 @@
 import request from './request'
 
-export function getRoles(params?: { keyword?: string; system_only?: boolean }) {
+export function getRoles(params?: { keyword?: string; system_only?: boolean; page?: number; page_size?: number }) {
   return request.get('/roles/', { params })
 }
 export function getRole(id: number) { return request.get(`/roles/${id}`) }

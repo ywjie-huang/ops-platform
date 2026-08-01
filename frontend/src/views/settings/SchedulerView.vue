@@ -171,11 +171,11 @@ function formatTime(iso: string | null): string {
   return new Date(iso).toLocaleString('zh-CN')
 }
 
-function statusType(status: string): '' | 'success' | 'danger' | 'warning' {
+function statusType(status: string): 'info' | 'success' | 'danger' | 'warning' {
   if (status === 'success') return 'success'
   if (status === 'failed') return 'danger'
   if (status === 'running') return 'warning'
-  return ''
+  return 'info'
 }
 
 function calcDuration(row: TaskExecutionLog): string {

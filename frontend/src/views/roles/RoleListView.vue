@@ -59,14 +59,14 @@
       <div class="perm-tree">
         <div v-for="group in permTree" :key="group.parent" class="perm-group">
           <div class="perm-group-header">
-            <el-checkbox :model-value="isParentChecked(group)" :indeterminate="isParentIndeterminate(group)" @change="toggleParent(group, $event)"><strong>{{ group.parent }}</strong></el-checkbox>
+            <el-checkbox :model-value="isParentChecked(group)" :indeterminate="isParentIndeterminate(group)" @change="toggleParent(group, Boolean($event))"><strong>{{ group.parent }}</strong></el-checkbox>
           </div>
           <div v-for="child in group.children" :key="child.module" class="perm-child-row">
             <div class="perm-child-label">
-              <el-checkbox :model-value="isChildChecked(child)" :indeterminate="isChildIndeterminate(child)" @change="toggleChild(child, $event)">{{ child.label }}</el-checkbox>
+              <el-checkbox :model-value="isChildChecked(child)" :indeterminate="isChildIndeterminate(child)" @change="toggleChild(child, Boolean($event))">{{ child.label }}</el-checkbox>
             </div>
             <div class="perm-func-list">
-              <el-checkbox v-for="p in child.permissions" :key="p.id" :model-value="permChecked.has(p.id)" @change="togglePerm(p, $event)">{{ p.name }}</el-checkbox>
+              <el-checkbox v-for="p in child.permissions" :key="p.id" :model-value="permChecked.has(p.id)" @change="togglePerm(p, Boolean($event))">{{ p.name }}</el-checkbox>
             </div>
           </div>
         </div>

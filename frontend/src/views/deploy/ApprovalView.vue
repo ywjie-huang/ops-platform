@@ -27,12 +27,12 @@
         </el-table-column>
         <el-table-column prop="trigger_user_name" label="触发人" width="90" />
         <el-table-column prop="trigger_type" label="触发方式" width="90">
-          <template #default="{ row }">{{ { manual: '手动', rollback: '回滚', webhook: 'Webhook' }[row.trigger_type] || row.trigger_type }}</template>
+          <template #default="{ row }">{{ ({ manual: '手动', rollback: '回滚', webhook: 'Webhook' } as Record<string, string>)[row.trigger_type] || row.trigger_type }}</template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="{ pending: 'warning', approved: 'success', rejected: 'danger' }[row.status]" size="small">
-              {{ { pending: '待审批', approved: '已通过', rejected: '已拒绝' }[row.status] }}
+            <el-tag :type="({ pending: 'warning', approved: 'success', rejected: 'danger' } as Record<string, 'warning' | 'success' | 'danger'>)[row.status]" size="small">
+              {{ ({ pending: '待审批', approved: '已通过', rejected: '已拒绝' } as Record<string, string>)[row.status] }}
             </el-tag>
           </template>
         </el-table-column>
