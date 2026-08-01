@@ -330,6 +330,19 @@ def api_container_logs(
     }
 
 
+@router.get("/hosts/{host_name}/containers/{container_id}/inspect")
+def api_container_inspect(
+    host_name: str,
+    container_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required(DOCKER_LOG_VIEW_PERMISSION)),
+):
+    """获取容器 inspect 详情：透传 Agent 返回的完整 attrs，字段裁剪交给前端。"""
+    h = _require_docker_host_by_name(db, host_name)
+    result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/inspect")
+    return {"code": 0, "data": {"inspect": result.get("inspect", {})}}
+
+
 # ─── SSE：近实时日志流 ─────────────────────────────────────
 
 

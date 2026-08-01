@@ -147,9 +147,16 @@
             <el-table-column label="更新时间" width="150">
               <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="250" fixed="right" align="right">
+            <el-table-column label="操作" width="300" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-cell">
+                  <el-button
+                    size="small"
+                    type="info"
+                    link
+                    :aria-label="`查看容器 ${row.name} 详情`"
+                    @click.stop="openContainerInspect(row)"
+                  >详情</el-button>
                   <el-button
                     size="small"
                     type="info"
@@ -305,14 +312,173 @@
         </div>
       </div>
     </el-drawer>
+
+    <el-drawer v-model="inspectDrawerVisible" size="760px" :with-header="false" destroy-on-close>
+      <div class="drawer-head">
+        <div class="drawer-head-copy">
+          <h3>{{ inspectContainer?.name || '容器详情' }}</h3>
+          <div class="drawer-sub">
+            <span class="mono">{{ inspectContainer?.image || '-' }}</span>
+            <template v-if="inspectContainer"> · {{ containerStatusLabel(inspectContainer.status) }}</template>
+          </div>
+        </div>
+        <div class="drawer-actions">
+          <el-button size="small" :loading="inspectLoading" @click="fetchContainerInspect">刷新</el-button>
+        </div>
+      </div>
+      <div class="drawer-body inspect-body" v-loading="inspectLoading">
+        <template v-if="inspectData">
+          <section class="inspect-section">
+            <h4 class="inspect-section-title">基本信息</h4>
+            <dl class="inspect-grid">
+              <div class="inspect-field inspect-field-wide"><dt>完整 ID</dt><dd class="mono break-all">{{ inspectData.Id || '-' }}</dd></div>
+              <div class="inspect-field"><dt>创建时间</dt><dd>{{ formatInspectTime(inspectData.Created) }}</dd></div>
+              <div class="inspect-field"><dt>启动时间</dt><dd>{{ formatInspectTime(inspectState.StartedAt) }}</dd></div>
+              <div class="inspect-field"><dt>PID</dt><dd class="mono">{{ inspectState.Pid ?? '-' }}</dd></div>
+              <div class="inspect-field"><dt>退出码</dt><dd class="mono" :class="{ 'text-danger': Number(inspectState.ExitCode) > 0 }">{{ inspectState.ExitCode ?? '-' }}</dd></div>
+              <div class="inspect-field"><dt>重启策略</dt><dd>{{ restartPolicyText }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="inspect-section">
+            <h4 class="inspect-section-title">运行配置</h4>
+            <dl class="inspect-grid">
+              <div class="inspect-field inspect-field-wide"><dt>启动命令 Cmd</dt><dd class="mono break-all">{{ cmdText }}</dd></div>
+              <div class="inspect-field inspect-field-wide"><dt>入口 Entrypoint</dt><dd class="mono break-all">{{ entrypointText }}</dd></div>
+              <div class="inspect-field"><dt>工作目录</dt><dd class="mono">{{ inspectConfig.WorkingDir || '/' }}</dd></div>
+              <div class="inspect-field"><dt>运行用户</dt><dd class="mono">{{ inspectConfig.User || 'root' }}</dd></div>
+              <div class="inspect-field"><dt>TTY</dt><dd>{{ inspectConfig.Tty ? '是' : '否' }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.env" @click="toggleSection('env')" @keyup.enter="toggleSection('env')">
+              <h4 class="inspect-section-title">环境变量</h4>
+              <span class="inspect-section-summary">{{ envItems.length }} 项</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.env }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.env" class="inspect-section-body">
+              <ul class="kv-list">
+                <li v-for="item in envItems" :key="item.key" class="kv-item">
+                  <span class="kv-key mono break-all">{{ item.key }}</span>
+                  <span class="kv-value mono break-all" :class="{ masked: item.sensitive && !revealedEnvKeys.has(item.key) }">{{ envDisplayValue(item) }}</span>
+                  <el-button v-if="item.sensitive" link size="small" class="kv-reveal" :aria-label="revealedEnvKeys.has(item.key) ? `隐藏 ${item.key} 值` : `显示 ${item.key} 值`" @click="toggleEnvReveal(item.key)">{{ revealedEnvKeys.has(item.key) ? '隐藏' : '显示' }}</el-button>
+                </li>
+                <li v-if="!envItems.length" class="kv-empty">无环境变量</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.network" @click="toggleSection('network')" @keyup.enter="toggleSection('network')">
+              <h4 class="inspect-section-title">网络</h4>
+              <span class="inspect-section-summary">{{ networkSummary }}</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.network }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.network" class="inspect-section-body">
+              <dl class="inspect-grid">
+                <div class="inspect-field"><dt>IP 地址</dt><dd class="mono">{{ inspectNetwork.IPAddress || '-' }}</dd></div>
+                <div class="inspect-field"><dt>网络模式</dt><dd class="mono">{{ inspectHostConfig.NetworkMode || '-' }}</dd></div>
+                <div class="inspect-field"><dt>MAC 地址</dt><dd class="mono">{{ inspectNetwork.MacAddress || '-' }}</dd></div>
+              </dl>
+              <div v-if="portBindingsText !== '-'" class="inspect-sub">
+                <div class="inspect-sub-title">端口映射</div>
+                <div class="mono break-all">{{ portBindingsText }}</div>
+              </div>
+              <div v-if="linkedNetworks.length" class="inspect-sub">
+                <div class="inspect-sub-title">连接的网络</div>
+                <div v-for="n in linkedNetworks" :key="n.name" class="mono">
+                  {{ n.name }}<template v-if="n.ip"> · {{ n.ip }}</template>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.mounts" @click="toggleSection('mounts')" @keyup.enter="toggleSection('mounts')">
+              <h4 class="inspect-section-title">挂载</h4>
+              <span class="inspect-section-summary">{{ inspectMounts.length }} 项</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.mounts }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.mounts" class="inspect-section-body">
+              <ul class="kv-list">
+                <li v-for="(m, i) in inspectMounts" :key="i" class="kv-item kv-item-block">
+                  <span class="mono break-all">{{ m.Source || m.Name }} <span class="kv-arrow">→</span> {{ m.Destination }}</span>
+                  <el-tag size="small" type="info">{{ m.Type || 'bind' }}{{ m.RW === false ? ' · 只读' : '' }}</el-tag>
+                </li>
+                <li v-if="!inspectMounts.length" class="kv-empty">无挂载</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.health" @click="toggleSection('health')" @keyup.enter="toggleSection('health')">
+              <h4 class="inspect-section-title">健康检查</h4>
+              <span class="inspect-section-summary">{{ healthSummary }}</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.health }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.health" class="inspect-section-body">
+              <template v-if="inspectConfig.Healthcheck || inspectState.Health">
+                <dl class="inspect-grid">
+                  <div v-if="inspectState.Health" class="inspect-field">
+                    <dt>当前状态</dt><dd><el-tag :type="inspectHealthTagType" size="small">{{ healthStatusLabel }}</el-tag></dd>
+                  </div>
+                  <div v-if="inspectState.Health" class="inspect-field"><dt>连续失败</dt><dd class="mono">{{ inspectState.Health.FailingStreak }}</dd></div>
+                  <div class="inspect-field inspect-field-wide"><dt>探针命令</dt><dd class="mono break-all">{{ healthcheckTestText }}</dd></div>
+                  <div class="inspect-field"><dt>间隔</dt><dd class="mono">{{ healthcheckIntervalText }}</dd></div>
+                  <div class="inspect-field"><dt>超时</dt><dd class="mono">{{ healthcheckTimeoutText }}</dd></div>
+                  <div class="inspect-field"><dt>重试次数</dt><dd class="mono">{{ inspectConfig.Healthcheck?.Retries ?? '-' }}</dd></div>
+                </dl>
+              </template>
+              <div v-else class="kv-empty">未配置健康检查</div>
+            </div>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.resources" @click="toggleSection('resources')" @keyup.enter="toggleSection('resources')">
+              <h4 class="inspect-section-title">资源限制</h4>
+              <span class="inspect-section-summary">{{ resourcesSummary }}</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.resources }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.resources" class="inspect-section-body">
+              <dl class="inspect-grid">
+                <div class="inspect-field"><dt>内存限制</dt><dd>{{ inspectHostConfig.Memory ? formatBytes(inspectHostConfig.Memory) : '未限制' }}</dd></div>
+                <div class="inspect-field"><dt>CPU 限制</dt><dd>{{ cpuLimitText }}</dd></div>
+                <div class="inspect-field"><dt>CPU 权重</dt><dd class="mono">{{ inspectHostConfig.CpuShares || '-' }}</dd></div>
+                <div class="inspect-field"><dt>PID 限制</dt><dd class="mono">{{ (inspectHostConfig.PidsLimit ?? 0) > 0 ? inspectHostConfig.PidsLimit : '未限制' }}</dd></div>
+                <div class="inspect-field"><dt>OOM 禁杀</dt><dd>{{ inspectHostConfig.OomKillDisable ? '是' : '否' }}</dd></div>
+              </dl>
+            </div>
+          </section>
+
+          <section class="inspect-section collapsible">
+            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.labels" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
+              <h4 class="inspect-section-title">标签</h4>
+              <span class="inspect-section-summary">{{ labelEntries.length }} 项</span>
+              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.labels }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.labels" class="inspect-section-body">
+              <ul class="kv-list">
+                <li v-for="item in labelEntries" :key="item.key" class="kv-item">
+                  <span class="kv-key mono break-all">{{ item.key }}</span>
+                  <span class="kv-value mono break-all">{{ item.value || '(空)' }}</span>
+                </li>
+                <li v-if="!labelEntries.length" class="kv-empty">无标签</li>
+              </ul>
+            </div>
+          </section>
+        </template>
+        <el-empty v-else-if="!inspectLoading" description="暂无详情数据" />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Refresh, Search } from '@element-plus/icons-vue'
 import LogHighlightedText from '@/components/LogHighlightedText'
 import {
   getDockerHost,
@@ -320,6 +486,7 @@ import {
   refreshDockerHost,
   getHostContainers,
   getDockerContainerLogs,
+  getDockerContainerInspect,
   buildDockerLogStreamUrl,
   startDockerContainer,
   stopDockerContainer,
@@ -566,6 +733,7 @@ function containerStatusLabel(s: string) {
 async function openContainerLogs(row: any) {
   // 切容器必须先关闭旧连接
   stopLiveFollow()
+  inspectDrawerVisible.value = false
   selectedContainer.value = row
   containerLogs.value = ''
   logKeyword.value = ''
@@ -678,6 +846,160 @@ function downloadLogs() {
   anchor.download = `${selectedContainer.value.name || selectedContainer.value.container_id}.log`
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+// ─── 容器 inspect 详情 ────────────────────────────────────
+const inspectDrawerVisible = ref(false)
+const inspectLoading = ref(false)
+const inspectData = ref<any>(null)
+const inspectContainer = ref<any | null>(null)
+const revealedEnvKeys = ref<Set<string>>(new Set())
+const sectionCollapse = reactive({
+  env: false,
+  network: false,
+  mounts: true,
+  health: true,
+  resources: true,
+  labels: true,
+})
+
+// 含这些关键词的环境变量视为敏感，默认掩码，点击「显示」后明文
+const SENSITIVE_ENV_RE = /(pass(word|wd)?|secret|token|api[-_]?key|credential|private[-_]?key|access[-_]?key|auth)/i
+
+const inspectConfig = computed(() => inspectData.value?.Config || {})
+const inspectState = computed(() => inspectData.value?.State || {})
+const inspectHostConfig = computed(() => inspectData.value?.HostConfig || {})
+const inspectNetwork = computed(() => inspectData.value?.NetworkSettings || {})
+const inspectMounts = computed(() => inspectData.value?.Mounts || [])
+
+const restartPolicyText = computed(() => {
+  const rp = inspectHostConfig.value.RestartPolicy
+  if (!rp || !rp.Name || rp.Name === 'no') return '不自动重启'
+  if (rp.Name === 'on-failure') return `失败时重启${rp.MaximumRetryCount ? `（最多 ${rp.MaximumRetryCount} 次）` : ''}`
+  if (rp.Name === 'always') return '始终重启'
+  if (rp.Name === 'unless-stopped') return '除非手动停止否则重启'
+  return rp.Name
+})
+
+function joinCmd(list?: string[] | null): string {
+  return Array.isArray(list) && list.length ? list.join(' ') : '-'
+}
+const cmdText = computed(() => joinCmd(inspectConfig.value.Cmd))
+const entrypointText = computed(() => joinCmd(inspectConfig.value.Entrypoint))
+
+const envItems = computed(() => {
+  const env: string[] = inspectConfig.value.Env || []
+  return env.map((item) => {
+    const idx = item.indexOf('=')
+    const key = idx >= 0 ? item.slice(0, idx) : item
+    const value = idx >= 0 ? item.slice(idx + 1) : ''
+    return { key, value, sensitive: SENSITIVE_ENV_RE.test(key) }
+  })
+})
+
+function envDisplayValue(item: { key: string; value: string; sensitive: boolean }) {
+  if (item.sensitive && !revealedEnvKeys.value.has(item.key)) return '••••••••'
+  return item.value || '(空)'
+}
+
+function toggleEnvReveal(key: string) {
+  const next = new Set(revealedEnvKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  revealedEnvKeys.value = next
+}
+
+const portBindingsText = computed(() => formatPorts(JSON.stringify(inspectHostConfig.value.PortBindings || {})))
+const linkedNetworks = computed(() => {
+  const nets = inspectNetwork.value.Networks || {}
+  return Object.entries(nets).map(([name, info]: [string, any]) => ({ name, ip: info?.IPAddress || '' }))
+})
+const networkSummary = computed(() => {
+  const ip = inspectNetwork.value.IPAddress
+  const portCount = Object.keys(inspectHostConfig.value.PortBindings || {}).length
+  const parts: string[] = []
+  if (ip) parts.push(`IP ${ip}`)
+  if (portCount) parts.push(`${portCount} 个端口映射`)
+  return parts.length ? parts.join(' · ') : (inspectHostConfig.value.NetworkMode || '默认网络')
+})
+
+const healthStatusLabel = computed(() => {
+  const status = inspectState.value.Health?.Status
+  if (!status) return '未配置'
+  const map: Record<string, string> = { healthy: '健康', unhealthy: '异常', starting: '启动中', none: '无' }
+  return map[status] || status
+})
+const inspectHealthTagType = computed(() => {
+  const status = inspectState.value.Health?.Status
+  if (status === 'healthy') return 'success'
+  if (status === 'unhealthy') return 'danger'
+  if (status === 'starting') return 'warning'
+  return 'info'
+})
+const healthSummary = computed(() => {
+  if (!inspectConfig.value.Healthcheck && !inspectState.value.Health) return '未配置'
+  return healthStatusLabel.value
+})
+const healthcheckTestText = computed(() => joinCmd(inspectConfig.value.Healthcheck?.Test))
+function nanoToSeconds(ns?: number): string {
+  if (!ns || ns <= 0) return '-'
+  return `${Math.round(ns / 1e9)}s`
+}
+const healthcheckIntervalText = computed(() => nanoToSeconds(inspectConfig.value.Healthcheck?.Interval))
+const healthcheckTimeoutText = computed(() => nanoToSeconds(inspectConfig.value.Healthcheck?.Timeout))
+
+const cpuLimitText = computed(() => {
+  const nano = inspectHostConfig.value.NanoCpus
+  return nano ? `${(nano / 1e9).toFixed(2)} 核` : '未限制'
+})
+const resourcesSummary = computed(() => {
+  const mem = inspectHostConfig.value.Memory
+  const nano = inspectHostConfig.value.NanoCpus
+  return [
+    mem ? `内存 ${formatBytes(mem)}` : '内存未限',
+    nano ? `CPU ${(nano / 1e9).toFixed(2)} 核` : 'CPU 未限',
+  ].join(' · ')
+})
+const labelEntries = computed(() => {
+  const labels = inspectConfig.value.Labels || {}
+  return Object.entries(labels).map(([key, value]: [string, any]) => ({ key, value: String(value ?? '') }))
+})
+
+function toggleSection(key: keyof typeof sectionCollapse) {
+  sectionCollapse[key] = !sectionCollapse[key]
+}
+
+// Docker 时间可能带纳秒（>3 位小数），截断到毫秒避免 new Date 得到 Invalid Date
+function formatInspectTime(ts?: string): string {
+  if (!ts) return '-'
+  const normalized = ts.replace(/(\.\d{3})\d+/, '$1')
+  const d = new Date(normalized)
+  return isNaN(d.getTime()) ? ts : d.toLocaleString('zh-CN')
+}
+
+async function openContainerInspect(row: any) {
+  stopLiveFollow()
+  logsDrawerVisible.value = false
+  inspectContainer.value = row
+  inspectData.value = null
+  revealedEnvKeys.value = new Set()
+  Object.assign(sectionCollapse, { env: false, network: false, mounts: true, health: true, resources: true, labels: true })
+  inspectDrawerVisible.value = true
+  await fetchContainerInspect()
+}
+
+async function fetchContainerInspect() {
+  if (!inspectContainer.value) return
+  inspectLoading.value = true
+  try {
+    const res: any = await getDockerContainerInspect(hostName.value, inspectContainer.value.container_id)
+    inspectData.value = res.data?.inspect || null
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '加载容器详情失败')
+    inspectData.value = null
+  } finally {
+    inspectLoading.value = false
+  }
 }
 
 async function handleContainerAction(row: any, action: 'start' | 'stop' | 'restart' | 'delete') {
@@ -1197,6 +1519,158 @@ onUnmounted(() => {
 }
 .log-box:focus-visible {
   box-shadow: 0 0 0 2px var(--primary-color);
+}
+/* ─── 容器 inspect 详情 ─── */
+.inspect-body {
+  gap: 12px;
+}
+.inspect-section {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--bg-color);
+  overflow: hidden;
+}
+.inspect-section-title {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.inspect-section.collapsible .inspect-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+}
+.inspect-section.collapsible .inspect-section-head:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+.inspect-section-head .inspect-section-title {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.inspect-section-summary {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspect-caret {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.2s ease-out;
+}
+.inspect-caret.open {
+  transform: rotate(180deg);
+}
+.inspect-section-body {
+  padding: 12px 14px;
+}
+.inspect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.inspect-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.inspect-field-wide {
+  grid-column: 1 / -1;
+}
+.inspect-field dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.inspect-field dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  word-break: break-word;
+}
+.kv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.kv-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.kv-item-block {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.kv-key {
+  color: var(--text-secondary);
+  flex: none;
+  max-width: 40%;
+}
+.kv-value {
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+.kv-value.masked {
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+.kv-reveal {
+  flex: none;
+  padding: 0 4px;
+  height: auto;
+}
+.kv-arrow {
+  color: var(--text-muted);
+  margin: 0 4px;
+}
+.kv-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.inspect-sub {
+  margin-top: 12px;
+  display: grid;
+  gap: 4px;
+}
+.inspect-sub-title {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.break-all {
+  word-break: break-all;
+}
+@media (max-width: 768px) {
+  .inspect-grid {
+    grid-template-columns: 1fr;
+  }
+  .kv-key {
+    max-width: 45%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspect-caret {
+    transition: none;
+  }
 }
 @media (max-width: 1200px) {
   .summary-grid {

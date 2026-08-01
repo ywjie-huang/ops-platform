@@ -346,6 +346,20 @@ class AgentHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
 
+        elif m := re.match(r'^/containers/([a-f0-9]{12,64})/inspect$', path):
+            # 返回完整 inspect attrs，字段裁剪交给前端
+            if not _docker_client:
+                self._json_response({"error": "docker client not available"}, 503)
+                return
+            try:
+                container = _docker_client.containers.get(m.group(1))
+                container.reload()
+                self._json_response({"status": "ok", "inspect": container.attrs or {}})
+            except docker.errors.NotFound:
+                self._json_response({"error": f"容器 {m.group(1)} 不存在"}, 404)
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+
         else:
             self._json_response({"error": "not found"}, 404)
 

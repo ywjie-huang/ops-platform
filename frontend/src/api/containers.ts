@@ -108,6 +108,9 @@ export function getDockerContainerLogs(
 ) {
   return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/logs`, { params })
 }
+export function getDockerContainerInspect(hostName: string, containerId: string) {
+  return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/inspect`)
+}
 
 // EventSource 无法使用 axios 实例（不能自定义请求头），单独拼全 URL + token
 export function buildDockerLogStreamUrl(hostName: string, containerId: string, sinceUnix: number): string {
