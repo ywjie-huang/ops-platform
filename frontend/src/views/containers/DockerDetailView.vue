@@ -314,162 +314,188 @@
     </el-drawer>
 
     <el-drawer v-model="inspectDrawerVisible" size="760px" :with-header="false" destroy-on-close>
-      <div class="drawer-head">
-        <div class="drawer-head-copy">
-          <h3>{{ inspectContainer?.name || '容器详情' }}</h3>
-          <div class="drawer-sub">
-            <span class="mono">{{ inspectContainer?.image || '-' }}</span>
-            <template v-if="inspectContainer"> · {{ containerStatusLabel(inspectContainer.status) }}</template>
+      <div class="di-head">
+        <div class="di-head-copy">
+          <div class="di-hero">
+            <span class="di-phase" :class="containerStatusPhaseClass(inspectContainer?.status)">
+              <span class="di-pdot" aria-hidden="true"></span>{{ inspectContainer ? containerStatusLabel(inspectContainer.status) : '-' }}
+            </span>
+            <span v-if="healthFlagText" class="di-flag" :class="healthFlagClass">{{ healthFlagText }}</span>
+          </div>
+          <h3 class="di-title">{{ inspectContainer?.name || '容器详情' }}</h3>
+          <div class="di-chips">
+            <span class="di-chip"><span class="di-ck">镜像</span><span class="mono">{{ inspectContainer?.image || '-' }}</span></span>
+            <span class="di-chip"><span class="di-ck">ID</span><span class="mono">{{ inspectShortId || '-' }}</span></span>
+            <span class="di-chip"><span class="di-ck">启动</span>{{ formatRelativeTime(inspectState.StartedAt) }}</span>
+            <span class="di-chip"><span class="di-ck">创建</span>{{ formatInspectTime(inspectData.Created) }}</span>
           </div>
         </div>
-        <div class="drawer-actions">
-          <el-button size="small" :loading="inspectLoading" @click="fetchContainerInspect">刷新</el-button>
+        <div class="di-head-actions">
+          <el-button size="small" :loading="inspectLoading" @click="fetchContainerInspect">
+            <el-icon><Refresh /></el-icon>刷新
+          </el-button>
+          <button type="button" class="di-close" aria-label="关闭" @click="inspectDrawerVisible = false">✕</button>
         </div>
       </div>
-      <div class="drawer-body inspect-body" v-loading="inspectLoading">
-        <div class="inspect-scroll">
-        <template v-if="inspectData">
-          <section class="inspect-section">
-            <h4 class="inspect-section-title">基本信息</h4>
-            <dl class="inspect-grid">
-              <div class="inspect-field inspect-field-wide"><dt>完整 ID</dt><dd class="mono break-all">{{ inspectData.Id || '-' }}</dd></div>
-              <div class="inspect-field"><dt>创建时间</dt><dd>{{ formatInspectTime(inspectData.Created) }}</dd></div>
-              <div class="inspect-field"><dt>启动时间</dt><dd>{{ formatInspectTime(inspectState.StartedAt) }}</dd></div>
-              <div class="inspect-field"><dt>PID</dt><dd class="mono">{{ inspectState.Pid ?? '-' }}</dd></div>
-              <div class="inspect-field"><dt>退出码</dt><dd class="mono" :class="{ 'text-danger': Number(inspectState.ExitCode) > 0 }">{{ inspectState.ExitCode ?? '-' }}</dd></div>
-              <div class="inspect-field"><dt>重启策略</dt><dd>{{ restartPolicyText }}</dd></div>
-            </dl>
-          </section>
 
-          <section class="inspect-section">
-            <h4 class="inspect-section-title">运行配置</h4>
-            <dl class="inspect-grid">
-              <div class="inspect-field inspect-field-wide"><dt>启动命令 Cmd</dt><dd class="mono break-all">{{ cmdText }}</dd></div>
-              <div class="inspect-field inspect-field-wide"><dt>入口 Entrypoint</dt><dd class="mono break-all">{{ entrypointText }}</dd></div>
-              <div class="inspect-field"><dt>工作目录</dt><dd class="mono">{{ inspectConfig.WorkingDir || '/' }}</dd></div>
-              <div class="inspect-field"><dt>运行用户</dt><dd class="mono">{{ inspectConfig.User || 'root' }}</dd></div>
-              <div class="inspect-field"><dt>TTY</dt><dd>{{ inspectConfig.Tty ? '是' : '否' }}</dd></div>
-            </dl>
-          </section>
+      <div class="di-stat-strip">
+        <div class="di-stat"><div class="di-stat-k">PID</div><div class="di-stat-v mono">{{ inspectState.Pid ?? '-' }}</div></div>
+        <div class="di-stat"><div class="di-stat-k">退出码</div><div class="di-stat-v" :class="{ 'is-danger': Number(inspectState.ExitCode) > 0 }">{{ inspectState.ExitCode ?? '-' }}</div></div>
+        <div class="di-stat"><div class="di-stat-k">健康</div><div class="di-stat-v sm" :class="healthValueClass">{{ healthStatusLabel }}</div></div>
+        <div class="di-stat"><div class="di-stat-k">重启策略</div><div class="di-stat-v sm">{{ restartPolicyText }}</div></div>
+      </div>
 
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.env" @click="toggleSection('env')" @keyup.enter="toggleSection('env')">
-              <h4 class="inspect-section-title">环境变量</h4>
-              <span class="inspect-section-summary">{{ envItems.length }} 项</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.env }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.env" class="inspect-section-body">
-              <ul class="kv-list">
-                <li v-for="item in envItems" :key="item.key" class="kv-item">
-                  <span class="kv-key mono break-all">{{ item.key }}</span>
-                  <span class="kv-value mono break-all" :class="{ masked: item.sensitive && !revealedEnvKeys.has(item.key) }">{{ envDisplayValue(item) }}</span>
-                  <el-button v-if="item.sensitive" link size="small" class="kv-reveal" :aria-label="revealedEnvKeys.has(item.key) ? `隐藏 ${item.key} 值` : `显示 ${item.key} 值`" @click="toggleEnvReveal(item.key)">{{ revealedEnvKeys.has(item.key) ? '隐藏' : '显示' }}</el-button>
-                </li>
-                <li v-if="!envItems.length" class="kv-empty">无环境变量</li>
-              </ul>
-            </div>
-          </section>
-
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.network" @click="toggleSection('network')" @keyup.enter="toggleSection('network')">
-              <h4 class="inspect-section-title">网络</h4>
-              <span class="inspect-section-summary">{{ networkSummary }}</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.network }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.network" class="inspect-section-body">
-              <dl class="inspect-grid">
-                <div class="inspect-field"><dt>IP 地址</dt><dd class="mono">{{ inspectNetwork.IPAddress || '-' }}</dd></div>
-                <div class="inspect-field"><dt>网络模式</dt><dd class="mono">{{ inspectHostConfig.NetworkMode || '-' }}</dd></div>
-                <div class="inspect-field"><dt>MAC 地址</dt><dd class="mono">{{ inspectNetwork.MacAddress || '-' }}</dd></div>
-              </dl>
-              <div v-if="portBindingsText !== '-'" class="inspect-sub">
-                <div class="inspect-sub-title">端口映射</div>
-                <div class="mono break-all">{{ portBindingsText }}</div>
-              </div>
-              <div v-if="linkedNetworks.length" class="inspect-sub">
-                <div class="inspect-sub-title">连接的网络</div>
-                <div v-for="n in linkedNetworks" :key="n.name" class="mono">
-                  {{ n.name }}<template v-if="n.ip"> · {{ n.ip }}</template>
+      <div class="di-body" v-loading="inspectLoading">
+        <div class="di-scroll">
+          <template v-if="inspectData">
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.network" @click="toggleSection('network')" @keyup.enter="toggleSection('network')">
+                <h4 class="di-section-title">网络</h4>
+                <span class="di-section-meta">{{ networkSummary }}</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.network }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.network" class="di-card">
+                <div class="di-net-grid">
+                  <div class="di-net"><div class="di-net-k">IP 地址</div><div class="di-net-v mono">{{ inspectNetwork.IPAddress || '-' }}</div></div>
+                  <div class="di-net"><div class="di-net-k">网络模式</div><div class="di-net-v mono">{{ inspectHostConfig.NetworkMode || '-' }}</div></div>
+                  <div class="di-net"><div class="di-net-k">MAC 地址</div><div class="di-net-v mono">{{ inspectNetwork.MacAddress || '-' }}</div></div>
+                  <div class="di-net"><div class="di-net-k">网关</div><div class="di-net-v mono">{{ inspectNetwork.Gateway || '-' }}</div></div>
+                </div>
+                <div v-if="portList.length" class="di-sub">
+                  <div class="di-sub-k">端口映射</div>
+                  <div class="di-ports">
+                    <span v-for="(p, i) in portList" :key="i" class="di-port">
+                      <span class="mono">{{ p.host }}</span><span class="di-port-arr">→</span><span class="mono di-port-ctr">{{ p.ctr }}</span><span class="di-port-proto">{{ p.proto }}</span>
+                    </span>
+                  </div>
+                </div>
+                <div v-if="linkedNetworks.length" class="di-sub">
+                  <div class="di-sub-k">连接的网络</div>
+                  <div v-for="n in linkedNetworks" :key="n.name" class="mono di-line">{{ n.name }}<template v-if="n.ip"> · {{ n.ip }}</template></div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.mounts" @click="toggleSection('mounts')" @keyup.enter="toggleSection('mounts')">
-              <h4 class="inspect-section-title">挂载</h4>
-              <span class="inspect-section-summary">{{ inspectMounts.length }} 项</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.mounts }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.mounts" class="inspect-section-body">
-              <ul class="kv-list">
-                <li v-for="(m, i) in inspectMounts" :key="i" class="kv-item kv-item-block">
-                  <span class="mono break-all">{{ m.Source || m.Name }} <span class="kv-arrow">→</span> {{ m.Destination }}</span>
-                  <el-tag size="small" type="info">{{ m.Type || 'bind' }}{{ m.RW === false ? ' · 只读' : '' }}</el-tag>
-                </li>
-                <li v-if="!inspectMounts.length" class="kv-empty">无挂载</li>
-              </ul>
-            </div>
-          </section>
-
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.health" @click="toggleSection('health')" @keyup.enter="toggleSection('health')">
-              <h4 class="inspect-section-title">健康检查</h4>
-              <span class="inspect-section-summary">{{ healthSummary }}</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.health }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.health" class="inspect-section-body">
-              <template v-if="inspectConfig.Healthcheck || inspectState.Health">
-                <dl class="inspect-grid">
-                  <div v-if="inspectState.Health" class="inspect-field">
-                    <dt>当前状态</dt><dd><el-tag :type="inspectHealthTagType" size="small">{{ healthStatusLabel }}</el-tag></dd>
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.resources" @click="toggleSection('resources')" @keyup.enter="toggleSection('resources')">
+                <h4 class="di-section-title">资源限制</h4>
+                <span class="di-section-meta">{{ resourcesSummary }}</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.resources }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.resources" class="di-card">
+                <div v-if="inspectResBars.mem.show || inspectResBars.cpu.show" class="di-res-bars">
+                  <div v-if="inspectResBars.cpu.show" class="di-res-bar">
+                    <div class="di-res-top"><span class="di-res-k">CPU 限额</span><span class="di-res-v mono">{{ cpuLimitText }} / {{ hostCpuCount }} 核</span></div>
+                    <div class="di-res-track"><i :class="barLevel(inspectResBars.cpu.percent)" :style="{ width: inspectResBars.cpu.percent + '%' }"></i></div>
                   </div>
-                  <div v-if="inspectState.Health" class="inspect-field"><dt>连续失败</dt><dd class="mono">{{ inspectState.Health.FailingStreak }}</dd></div>
-                  <div class="inspect-field inspect-field-wide"><dt>探针命令</dt><dd class="mono break-all">{{ healthcheckTestText }}</dd></div>
-                  <div class="inspect-field"><dt>间隔</dt><dd class="mono">{{ healthcheckIntervalText }}</dd></div>
-                  <div class="inspect-field"><dt>超时</dt><dd class="mono">{{ healthcheckTimeoutText }}</dd></div>
-                  <div class="inspect-field"><dt>重试次数</dt><dd class="mono">{{ inspectConfig.Healthcheck?.Retries ?? '-' }}</dd></div>
+                  <div v-if="inspectResBars.mem.show" class="di-res-bar">
+                    <div class="di-res-top"><span class="di-res-k">内存限额</span><span class="di-res-v mono">{{ inspectHostConfig.Memory ? formatBytes(inspectHostConfig.Memory) : '-' }} / {{ hostMemTotalText }}</span></div>
+                    <div class="di-res-track"><i :class="barLevel(inspectResBars.mem.percent)" :style="{ width: inspectResBars.mem.percent + '%' }"></i></div>
+                  </div>
+                </div>
+                <dl class="di-kv-grid">
+                  <div class="di-kv"><dt>CPU 权重</dt><dd class="mono">{{ inspectHostConfig.CpuShares || '-' }}</dd></div>
+                  <div class="di-kv"><dt>PID 限制</dt><dd class="mono">{{ (inspectHostConfig.PidsLimit ?? 0) > 0 ? inspectHostConfig.PidsLimit : '未限制' }}</dd></div>
+                  <div class="di-kv"><dt>OOM 禁杀</dt><dd>{{ inspectHostConfig.OomKillDisable ? '是' : '否' }}</dd></div>
+                  <div class="di-kv"><dt>内存预留</dt><dd class="mono">{{ inspectHostConfig.MemoryReservation ? formatBytes(inspectHostConfig.MemoryReservation) : '0 B' }}</dd></div>
                 </dl>
-              </template>
-              <div v-else class="kv-empty">未配置健康检查</div>
-            </div>
-          </section>
+              </div>
+            </section>
 
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.resources" @click="toggleSection('resources')" @keyup.enter="toggleSection('resources')">
-              <h4 class="inspect-section-title">资源限制</h4>
-              <span class="inspect-section-summary">{{ resourcesSummary }}</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.resources }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.resources" class="inspect-section-body">
-              <dl class="inspect-grid">
-                <div class="inspect-field"><dt>内存限制</dt><dd>{{ inspectHostConfig.Memory ? formatBytes(inspectHostConfig.Memory) : '未限制' }}</dd></div>
-                <div class="inspect-field"><dt>CPU 限制</dt><dd>{{ cpuLimitText }}</dd></div>
-                <div class="inspect-field"><dt>CPU 权重</dt><dd class="mono">{{ inspectHostConfig.CpuShares || '-' }}</dd></div>
-                <div class="inspect-field"><dt>PID 限制</dt><dd class="mono">{{ (inspectHostConfig.PidsLimit ?? 0) > 0 ? inspectHostConfig.PidsLimit : '未限制' }}</dd></div>
-                <div class="inspect-field"><dt>OOM 禁杀</dt><dd>{{ inspectHostConfig.OomKillDisable ? '是' : '否' }}</dd></div>
-              </dl>
-            </div>
-          </section>
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.health" @click="toggleSection('health')" @keyup.enter="toggleSection('health')">
+                <h4 class="di-section-title">健康检查</h4>
+                <span class="di-section-meta">{{ healthSummary }}</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.health }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.health" class="di-health-wrap">
+                <div v-if="inspectConfig.Healthcheck || inspectState.Health" class="di-health-banner" :class="healthBannerClass">
+                  <span>{{ healthBannerIcon }} {{ healthStatusLabel }}</span>
+                  <span v-if="inspectState.Health?.FailingStreak != null" class="di-hb-streak">{{ inspectState.Health.FailingStreak > 0 ? `连续失败 ${inspectState.Health.FailingStreak}` : '连续成功' }}</span>
+                </div>
+                <div v-if="inspectConfig.Healthcheck || inspectState.Health" class="di-card">
+                  <dl class="di-kv-grid">
+                    <div class="di-kv wide">
+                      <dt>探针命令</dt>
+                      <dd>
+                        <span class="di-copy">
+                          <span class="mono">{{ healthcheckTestText }}</span>
+                          <button type="button" class="di-copy-btn" :class="{ done: copiedKey === 'probe' }" :aria-label="copiedKey === 'probe' ? '已复制' : '复制探针命令'" @click="copyText(healthcheckTestText, 'probe')">{{ copiedKey === 'probe' ? '✓' : '⧉' }}</button>
+                        </span>
+                      </dd>
+                    </div>
+                    <div class="di-kv"><dt>检测间隔</dt><dd class="mono">{{ healthcheckIntervalText }}</dd></div>
+                    <div class="di-kv"><dt>超时</dt><dd class="mono">{{ healthcheckTimeoutText }}</dd></div>
+                    <div class="di-kv"><dt>重试次数</dt><dd class="mono">{{ inspectConfig.Healthcheck?.Retries ?? '-' }}</dd></div>
+                  </dl>
+                </div>
+                <div v-else class="di-card"><div class="di-empty">未配置健康检查</div></div>
+              </div>
+            </section>
 
-          <section class="inspect-section collapsible">
-            <header class="inspect-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.labels" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
-              <h4 class="inspect-section-title">标签</h4>
-              <span class="inspect-section-summary">{{ labelEntries.length }} 项</span>
-              <el-icon class="inspect-caret" :class="{ open: !sectionCollapse.labels }" aria-hidden="true"><ArrowDown /></el-icon>
-            </header>
-            <div v-show="!sectionCollapse.labels" class="inspect-section-body">
-              <ul class="kv-list">
-                <li v-for="item in labelEntries" :key="item.key" class="kv-item">
-                  <span class="kv-key mono break-all">{{ item.key }}</span>
-                  <span class="kv-value mono break-all">{{ item.value || '(空)' }}</span>
-                </li>
-                <li v-if="!labelEntries.length" class="kv-empty">无标签</li>
-              </ul>
-            </div>
-          </section>
-        </template>
-        <el-empty v-else-if="!inspectLoading" description="暂无详情数据" />
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.runconfig" @click="toggleSection('runconfig')" @keyup.enter="toggleSection('runconfig')">
+                <h4 class="di-section-title">运行配置</h4>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.runconfig }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.runconfig" class="di-card">
+                <div class="di-codeblock"><span class="di-code-k">ENTRYPOINT</span><span class="mono">{{ entrypointText }}</span></div>
+                <div class="di-codeblock"><span class="di-code-k">CMD</span><span class="mono">{{ cmdText }}</span></div>
+                <dl class="di-kv-grid">
+                  <div class="di-kv"><dt>工作目录</dt><dd class="mono">{{ inspectConfig.WorkingDir || '/' }}</dd></div>
+                  <div class="di-kv"><dt>运行用户</dt><dd class="mono">{{ inspectConfig.User || 'root' }}</dd></div>
+                  <div class="di-kv"><dt>TTY</dt><dd>{{ inspectConfig.Tty ? '是' : '否' }}</dd></div>
+                  <div class="di-kv"><dt>交互 STDIN</dt><dd>{{ inspectConfig.OpenStdin ? '是' : '否' }}</dd></div>
+                </dl>
+              </div>
+            </section>
+
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.mounts" @click="toggleSection('mounts')" @keyup.enter="toggleSection('mounts')">
+                <h4 class="di-section-title">挂载</h4>
+                <span class="di-section-meta">{{ inspectMounts.length }} 项</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.mounts }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.mounts">
+                <div v-for="(m, i) in inspectMounts" :key="i" class="di-mount">
+                  <span class="mono">{{ m.Source || m.Name }} <span class="di-arrow">→</span> {{ m.Destination }}</span>
+                  <span class="di-mount-tag">{{ m.Type || 'bind' }}{{ m.RW === false ? ' · 只读' : '' }}</span>
+                </div>
+                <div v-if="!inspectMounts.length" class="di-empty">无挂载</div>
+              </div>
+            </section>
+
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.env" @click="toggleSection('env')" @keyup.enter="toggleSection('env')">
+                <h4 class="di-section-title">环境变量</h4>
+                <span class="di-section-meta">{{ envItems.length }} 项</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.env }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.env">
+                <ul v-if="envItems.length" class="di-env-list">
+                  <li v-for="item in envItems" :key="item.key" class="di-env-row">
+                    <span class="di-env-key mono">{{ item.key }}</span>
+                    <span class="di-env-val mono" :class="{ masked: item.sensitive && !revealedEnvKeys.has(item.key) }">{{ envDisplayValue(item) }}</span>
+                    <el-button v-if="item.sensitive" link size="small" class="di-env-reveal" :aria-label="revealedEnvKeys.has(item.key) ? `隐藏 ${item.key}` : `显示 ${item.key}`" @click="toggleEnvReveal(item.key)">{{ revealedEnvKeys.has(item.key) ? '隐藏' : '显示' }}</el-button>
+                  </li>
+                </ul>
+                <div v-else class="di-empty">无环境变量</div>
+              </div>
+            </section>
+
+            <section class="di-section">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.labels" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
+                <h4 class="di-section-title">标签</h4>
+                <span class="di-section-meta">{{ labelEntries.length }} 项</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.labels }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!sectionCollapse.labels" class="di-label-cloud">
+                <span v-for="item in labelEntries" :key="item.key" class="di-label"><span class="di-lk mono">{{ item.key }}</span><span class="di-lv mono">{{ item.value || '(空)' }}</span></span>
+                <span v-if="!labelEntries.length" class="di-empty">无标签</span>
+              </div>
+            </section>
+          </template>
+          <el-empty v-else-if="!inspectLoading" description="暂无详情数据" />
         </div>
       </div>
     </el-drawer>
@@ -857,12 +883,13 @@ const inspectData = ref<any>(null)
 const inspectContainer = ref<any | null>(null)
 const revealedEnvKeys = ref<Set<string>>(new Set())
 const sectionCollapse = reactive({
-  env: false,
+  env: true,
   network: false,
   mounts: true,
-  health: true,
-  resources: true,
+  health: false,
+  resources: false,
   labels: true,
+  runconfig: true,
 })
 
 // 含这些关键词的环境变量视为敏感，默认掩码，点击「显示」后明文
@@ -911,7 +938,6 @@ function toggleEnvReveal(key: string) {
   revealedEnvKeys.value = next
 }
 
-const portBindingsText = computed(() => formatPorts(JSON.stringify(inspectHostConfig.value.PortBindings || {})))
 const linkedNetworks = computed(() => {
   const nets = inspectNetwork.value.Networks || {}
   return Object.entries(nets).map(([name, info]: [string, any]) => ({ name, ip: info?.IPAddress || '' }))
@@ -967,6 +993,103 @@ const labelEntries = computed(() => {
   return Object.entries(labels).map(([key, value]: [string, any]) => ({ key, value: String(value ?? '') }))
 })
 
+// ── 抽屉头部摘要 / 资源条 / 端口 ──
+const inspectShortId = computed(() => (inspectData.value?.Id || '').slice(0, 12))
+
+function containerStatusPhaseClass(s?: string) {
+  if (s === 'running') return 'di-ok'
+  if (s === 'exited' || s === 'dead') return 'di-bad'
+  if (s === 'paused' || s === 'restarting') return 'di-warn'
+  return 'di-info'
+}
+
+const healthFlagText = computed(() => {
+  const st = inspectState.value.Health?.Status
+  if (!st || st === 'none') return ''
+  if (st === 'healthy') return '健康'
+  if (st === 'unhealthy') return '异常'
+  if (st === 'starting') return '启动中'
+  return ''
+})
+const healthFlagClass = computed(() => {
+  const t = inspectHealthTagType.value
+  if (t === 'success') return 'di-flag-ok'
+  if (t === 'danger') return 'di-flag-bad'
+  if (t === 'warning') return 'di-flag-warn'
+  return 'di-flag-info'
+})
+const healthValueClass = computed(() => {
+  const t = inspectHealthTagType.value
+  if (t === 'success') return 'is-ok'
+  if (t === 'danger') return 'is-bad'
+  if (t === 'warning') return 'is-warn'
+  return ''
+})
+const healthBannerClass = computed(() => {
+  const t = inspectHealthTagType.value
+  if (t === 'success') return 'ok'
+  if (t === 'danger') return 'bad'
+  if (t === 'warning') return 'warn'
+  return 'none'
+})
+const healthBannerIcon = computed(() => {
+  const t = inspectHealthTagType.value
+  if (t === 'success') return '✓'
+  if (t === 'danger') return '✕'
+  if (t === 'warning') return '⋯'
+  return '•'
+})
+
+const hostCpuCount = computed(() => host.value?.metrics?.cpu_count || 0)
+const hostMemTotalText = computed(() => {
+  const t = host.value?.metrics?.memory_total
+  return t ? formatBytes(t) : '未知'
+})
+const inspectResBars = computed(() => {
+  const m = host.value?.metrics || {}
+  const memLim = Number(inspectHostConfig.value.Memory) || 0
+  const cpuCores = inspectHostConfig.value.NanoCpus ? inspectHostConfig.value.NanoCpus / 1e9 : 0
+  const memTotal = Number(m.memory_total) || 0
+  const cpuCount = Number(m.cpu_count) || 0
+  const mem = (memLim && memTotal) ? { show: true, percent: Math.max(2, Math.min(100, Math.round(memLim / memTotal * 100))) } : { show: false, percent: 0 }
+  const cpu = (cpuCores && cpuCount) ? { show: true, percent: Math.max(2, Math.min(100, Math.round(cpuCores / cpuCount * 100))) } : { show: false, percent: 0 }
+  return { mem, cpu }
+})
+function barLevel(p: number) {
+  if (p >= 90) return 'hot'
+  if (p >= 70) return 'warn'
+  return 'ok'
+}
+
+const portList = computed(() => {
+  const pb = inspectHostConfig.value.PortBindings || {}
+  const out: { host: string; ctr: string; proto: string }[] = []
+  for (const [ctr, bindings] of Object.entries(pb)) {
+    const arr = bindings as any[]
+    if (Array.isArray(arr) && arr.length) {
+      for (const b of arr) {
+        out.push({ host: `${b.HostIp || '0.0.0.0'}:${b.HostPort}`, ctr, proto: b.Protocol || 'tcp' })
+      }
+    } else {
+      out.push({ host: '-', ctr, proto: 'tcp' })
+    }
+  }
+  return out
+})
+
+const copiedKey = ref('')
+function copyText(text: string, key: string) {
+  if (!text) return
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(
+      () => { copiedKey.value = key; setTimeout(() => { if (copiedKey.value === key) copiedKey.value = '' }, 1100) },
+      () => ElMessage.error('复制失败'),
+    )
+  } else {
+    ElMessage.warning('当前环境不支持复制')
+  }
+}
+
 function toggleSection(key: keyof typeof sectionCollapse) {
   sectionCollapse[key] = !sectionCollapse[key]
 }
@@ -985,7 +1108,7 @@ async function openContainerInspect(row: any) {
   inspectContainer.value = row
   inspectData.value = null
   revealedEnvKeys.value = new Set()
-  Object.assign(sectionCollapse, { env: false, network: false, mounts: true, health: true, resources: true, labels: true })
+  Object.assign(sectionCollapse, { env: true, network: false, mounts: true, health: false, resources: false, labels: true, runconfig: true })
   inspectDrawerVisible.value = true
   await fetchContainerInspect()
 }
@@ -1522,200 +1645,204 @@ onUnmounted(() => {
 .log-box:focus-visible {
   box-shadow: 0 0 0 2px var(--primary-color);
 }
-/* ─── 容器 inspect 详情 ─── */
-.inspect-body {
-  padding: 0;
-  overflow: hidden;
-}
-.inspect-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-  background: var(--bg-color);
+/* ─── 容器 inspect 详情（重设计） ─── */
+.di-head {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.inspect-section {
-  flex: none;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--surface-color);
-  overflow: hidden;
-}
-.inspect-section-title {
-  margin: 0;
-  padding: 11px 14px;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-color);
-}
-.inspect-section.collapsible .inspect-section-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
-  cursor: pointer;
-  user-select: none;
-  border-bottom: 1px solid var(--border-color);
-  transition: background 0.15s ease-out;
-}
-.inspect-section.collapsible .inspect-section-head:hover {
-  background: var(--bg-color);
-}
-.inspect-section.collapsible .inspect-section-head:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--primary-color);
-}
-.inspect-section-head .inspect-section-title {
-  flex: 1;
-  padding: 0;
-  border: 0;
-}
-.inspect-section-summary {
-  flex: none;
-  max-width: 55%;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.inspect-caret {
-  flex: none;
-  color: var(--text-muted);
-  transition: transform 0.2s ease-out;
-}
-.inspect-caret.open {
-  transform: rotate(180deg);
-}
-.inspect-section-body {
-  padding: 12px 14px;
-}
-.inspect-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-  margin: 0;
-}
-.inspect-field {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.inspect-field-wide {
-  grid-column: 1 / -1;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-}
-.inspect-field dt {
-  flex: none;
-  width: 72px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.inspect-field-wide dt {
-  width: auto;
-}
-.inspect-field dd {
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.kv-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-}
-.kv-item {
-  display: grid;
-  grid-template-columns: minmax(0, 180px) 1fr auto;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
-}
-.kv-item:last-child {
-  border-bottom: 0;
-}
-.kv-item-block {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  padding: 18px 20px 16px;
+  background: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
 }
-.kv-key {
-  color: var(--text-secondary);
-  font-size: 12px;
-  word-break: break-all;
-  min-width: 0;
+.di-head-copy { min-width: 0; flex: 1; }
+.di-hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.di-phase {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 11px 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
 }
-.kv-value {
-  color: var(--text-primary);
-  font-size: 13px;
-  word-break: break-all;
-  min-width: 0;
+.di-phase .di-pdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.di-phase.di-ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
+.di-phase.di-bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
+.di-phase.di-warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
+.di-phase.di-info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 12%, white); }
+.di-flag { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.di-flag-ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
+.di-flag-bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
+.di-flag-warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
+.di-flag-info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 12%, white); }
+.di-title { margin: 7px 0 0; font-size: 17px; font-weight: 750; word-break: break-all; line-height: 1.3; }
+.di-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.di-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; font-size: 12px;
+  color: var(--text-secondary); background: var(--bg-color); border: 1px solid var(--border-color);
 }
-.kv-value.masked {
-  color: var(--text-muted);
-  letter-spacing: 1px;
-  font-size: 12px;
+.di-chip .di-ck { color: var(--text-muted); }
+.di-head-actions { display: flex; gap: 6px; align-items: center; flex: none; }
+.di-close {
+  border: 0; cursor: pointer; width: 30px; height: 30px; border-radius: 8px;
+  background: var(--bg-color); color: var(--text-secondary); font-size: 15px; line-height: 1;
+  display: grid; place-items: center; transition: all 0.15s ease-out;
 }
-.kv-reveal {
-  flex: none;
-  height: auto;
-  padding: 0;
-  font-size: 12px;
+.di-close:hover { background: color-mix(in srgb, var(--danger-color) 13%, white); color: var(--danger-color); }
+
+.di-stat-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border-color); border-bottom: 1px solid var(--border-color);
 }
-.kv-arrow {
-  color: var(--text-muted);
-  margin: 0 6px;
+.di-stat { background: var(--surface-color); padding: 11px 16px; }
+.di-stat-k { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 2px; }
+.di-stat-v { font-size: 17px; font-weight: 750; color: var(--text-primary); }
+.di-stat-v.sm { font-size: 13.5px; }
+.di-stat-v.is-ok { color: #15803d; }
+.di-stat-v.is-bad { color: #b42318; }
+.di-stat-v.is-warn { color: #b45309; }
+.is-danger { color: var(--danger-color) !important; }
+
+.di-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.di-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 32px; background: var(--bg-color); }
+.di-scroll::-webkit-scrollbar { width: 10px; }
+.di-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg-color); }
+
+.di-section { margin-bottom: 18px; }
+.di-section-title {
+  display: flex; align-items: baseline; gap: 7px; margin: 0 0 10px;
+  font-size: 12px; font-weight: 750; color: var(--text-primary); letter-spacing: 0.4px; text-transform: uppercase;
 }
-.kv-empty {
-  color: var(--text-muted);
-  font-size: 13px;
-  padding: 7px 0;
+.di-section-meta {
+  font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--surface-color);
+  padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border-color); text-transform: none; letter-spacing: 0;
 }
-.inspect-sub {
-  margin-top: 10px;
-  padding-top: 10px;
+.di-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer; user-select: none; }
+.di-section-head:hover .di-section-title { color: var(--primary-color); }
+.di-section-head .di-section-title { margin: 0; }
+.di-section-head .di-section-meta { margin-left: auto; }
+.di-caret { color: var(--text-muted); transition: transform 0.2s ease-out; font-size: 12px; flex: none; }
+.di-caret.open { transform: rotate(180deg); }
+
+.di-card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 13px 16px; }
+
+/* 键值网格 */
+.di-kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; }
+.di-kv { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); min-width: 0; }
+.di-kv:nth-last-child(-n+2) { border-bottom: 0; }
+.di-kv.wide { grid-column: 1 / -1; flex-direction: column; align-items: stretch; gap: 3px; }
+.di-kv dt { flex: none; width: 86px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.di-kv.wide dt { width: auto; }
+.di-kv dd { margin: 0; flex: 1; min-width: 0; color: var(--text-primary); font-size: 13px; line-height: 1.55; word-break: break-word; }
+.di-copy { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.di-copy .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.di-copy-btn {
+  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
+  width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; transition: all 0.15s;
+}
+.di-copy-btn:hover { background: var(--primary-bg); color: var(--primary-color); }
+.di-copy-btn.done { color: var(--success-color); }
+
+.di-sub {
+  margin-top: 11px; padding-top: 11px;
   border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
-  display: grid;
-  gap: 4px;
+  display: grid; gap: 6px;
 }
-.inspect-sub-title {
-  color: var(--text-muted);
-  font-size: 12px;
+.di-sub-k { color: var(--text-muted); font-size: 12px; }
+.di-line { color: var(--text-secondary); font-size: 12.5px; }
+
+/* 网络单元 */
+.di-net-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.di-net { background: var(--bg-color); border-radius: 7px; padding: 10px 13px; }
+.di-net-k { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 4px; }
+.di-net-v { font-size: 13.5px; font-weight: 650; color: var(--text-primary); }
+
+/* 端口 */
+.di-ports { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.di-port {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 8px;
+  background: var(--surface-color); border: 1px solid var(--border-color); font-size: 12.5px;
 }
-.break-all {
-  word-break: break-all;
+.di-port-arr { color: var(--primary-color); }
+.di-port-ctr { color: var(--text-primary); font-weight: 700; }
+.di-port-proto { font-size: 10px; color: var(--text-muted); background: var(--bg-color); padding: 1px 5px; border-radius: 4px; }
+
+/* 资源条 */
+.di-res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+.di-res-bar { min-width: 0; }
+.di-res-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.di-res-k { font-size: 11px; color: var(--text-muted); font-weight: 650; letter-spacing: 0.3px; }
+.di-res-v { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+.di-res-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--border-color) 50%, white); overflow: hidden; }
+.di-res-track i { display: block; height: 100%; border-radius: inherit; }
+.di-res-track i.ok { background: linear-gradient(90deg, #34d399, var(--success-color)); }
+.di-res-track i.warn { background: linear-gradient(90deg, #fbbf24, var(--warning-color)); }
+.di-res-track i.hot { background: linear-gradient(90deg, #fb7185, var(--danger-color)); }
+
+/* 健康条幅 */
+.di-health-wrap { display: grid; gap: 10px; }
+.di-health-banner {
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 7px;
+  font-size: 13px; font-weight: 650;
 }
+.di-health-banner.ok { background: color-mix(in srgb, var(--success-color) 12%, white); color: #15803d; }
+.di-health-banner.bad { background: color-mix(in srgb, var(--danger-color) 11%, white); color: #b42318; }
+.di-health-banner.warn { background: color-mix(in srgb, var(--warning-color) 14%, white); color: #b45309; }
+.di-health-banner.none { background: color-mix(in srgb, var(--text-muted) 10%, white); color: var(--text-secondary); }
+.di-hb-streak { margin-left: auto; font-size: 12px; opacity: 0.85; }
+
+/* 代码块 */
+.di-codeblock {
+  background: #1e1e2a; color: #d4d4e4; padding: 9px 12px; border-radius: 7px;
+  display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; line-height: 1.6; word-break: break-word;
+  margin-bottom: 10px;
+}
+.di-codeblock:last-child { margin-bottom: 0; }
+.di-codeblock .mono { color: #d4d4e4; }
+.di-code-k { color: #8b8ba7; font-size: 10.5px; font-weight: 750; letter-spacing: 0.5px; flex: none; }
+
+/* 挂载 */
+.di-mount {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-color);
+  border: 1px solid var(--border-color); border-radius: 7px; margin-bottom: 6px; font-size: 12.5px; flex-wrap: wrap;
+}
+.di-mount:last-of-type { margin-bottom: 0; }
+.di-arrow { color: var(--primary-color); font-weight: 700; }
+.di-mount-tag {
+  font-size: 10.5px; padding: 2px 7px; border-radius: 5px; margin-left: auto;
+  background: color-mix(in srgb, var(--text-muted) 12%, white); color: var(--text-secondary); font-weight: 600;
+}
+
+/* 环境变量 */
+.di-env-list {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 1px;
+  background: var(--border-color); border: 1px solid var(--border-color); border-radius: 7px; overflow: hidden;
+}
+.di-env-row {
+  display: grid; grid-template-columns: minmax(0, 170px) 1fr auto; align-items: center; gap: 12px;
+  padding: 7px 12px; background: var(--surface-color);
+}
+.di-env-key { color: var(--text-secondary); word-break: break-all; }
+.di-env-val { color: var(--text-primary); word-break: break-all; }
+.di-env-val.masked { color: var(--text-muted); letter-spacing: 2px; }
+.di-env-reveal { flex: none; height: auto; padding: 0; font-size: 12px; }
+
+/* 标签云 */
+.di-label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+.di-label {
+  display: inline-flex; align-items: baseline; gap: 3px; padding: 4px 9px; border-radius: 6px;
+  background: var(--primary-bg); font-size: 11.5px; max-width: 100%;
+}
+.di-label .di-lk { color: var(--primary-color); font-weight: 700; }
+.di-label .di-lv { color: var(--text-secondary); word-break: break-all; }
+
+.di-empty { color: var(--text-muted); font-size: 13px; padding: 7px 0; }
+
 @media (max-width: 768px) {
-  .inspect-grid {
-    grid-template-columns: 1fr;
-  }
-  .kv-item {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
+  .di-kv-grid,
+  .di-res-bars,
+  .di-net-grid { grid-template-columns: 1fr; }
+  .di-env-row { grid-template-columns: 1fr; gap: 3px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .inspect-caret,
-  .inspect-section.collapsible .inspect-section-head {
-    transition: none;
-  }
+  .di-caret,
+  .di-close { transition: none; }
 }
 @media (max-width: 1200px) {
   .summary-grid {

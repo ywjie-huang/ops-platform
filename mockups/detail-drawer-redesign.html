@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>详情抽屉 UI 重设计 · 预览</title>
+<style>
+  /* ── 设计令牌（取自 frontend/src/assets/styles/index.scss） ── */
+  :root {
+    --primary: #5e6ad2;
+    --primary-hover: #4f5bc4;
+    --success: #22c55e;
+    --warning: #f5a623;
+    --danger: #e5484d;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface-2: #f6f6f8;
+    --border: #ececef;
+    --border-strong: #e2e2e6;
+    --text-1: #111111;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --radius: 10px;
+    --radius-sm: 7px;
+    /* 派生：状态底色（透明叠加） */
+    --primary-bg: rgba(94, 106, 210, 0.09);
+    --success-bg: rgba(34, 197, 94, 0.11);
+    --warning-bg: rgba(245, 166, 35, 0.13);
+    --danger-bg: rgba(229, 72, 77, 0.10);
+    --info-bg: rgba(140, 140, 140, 0.10);
+    --shadow-drawer: -18px 0 48px -20px rgba(17, 17, 17, 0.22);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #e9e9ee;
+    color: var(--text-1);
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px;
+  }
+
+  /* ── 顶部工具条 ── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    height: 52px; display: flex; align-items: center; gap: 14px;
+    padding: 0 18px; background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-strong);
+  }
+  .topbar-title { font-size: 14px; font-weight: 700; }
+  .topbar-sub { font-size: 12px; color: var(--text-3); }
+  .topbar-spacer { flex: 1; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; cursor: pointer; padding: 6px 14px;
+    font-size: 13px; font-weight: 600; color: var(--text-2); border-radius: 6px;
+    transition: all .15s ease-out;
+  }
+  .seg button.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .ghost-btn {
+    border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
+    padding: 6px 12px; font-size: 12.5px; color: var(--text-2); border-radius: 7px; font-weight: 600;
+    transition: all .15s ease-out;
+  }
+  .ghost-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* ── 抽屉舞台 ── */
+  .stage { padding-top: 52px; min-height: 100vh; display: flex; justify-content: flex-end; }
+  .backdrop { position: fixed; inset: 52px 0 0 0; background: rgba(17,17,17,0.28); }
+  .drawer {
+    position: relative; z-index: 5; width: 780px; max-width: 94vw; height: calc(100vh - 52px);
+    background: var(--bg); box-shadow: var(--shadow-drawer);
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: drawer-in .28s cubic-bezier(.2,.7,.2,1);
+  }
+  @keyframes drawer-in { from { transform: translateX(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+  .view { display: none; height: 100%; flex-direction: column; }
+  .view.active { display: flex; }
+
+  /* ── 抽屉头 ── */
+  .drawer-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 18px 22px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .close-btn {
+    border: 0; background: var(--surface-2); cursor: pointer; width: 30px; height: 30px;
+    border-radius: 8px; color: var(--text-2); font-size: 16px; line-height: 1; flex: none;
+    display: grid; place-items: center; transition: all .15s ease-out;
+  }
+  .close-btn:hover { background: var(--danger-bg); color: var(--danger); }
+  .head-copy { flex: 1; min-width: 0; }
+
+  /* ── 状态英雄区 ── */
+  .hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hero .phase {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 9px;
+    border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: .2px;
+  }
+  .hero .phase .pdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .hero .phase.success { color: #15803d; background: var(--success-bg); }
+  .hero .phase.danger  { color: #b42318; background: var(--danger-bg); }
+  .hero .phase.warning { color: #b45309; background: var(--warning-bg); }
+  .hero .phase.info    { color: var(--text-2); background: var(--info-bg); }
+  .head-title { font-size: 18px; font-weight: 750; margin-top: 6px; word-break: break-all; line-height: 1.3; }
+  .head-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px;
+    font-size: 12px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .chip .chip-k { color: var(--text-3); }
+  .chip.click { cursor: pointer; }
+  .chip.click:hover { border-color: var(--primary); color: var(--primary); }
+  .head-actions { display: flex; gap: 6px; flex: none; align-items: center; }
+
+  /* ── 概览统计条 ── */
+  .stat-strip {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--border); border-bottom: 1px solid var(--border); flex: none;
+  }
+  .stat {
+    background: var(--surface); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .stat-k { font-size: 11px; color: var(--text-3); font-weight: 600; letter-spacing: .3px; text-transform: uppercase; }
+  .stat-v { font-size: 17px; font-weight: 750; color: var(--text-1); }
+  .stat-v.warn { color: var(--warning); }
+  .stat-v.danger { color: var(--danger); }
+  .stat-v .unit { font-size: 12px; font-weight: 600; color: var(--text-3); margin-left: 2px; }
+
+  /* ── 滚动主体 ── */
+  .drawer-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 22px 40px; }
+  .drawer-scroll::-webkit-scrollbar { width: 10px; }
+  .drawer-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg); }
+
+  /* ── 区块通用 ── */
+  .section { margin-bottom: 18px; }
+  .section-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: default;
+  }
+  .section-head.collapsible { cursor: pointer; user-select: none; }
+  .section-head.collapsible:hover .section-title { color: var(--primary); }
+  .section-title { font-size: 12.5px; font-weight: 750; color: var(--text-1); letter-spacing: .4px; text-transform: uppercase; transition: color .15s; }
+  .section-title .stico { color: var(--text-3); margin-right: 4px; }
+  .section-meta { font-size: 12px; color: var(--text-3); font-weight: 500; }
+  .section-caret { margin-left: auto; color: var(--text-3); transition: transform .2s ease-out; font-size: 12px; }
+  .section-head.open .section-caret { transform: rotate(180deg); }
+
+  /* ── 容器卡片（核心改进） ── */
+  .ccard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 10px; overflow: hidden; transition: border-color .15s, box-shadow .15s;
+  }
+  .ccard:hover { border-color: var(--border-strong); }
+  .ccard-head {
+    display: flex; align-items: center; gap: 10px; padding: 13px 15px; cursor: pointer; user-select: none;
+  }
+  .ccard-head:hover { background: var(--surface-2); }
+  .ccard-body { padding: 0 15px 15px; display: grid; gap: 12px; }
+  .ccard-body.collapsed { display: none; }
+  .ccard-main { flex: 1; min-width: 0; }
+  .ccard-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ccard-name { font-size: 14px; font-weight: 700; }
+  .ccard-image { color: var(--text-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ccard-summary { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-3); flex: none; }
+  .ccard-caret { color: var(--text-3); flex: none; transition: transform .2s ease-out; }
+  .ccard.expanded .ccard-caret { transform: rotate(180deg); }
+  .sdot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .sdot.running { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
+  .sdot.terminated { background: var(--text-3); }
+  .sdot.waiting { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-bg); }
+
+  /* ── 资源条（核心改进） ── */
+  .res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .res-bar { min-width: 0; }
+  .res-bar-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+  .res-bar-k { font-size: 11px; color: var(--text-3); font-weight: 650; letter-spacing: .3px; }
+  .res-bar-v { font-size: 12px; color: var(--text-2); font-weight: 600; }
+  .res-track { height: 7px; border-radius: 999px; background: var(--surface-2); overflow: hidden; position: relative; }
+  .res-fill { height: 100%; border-radius: inherit; transition: width .3s ease-out; }
+  .res-fill.ok { background: linear-gradient(90deg, #34d399, var(--success)); }
+  .res-fill.warn { background: linear-gradient(90deg, #fbbf24, var(--warning)); }
+  .res-fill.hot { background: linear-gradient(90deg, #fb7185, var(--danger)); }
+  .res-fill.muted { background: var(--text-3); opacity: .5; }
+
+  /* ── 快捷标签条（容器摘要 chips） ── */
+  .quick-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .qchip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 6px;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2); background: var(--surface-2);
+    border: 1px solid var(--border); cursor: default;
+  }
+  .qchip .qn { color: var(--primary); font-weight: 750; }
+  .qchip.danger .qn { color: var(--danger); }
+
+  /* ── 键值网格（基本信息等） ── */
+  .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0; }
+  .kv { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+  .kv:nth-last-child(-n+2) { border-bottom: 0; }
+  .kv.wide { grid-column: 1 / -1; flex-direction: column; align-items: stretch; gap: 3px; }
+  .kv-k { flex: none; width: 86px; font-size: 12px; color: var(--text-3); }
+  .kv.wide .kv-k { width: auto; }
+  .kv-v { flex: 1; min-width: 0; font-size: 13px; color: var(--text-1); word-break: break-word; line-height: 1.5; }
+
+  /* 复制行（镜像 / ID / 命令） */
+  .copyable { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .copyable .cv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn {
+    border: 0; background: transparent; cursor: pointer; color: var(--text-3); flex: none;
+    width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; transition: all .15s;
+  }
+  .copy-btn:hover { background: var(--primary-bg); color: var(--primary); }
+  .copy-btn.done { color: var(--success); }
+
+  /* ── 代码块（command / args） ── */
+  .codeblock {
+    background: #1e1e2a; color: #d4d4e4; padding: 11px 13px; border-radius: var(--radius-sm);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word; position: relative;
+  }
+  .codeblock .ck { color: #8b8ba7; }
+  .codeblock-label { font-size: 11px; color: var(--text-3); font-weight: 650; margin-bottom: 5px; letter-spacing: .3px; text-transform: uppercase; }
+
+  /* ── 探针 ── */
+  .probe-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--surface-2);
+    border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 12.5px;
+  }
+  .probe-row:last-child { margin-bottom: 0; }
+  .probe-kind { font-weight: 700; color: var(--primary); flex: none; width: 64px; }
+  .probe-what { color: var(--text-2); flex: 1; min-width: 0; }
+  .probe-time { color: var(--text-3); flex: none; }
+
+  /* ── 环境变量列表 ── */
+  .env-list { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+  .env-row { display: grid; grid-template-columns: minmax(0, 170px) 1fr auto; align-items: center; gap: 12px; padding: 8px 12px; background: var(--surface); }
+  .env-key { color: var(--text-2); word-break: break-all; }
+  .env-val { color: var(--text-1); word-break: break-all; }
+  .env-val.masked { color: var(--text-3); letter-spacing: 2px; }
+  .env-reveal { border: 0; background: transparent; cursor: pointer; color: var(--primary); font-size: 12px; font-weight: 600; padding: 2px 4px; }
+  .env-reveal:hover { text-decoration: underline; }
+  .env-empty { padding: 14px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+  /* ── 挂载 ── */
+  .mount-row {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-2);
+    border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 12.5px; flex-wrap: wrap;
+  }
+  .mount-row:last-child { margin-bottom: 0; }
+  .mount-arrow { color: var(--primary); font-weight: 700; }
+  .mount-tag { font-size: 10.5px; padding: 2px 7px; border-radius: 5px; background: var(--info-bg); color: var(--text-2); font-weight: 600; margin-left: auto; }
+
+  /* ── 事件时间线（核心改进） ── */
+  .timeline { position: relative; padding-left: 4px; }
+  .tl-item { position: relative; padding: 0 0 14px 22px; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-item::before {
+    content: ""; position: absolute; left: 5px; top: 6px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--text-3); border: 2px solid var(--surface); z-index: 1;
+  }
+  .tl-item.warning::before { background: var(--warning); }
+  .tl-item.normal::before { background: var(--success); }
+  .tl-item:not(:last-child)::after {
+    content: ""; position: absolute; left: 9px; top: 14px; bottom: 0; width: 2px; background: var(--border);
+  }
+  .tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tl-reason { font-size: 13px; font-weight: 700; }
+  .tl-reason.warning { color: #b45309; }
+  .tl-count { font-size: 11px; color: var(--text-3); background: var(--surface-2); padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .tl-time { font-size: 11.5px; color: var(--text-3); margin-left: auto; }
+  .tl-msg { font-size: 12.5px; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
+
+  /* ── 条件 / 状态项 ── */
+  .cond-list { display: grid; gap: 6px; }
+  .cond-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--surface-2); border-radius: var(--radius-sm); font-size: 12.5px; }
+  .cond-bool { flex: none; font-size: 11px; font-weight: 750; padding: 2px 8px; border-radius: 5px; }
+  .cond-bool.true { color: #15803d; background: var(--success-bg); }
+  .cond-bool.false { color: var(--text-3); background: var(--info-bg); }
+  .cond-type { font-weight: 650; color: var(--text-1); }
+  .cond-msg { color: var(--text-3); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── 端口可视化（核心改进） ── */
+  .ports { display: flex; flex-wrap: wrap; gap: 8px; }
+  .port-pill {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border); font-size: 12.5px;
+  }
+  .port-host { color: var(--text-2); font-weight: 600; }
+  .port-arr { color: var(--primary); }
+  .port-ctr { color: var(--text-1); font-weight: 700; }
+  .port-proto { font-size: 10px; color: var(--text-3); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  /* ── 网络行 ── */
+  .net-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .net-cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 11px 13px; }
+  .net-k { font-size: 11px; color: var(--text-3); font-weight: 600; letter-spacing: .3px; margin-bottom: 4px; }
+  .net-v { font-size: 13.5px; font-weight: 650; color: var(--text-1); }
+
+  /* 健康条幅 */
+  .health-banner { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; }
+  .health-banner.healthy { background: var(--success-bg); color: #15803d; }
+  .health-banner.unhealthy { background: var(--danger-bg); color: #b42318; }
+  .health-banner.none { background: var(--info-bg); color: var(--text-2); }
+  .health-banner .hb-streak { margin-left: auto; font-size: 12px; color: inherit; opacity: .85; }
+
+  /* 标签云 */
+  .label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+  .label-pill {
+    display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 9px; border-radius: 6px;
+    background: var(--primary-bg); font-size: 11.5px; max-width: 100%;
+  }
+  .label-pill .lk { color: var(--primary); font-weight: 700; }
+  .label-pill .lv { color: var(--text-2); word-break: break-all; }
+
+  .field-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .field-card + .field-card { margin-top: 10px; }
+  .subnote { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+
+  /* ── 设计说明浮层 ── */
+  .notes {
+    position: fixed; left: 18px; bottom: 18px; z-index: 60; width: 320px; max-width: calc(100vw - 36px);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: 0 12px 32px -10px rgba(17,17,17,0.25); overflow: hidden;
+    transition: transform .25s ease-out;
+  }
+  .notes.collapsed { transform: translateY(calc(100% - 46px)); }
+  .notes-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; user-select: none; border-bottom: 1px solid var(--border); }
+  .notes.collapsed .notes-head { border-bottom: 0; }
+  .notes-head h4 { font-size: 13px; font-weight: 750; }
+  .notes-head .badge-new { font-size: 10px; background: var(--primary); color: #fff; padding: 2px 7px; border-radius: 5px; font-weight: 700; }
+  .notes-head .ntoggle { margin-left: auto; color: var(--text-3); transition: transform .2s; }
+  .notes.collapsed .ntoggle { transform: rotate(180deg); }
+  .notes-body { padding: 4px 14px 14px; max-height: 50vh; overflow-y: auto; font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+  .notes-body ul { padding-left: 16px; display: grid; gap: 6px; margin-top: 6px; }
+  .notes-body li b { color: var(--text-1); }
+  .notes-body .compare { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-strong); }
+  .notes-body .compare .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  .notes-body .compare .cmp b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+  .cmp-old { color: var(--text-3); }
+  .cmp-new { color: var(--primary); }
+
+  @media (max-width: 768px) {
+    .res-bars, .kv-grid, .net-grid { grid-template-columns: 1fr; }
+    .env-row { grid-template-columns: 1fr; gap: 3px; }
+    .drawer { width: 100vw; }
+    .notes { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 顶部工具条 -->
+<div class="topbar">
+  <div>
+    <div class="topbar-title">详情抽屉 · UI 重设计预览</div>
+    <div class="topbar-sub">静态原型 · 浏览器直接打开 · 改完告诉我哪里要调</div>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="seg" role="tablist">
+    <button class="active" data-view="pod" role="tab">K8s Pod 详情</button>
+    <button data-view="docker" role="tab">Docker 容器 inspect</button>
+  </div>
+</div>
+
+<!-- 抽屉舞台 -->
+<div class="stage">
+  <div class="backdrop"></div>
+  <div class="drawer">
+
+    <!-- ════════════ 视图 1：K8s Pod 详情 ════════════ -->
+    <div class="view active" id="view-pod">
+      <div class="drawer-head">
+        <div class="head-copy">
+          <div class="hero">
+            <span class="phase success"><span class="pdot"></span>Running</span>
+            <span class="qchip" style="background:var(--warning-bg);color:#b45309;border-color:transparent"><span class="qn">重启 2</span> 需关注</span>
+          </div>
+          <div class="head-title mono">payment-service-7d8f9c-x2k9l</div>
+          <div class="head-chips">
+            <span class="chip"><span class="chip-k">命名空间</span> prod</span>
+            <span class="chip"><span class="chip-k">节点</span> worker-node-03</span>
+            <span class="chip"><span class="chip-k">Pod IP</span> <span class="mono">10.244.1.45</span></span>
+            <span class="chip"><span class="chip-k">Host IP</span> <span class="mono">192.168.10.23</span></span>
+            <span class="chip"><span class="chip-k">运行</span> 2h 14m</span>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="ghost-btn">⟳ 刷新</button>
+          <button class="close-btn" title="关闭">✕</button>
+        </div>
+      </div>
+
+      <!-- 概览统计 -->
+      <div class="stat-strip">
+        <div class="stat"><div class="stat-k">容器</div><div class="stat-v">3<span class="unit">（2 业务 + 1 init）</span></div></div>
+        <div class="stat"><div class="stat-k">重启</div><div class="stat-v warn">2</div></div>
+        <div class="stat"><div class="stat-k">运行时长</div><div class="stat-v">2h<span class="unit">14m</span></div></div>
+        <div class="stat"><div class="stat-k">QoS</div><div class="stat-v" style="font-size:14px">Burstable</div></div>
+      </div>
+
+      <div class="drawer-scroll">
+        <!-- 基本信息 -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">▣</span>基本信息</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="field-card">
+            <div class="kv-grid">
+              <div class="kv wide"><div class="kv-k">UID</div><div class="kv-v"><div class="copyable"><span class="mono cv">f47ac10b-58cc-4372-a567-0e02b2c3d479</span><button class="copy-btn" title="复制">⧉</button></div></div></div>
+              <div class="kv"><div class="kv-k">创建时间</div><div class="kv-v">2026-08-02 09:42:11</div></div>
+              <div class="kv"><div class="kv-k">启动时间</div><div class="kv-v">2026-08-02 09:42:13</div></div>
+              <div class="kv"><div class="kv-k">所属控制器</div><div class="kv-v">ReplicaSet / payment-service-7d8f9c</div></div>
+              <div class="kv"><div class="kv-k">重启策略</div><div class="kv-v">Always</div></div>
+              <div class="kv"><div class="kv-k">ServiceAccount</div><div class="kv-v mono">payment-sa</div></div>
+              <div class="kv"><div class="kv-k">优先级</div><div class="kv-v">prod-high (1000)</div></div>
+              <div class="kv"><div class="kv-k">DNS 策略</div><div class="kv-v">ClusterFirst</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 容器（核心改进：卡片 + 资源条） -->
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title"><span class="stico">▤</span>容器</span>
+            <span class="section-meta">3 个 · 2 运行中 · 1 init 已完成</span>
+          </div>
+
+          <!-- 容器 1：app（展开，含完整细节） -->
+          <div class="ccard expanded">
+            <div class="ccard-head">
+              <span class="sdot running"></span>
+              <div class="ccard-main">
+                <div class="ccard-name-row">
+                  <span class="ccard-name">app</span>
+                  <span class="qchip" style="background:var(--success-bg);border-color:transparent;color:#15803d">运行中</span>
+                  <span class="qchip danger"><span class="qn">重启 2</span></span>
+                </div>
+                <div class="ccard-image mono">payment-svc:v2.4.1</div>
+              </div>
+              <span class="ccard-caret">▼</span>
+            </div>
+            <div class="ccard-body">
+              <!-- 资源条 -->
+              <div class="res-bars">
+                <div class="res-bar">
+                  <div class="res-bar-top"><span class="res-bar-k">CPU</span><span class="res-bar-v mono">80m / 500m</span></div>
+                  <div class="res-track"><div class="res-fill ok" style="width:16%"></div></div>
+                </div>
+                <div class="res-bar">
+                  <div class="res-bar-top"><span class="res-bar-k">内存</span><span class="res-bar-v mono">128Mi / 512Mi</span></div>
+                  <div class="res-track"><div class="res-fill ok" style="width:25%"></div></div>
+                </div>
+              </div>
+              <!-- 命令 -->
+              <div>
+                <div class="codeblock-label">command</div>
+                <div class="codeblock mono"><span class="ck">$</span> /app/server</div>
+              </div>
+              <div>
+                <div class="codeblock-label">args</div>
+                <div class="codeblock mono"><span class="ck">$</span> --port 8080 --log-level info --metrics :9090</div>
+              </div>
+              <!-- 探针 -->
+              <div>
+                <div class="codeblock-label">探针</div>
+                <div class="probe-row"><span class="probe-kind">liveness</span><span class="probe-what mono">HTTP GET :8080/healthz</span><span class="probe-time">10s / 1s</span></div>
+                <div class="probe-row"><span class="probe-kind">readiness</span><span class="probe-what mono">HTTP GET :8080/ready</span><span class="probe-time">5s / 1s</span></div>
+              </div>
+              <!-- 环境变量 -->
+              <div>
+                <div class="codeblock-label">环境变量 · 12 项</div>
+                <div class="env-list">
+                  <div class="env-row"><span class="env-key mono">APP_ENV</span><span class="env-val mono">production</span></div>
+                  <div class="env-row"><span class="env-key mono">LOG_LEVEL</span><span class="env-val mono">info</span></div>
+                  <div class="env-row"><span class="env-key mono">DB_HOST</span><span class="env-val mono">db-master.prod.svc</span></div>
+                  <div class="env-row"><span class="env-key mono">DB_PASSWORD</span><span class="env-val mono masked">••••••••••</span><button class="env-reveal">显示</button></div>
+                  <div class="env-row"><span class="env-key mono">REDIS_URL</span><span class="env-val mono">redis://cache:6379</span></div>
+                </div>
+                <div class="subnote">还有 7 项已折叠 · 敏感项默认掩码</div>
+              </div>
+              <!-- 挂载 -->
+              <div>
+                <div class="codeblock-label">卷挂载 · 3 项</div>
+                <div class="mount-row"><span class="mono">config-volume</span><span class="mount-arrow">→</span><span class="mono">/etc/app</span><span class="mount-tag">configMap · 只读</span></div>
+                <div class="mount-row"><span class="mono">tmp-vol</span><span class="mount-arrow">→</span><span class="mono">/tmp</span><span class="mount-tag">emptyDir</span></div>
+                <div class="mount-row"><span class="mono">tls-secret</span><span class="mount-arrow">→</span><span class="mono">/etc/tls</span><span class="mount-tag">secret · 只读</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 容器 2：istio-proxy（折叠） -->
+          <div class="ccard">
+            <div class="ccard-head">
+              <span class="sdot running"></span>
+              <div class="ccard-main">
+                <div class="ccard-name-row">
+                  <span class="ccard-name">istio-proxy</span>
+                  <span class="qchip" style="background:var(--success-bg);border-color:transparent;color:#15803d">运行中</span>
+                </div>
+                <div class="ccard-image mono">istio/proxyv2:1.18.2</div>
+              </div>
+              <div class="res-bars" style="flex:1;max-width:240px">
+                <div class="res-bar"><div class="res-bar-top"><span class="res-bar-k">CPU</span><span class="res-bar-v mono">100m/2核</span></div><div class="res-track"><div class="res-fill ok" style="width:5%"></div></div></div>
+                <div class="res-bar"><div class="res-bar-top"><span class="res-bar-k">内存</span><span class="res-bar-v mono">256Mi/1Gi</span></div><div class="res-track"><div class="res-fill ok" style="width:25%"></div></div></div>
+              </div>
+              <span class="ccard-caret">▼</span>
+            </div>
+            <div class="ccard-body collapsed"></div>
+          </div>
+
+          <!-- 容器 3：init（已完成） -->
+          <div class="ccard">
+            <div class="ccard-head">
+              <span class="sdot terminated"></span>
+              <div class="ccard-main">
+                <div class="ccard-name-row">
+                  <span class="ccard-name">config-init</span>
+                  <span class="qchip" style="background:var(--info-bg);border-color:transparent;color:var(--text-2)">init · 已完成</span>
+                  <span class="qchip"><span class="qn">exit 0</span></span>
+                </div>
+                <div class="ccard-image mono">busybox:1.36</div>
+              </div>
+              <span class="ccard-caret">▼</span>
+            </div>
+            <div class="ccard-body collapsed"></div>
+          </div>
+        </div>
+
+        <!-- 事件时间线 -->
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title"><span class="stico">◫</span>事件</span>
+            <span class="section-meta">5 条 · <span style="color:var(--warning);font-weight:700">2 Warning</span></span>
+          </div>
+          <div class="field-card">
+            <div class="timeline">
+              <div class="tl-item warning">
+                <div class="tl-top"><span class="tl-reason warning">BackOff</span><span class="tl-count">×4</span><span class="tl-time">12 分钟前</span></div>
+                <div class="tl-msg">Back-off restarting failed container app in pod payment-service-7d8f9c-x2k9l</div>
+              </div>
+              <div class="tl-item warning">
+                <div class="tl-top"><span class="tl-reason warning">Unhealthy</span><span class="tl-count">×2</span><span class="tl-time">14 分钟前</span></div>
+                <div class="tl-msg">Liveness probe failed: HTTP probe failed with statuscode: 502</div>
+              </div>
+              <div class="tl-item normal">
+                <div class="tl-top"><span class="tl-reason">Started</span><span class="tl-time">15 分钟前</span></div>
+                <div class="tl-msg">Started container app</div>
+              </div>
+              <div class="tl-item normal">
+                <div class="tl-top"><span class="tl-reason">Pulled</span><span class="tl-time">2h 前</span></div>
+                <div class="tl-msg">Successfully pulled image "payment-svc:v2.4.1"</div>
+              </div>
+              <div class="tl-item normal">
+                <div class="tl-top"><span class="tl-reason">Created</span><span class="tl-time">2h 前</span></div>
+                <div class="tl-msg">Created container app</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 条件 -->
+        <div class="section">
+          <div class="section-head collapsible">
+            <span class="section-title"><span class="stico">✓</span>状态条件</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="ccard-body collapsed">
+            <div class="cond-list" style="padding:6px 0">
+              <div class="cond-row"><span class="cond-bool true">True</span><span class="cond-type">Ready</span><span class="cond-msg">2/2 容器就绪</span></div>
+              <div class="cond-row"><span class="cond-bool true">True</span><span class="cond-type">PodScheduled</span><span class="cond-msg">worker-node-03</span></div>
+              <div class="cond-row"><span class="cond-bool true">True</span><span class="cond-type">Initialized</span><span class="cond-msg">init 完成</span></div>
+              <div class="cond-row"><span class="cond-bool true">True</span><span class="cond-type">ContainersReady</span><span class="cond-msg"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 标签 -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">🏷</span>标签 / 注解</span>
+            <span class="section-meta">6 + 3</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="field-card">
+            <div class="codeblock-label">标签</div>
+            <div class="label-cloud">
+              <span class="label-pill"><span class="lk mono">app</span><span class="lv mono">=payment-service</span></span>
+              <span class="label-pill"><span class="lk mono">version</span><span class="lv mono">=v2</span></span>
+              <span class="label-pill"><span class="lk mono">tier</span><span class="lv mono">=backend</span></span>
+              <span class="label-pill"><span class="lk mono">pod-template-hash</span><span class="lv mono">=7d8f9c</span></span>
+              <span class="label-pill"><span class="lk mono">env</span><span class="lv mono">=prod</span></span>
+              <span class="label-pill"><span class="lk mono">managed-by</span><span class="lv mono">=argocd</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ 视图 2：Docker 容器 inspect ════════════ -->
+    <div class="view" id="view-docker">
+      <div class="drawer-head">
+        <div class="head-copy">
+          <div class="hero">
+            <span class="phase success"><span class="pdot"></span>运行中</span>
+            <span class="qchip" style="background:var(--success-bg);color:#15803d;border-color:transparent"><span class="qn">健康</span> · 连续成功 38 次</span>
+          </div>
+          <div class="head-title">nginx-web</div>
+          <div class="head-chips">
+            <span class="chip"><span class="chip-k">镜像</span> <span class="mono">nginx:1.25.3-alpine</span></span>
+            <span class="chip"><span class="chip-k">ID</span> <span class="mono">a3f2c8e9</span></span>
+            <span class="chip"><span class="chip-k">运行</span> 3 天</span>
+            <span class="chip"><span class="chip-k">重启</span> 0</span>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="ghost-btn">⟳ 刷新</button>
+          <button class="close-btn" title="关闭">✕</button>
+        </div>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat"><div class="stat-k">PID</div><div class="stat-v">4821</div></div>
+        <div class="stat"><div class="stat-k">退出码</div><div class="stat-v">0</div></div>
+        <div class="stat"><div class="stat-k">健康</div><div class="stat-v" style="font-size:14px;color:#15803d">healthy</div></div>
+        <div class="stat"><div class="stat-k">重启策略</div><div class="stat-v" style="font-size:14px">unless-stopped</div></div>
+      </div>
+
+      <div class="drawer-scroll">
+        <!-- 网络（核心改进：端口可视化） -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">⌬</span>网络</span>
+            <span class="section-meta">bridge · 2 个端口映射</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="field-card">
+            <div class="net-grid" style="margin-bottom:14px">
+              <div class="net-cell"><div class="net-k">IP 地址</div><div class="net-v mono">172.17.0.2</div></div>
+              <div class="net-cell"><div class="net-k">网络模式</div><div class="net-v mono">bridge</div></div>
+              <div class="net-cell"><div class="net-k">MAC 地址</div><div class="net-v mono">02:42:ac:11:00:02</div></div>
+              <div class="net-cell"><div class="net-k">网关</div><div class="net-v mono">172.17.0.1</div></div>
+            </div>
+            <div class="codeblock-label">端口映射</div>
+            <div class="ports">
+              <span class="port-pill"><span class="port-host mono">0.0.0.0:80</span><span class="port-arr">→</span><span class="port-ctr mono">80</span><span class="port-proto">tcp</span></span>
+              <span class="port-pill"><span class="port-host mono">0.0.0.0:443</span><span class="port-arr">→</span><span class="port-ctr mono">443</span><span class="port-proto">tcp</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 资源限制（核心改进：可视化） -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">⏺</span>资源限制</span>
+            <span class="section-meta">内存 512MB · CPU 1.5 核</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="field-card">
+            <div class="res-bars" style="margin-bottom:12px">
+              <div class="res-bar">
+                <div class="res-bar-top"><span class="res-bar-k">CPU 限额</span><span class="res-bar-v mono">1.5 核 / 4 核可用</span></div>
+                <div class="res-track"><div class="res-fill ok" style="width:37.5%"></div></div>
+              </div>
+              <div class="res-bar">
+                <div class="res-bar-top"><span class="res-bar-k">内存限额</span><span class="res-bar-v mono">512MB / 8GB 可用</span></div>
+                <div class="res-track"><div class="res-fill ok" style="width:6.25%"></div></div>
+              </div>
+            </div>
+            <div class="kv-grid">
+              <div class="kv"><div class="kv-k">CPU 权重</div><div class="kv-v mono">1024</div></div>
+              <div class="kv"><div class="kv-k">PID 限制</div><div class="kv-v">未限制</div></div>
+              <div class="kv"><div class="kv-k">OOM 禁杀</div><div class="kv-v">否</div></div>
+              <div class="kv"><div class="kv-k">内存预留</div><div class="kv-v">0 B</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 健康检查 -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">♥</span>健康检查</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div style="display:grid;gap:10px">
+            <div class="health-banner healthy">✓ 容器健康<span class="hb-streak">连续成功 38 次</span></div>
+            <div class="field-card">
+              <div class="kv-grid">
+                <div class="kv wide"><div class="kv-k">探针命令</div><div class="kv-v"><div class="copyable"><span class="mono cv">CMD-SHELL wget -q --spider http://localhost/ || exit 1</span><button class="copy-btn">⧉</button></div></div></div>
+                <div class="kv"><div class="kv-k">检测间隔</div><div class="kv-v">30s</div></div>
+                <div class="kv"><div class="kv-k">超时</div><div class="kv-v">5s</div></div>
+                <div class="kv"><div class="kv-k">启动宽限</div><div class="kv-v">10s</div></div>
+                <div class="kv"><div class="kv-k">重试次数</div><div class="kv-v">3</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 运行配置 -->
+        <div class="section">
+          <div class="section-head collapsible">
+            <span class="section-title"><span class="stico">⚙</span>运行配置</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="ccard-body collapsed">
+            <div style="padding:6px 0">
+              <div style="margin-bottom:12px">
+                <div class="codeblock-label">入口 Entrypoint</div>
+                <div class="codeblock mono"><span class="ck">$</span> /docker-entrypoint.sh</div>
+              </div>
+              <div style="margin-bottom:12px">
+                <div class="codeblock-label">启动命令 Cmd</div>
+                <div class="codeblock mono"><span class="ck">$</span> nginx -g 'daemon off;'</div>
+              </div>
+              <div class="kv-grid">
+                <div class="kv"><div class="kv-k">工作目录</div><div class="kv-v mono">/</div></div>
+                <div class="kv"><div class="kv-k">运行用户</div><div class="kv-v mono">root</div></div>
+                <div class="kv"><div class="kv-k">TTY</div><div class="kv-v">否</div></div>
+                <div class="kv"><div class="kv-k">交互 STDIN</div><div class="kv-v">否</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 挂载 -->
+        <div class="section">
+          <div class="section-head collapsible open">
+            <span class="section-title"><span class="stico">⇪</span>挂载</span>
+            <span class="section-meta">2 项</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div style="display:grid;gap:6px">
+            <div class="mount-row"><span class="mono">/srv/nginx/conf</span><span class="mount-arrow">→</span><span class="mono">/etc/nginx/conf.d</span><span class="mount-tag">bind · 只读</span></div>
+            <div class="mount-row"><span class="mono">/srv/nginx/html</span><span class="mount-arrow">→</span><span class="mono">/usr/share/nginx/html</span><span class="mount-tag">bind</span></div>
+          </div>
+        </div>
+
+        <!-- 环境变量 -->
+        <div class="section">
+          <div class="section-head collapsible">
+            <span class="section-title"><span class="stico">{} </span>环境变量</span>
+            <span class="section-meta">5 项 · 1 敏感</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="ccard-body collapsed">
+            <div class="env-list" style="padding:0 0 6px">
+              <div class="env-row"><span class="env-key mono">PATH</span><span class="env-val mono">/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin</span></div>
+              <div class="env-row"><span class="env-key mono">NGINX_VERSION</span><span class="env-val mono">1.25.3</span></div>
+              <div class="env-row"><span class="env-key mono">NJS_VERSION</span><span class="env-val mono">0.8.2</span></div>
+              <div class="env-row"><span class="env-key mono">PKG_RELEASE</span><span class="env-val mono">1</span></div>
+              <div class="env-row"><span class="env-key mono">NGINX_API_KEY</span><span class="env-val mono masked">••••••••••</span><button class="env-reveal">显示</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 标签 -->
+        <div class="section">
+          <div class="section-head collapsible">
+            <span class="section-title"><span class="stico">🏷</span>标签</span>
+            <span class="section-meta">4 项</span>
+            <span class="section-caret">▼</span>
+          </div>
+          <div class="ccard-body collapsed">
+            <div class="label-cloud" style="padding:6px 0">
+              <span class="label-pill"><span class="lk mono">com.docker.compose.service</span><span class="lv mono">=nginx-web</span></span>
+              <span class="label-pill"><span class="lk mono">com.docker.compose.project</span><span class="lv mono">=prod-edge</span></span>
+              <span class="label-pill"><span class="lk mono">maintainer</span><span class="lv mono">=NGINX Docker Maintainers</span></span>
+              <span class="label-pill"><span class="lk mono">app.role</span><span class="lv mono">=edge-proxy</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 设计说明浮层 -->
+<div class="notes" id="notes">
+  <div class="notes-head" onclick="document.getElementById('notes').classList.toggle('collapsed')">
+    <h4>设计说明</h4>
+    <span class="badge-new">重设计</span>
+    <span class="ntoggle">▼</span>
+  </div>
+  <div class="notes-body">
+    这次相对当前线上版本的主要改动：
+    <ul>
+      <li><b>状态英雄区</b>：Phase/状态色块提到最顶，名字加粗放大，关键元数据用 chips 平铺，一眼看到状态。</li>
+      <li><b>统计条</b>：重启 / 运行时长 / QoS 等做成顶部 4 格 KPI，替代散落在段落里的文字。</li>
+      <li><b>容器卡片 + 资源条</b>：每个容器独立卡片，CPU/内存 requests/limits 直接画成进度条，不用翻层级就能看资源水位。</li>
+      <li><b>事件时间线</b>：纵向时间轴 + Warning 红点 + 次数徽标，比表格更像「排障视图」。</li>
+      <li><b>端口可视化</b>：Docker 端口映射用 <code>主机:端口 → 容器端口</code> 胶囊，比纯文本直观。</li>
+      <li><b>复制按钮 / 代码块</b>：UID、镜像、命令加一键复制，命令用深色 codeblock，devtools 质感。</li>
+      <li><b>减边框</b>：去掉「每段一个大边框盒」的层叠，用留白 + 浅底分区，视觉更轻。</li>
+    </ul>
+    <div class="compare">
+      <b>想对比当前线上版？</b>
+      <div class="cmp">
+        <span class="cmp-old">当前：分段卡片 + 定义列表，硬边框，资源无可视化</span>
+        <span class="cmp-new">新版：英雄区 + KPI + 资源条 + 时间线 + 复制</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 视图切换
+  const seg = document.querySelectorAll('.seg button');
+  const views = document.querySelectorAll('.view');
+  seg.forEach(b => b.addEventListener('click', () => {
+    seg.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const target = b.dataset.view;
+    views.forEach(v => v.classList.toggle('active', v.id === 'view-' + target));
+    document.querySelector('.drawer-scroll').scrollTop = 0;
+  }));
+
+  // 区块 / 容器卡片 折叠
+  function bindToggle(headSel, bodySel) {
+    document.querySelectorAll(headSel).forEach(head => {
+      head.addEventListener('click', () => {
+        head.classList.toggle('open');
+        let body = head.nextElementSibling;
+        if (body && body.classList.contains(bodySel === 'ccard-body' ? 'ccard-body' : 'ccard-body')) {
+          body.classList.toggle('collapsed');
+        }
+        // 容器卡片：父级 .ccard 跟随
+        const card = head.closest('.ccard');
+        if (card) card.classList.toggle('expanded');
+      });
+    });
+  }
+  // 容器卡片头
+  document.querySelectorAll('.ccard-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const card = head.closest('.ccard');
+      const body = card.querySelector('.ccard-body');
+      card.classList.toggle('expanded');
+      if (body) body.classList.toggle('collapsed');
+    });
+  });
+  // section 折叠（带 field-card / ccard-body 的）
+  document.querySelectorAll('.section-head.collapsible').forEach(head => {
+    head.addEventListener('click', () => {
+      head.classList.toggle('open');
+      let next = head.nextElementSibling;
+      // 跳过直到找到内容容器
+      while (next && !next.matches('.field-card, .ccard-body, .timeline, .label-cloud, .cond-list, .env-list')) {
+        next = next.nextElementSibling;
+      }
+      if (next) next.style.display = (next.style.display === 'none' ? '' : 'none');
+    });
+  });
+
+  // 复制按钮反馈
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const text = btn.parentElement.querySelector('.cv').textContent.trim();
+      navigator.clipboard?.writeText(text);
+      const old = btn.textContent;
+      btn.textContent = '✓'; btn.classList.add('done');
+      setTimeout(() => { btn.textContent = old; btn.classList.remove('done'); }, 1100);
+    });
+  });
+
+  // 敏感环境变量 显示/隐藏
+  document.querySelectorAll('.env-reveal').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const val = btn.previousElementSibling;
+      const masked = val.classList.contains('masked');
+      if (masked) {
+        val.dataset.mask = val.textContent;
+        val.textContent = 's3cr3t-pr0d-k3y-2026';
+        val.classList.remove('masked');
+        btn.textContent = '隐藏';
+      } else {
+        val.textContent = '••••••••••';
+        val.classList.add('masked');
+        btn.textContent = '显示';
+      }
+    });
+  });
+</script>
+</body>
+</html>
