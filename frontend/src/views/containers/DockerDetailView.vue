@@ -326,8 +326,8 @@
           <div class="di-chips">
             <span class="di-chip"><span class="di-ck">镜像</span><span class="mono">{{ inspectContainer?.image || '-' }}</span></span>
             <span class="di-chip"><span class="di-ck">ID</span><span class="mono">{{ inspectShortId || '-' }}</span></span>
-            <span class="di-chip"><span class="di-ck">启动</span>{{ formatRelativeTime(inspectState.StartedAt) }}</span>
-            <span class="di-chip"><span class="di-ck">创建</span>{{ formatInspectTime(inspectData.Created) }}</span>
+            <span class="di-chip"><span class="di-ck">启动</span>{{ inspectState.StartedAt ? formatRelativeTime(inspectState.StartedAt) : '-' }}</span>
+            <span class="di-chip"><span class="di-ck">创建</span>{{ formatInspectTime(inspectData?.Created) }}</span>
           </div>
         </div>
         <div class="di-head-actions">
