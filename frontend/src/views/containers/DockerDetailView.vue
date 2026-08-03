@@ -551,7 +551,7 @@ import {
 } from '@/api/containers'
 import type { HostTrendData } from '@/api/monitoring'
 import { getHostSyncState, secondsSince, sortContainersByRisk, summarizeContainers } from '@/utils/dockerMonitor'
-import { filterLogLines, highlightLogLines, normalizeLogKeyword } from '@/utils/logSearch'
+import { useLiveLogs } from '@/composables/useLiveLogs'
 
 const THRESHOLD_WARN = 70
 const THRESHOLD_DANGER = 85
@@ -573,43 +573,38 @@ const pageSize = ref(20)
 const autoRefresh = ref(false)
 const selectedContainer = ref<any | null>(null)
 const logsDrawerVisible = ref(false)
-const logsLoading = ref(false)
-const containerLogs = ref('')
-const logKeyword = ref('')
-const logMode = ref<'lines' | 'time'>('lines')
-const logTailLines = ref(300)
-const logTimeWindow = ref(900) // 近 15 分钟
-const liveActive = ref(false)
-const logScrollRef = ref<HTMLElement | null>(null)
-// 实时跟随保留的最大行数，避免 DOM 无限增长
-const LIVE_LOG_MAX_LINES = 5000
-let logEs: EventSource | null = null
-let liveSince = 0
-
-// 实际返回的日志行数：用于在工具栏展示
-const logLineCount = computed(() => {
-  const text = containerLogs.value.trim()
-  return text ? text.split('\n').length : 0
-})
-const normalizedLogKeyword = computed(() => normalizeLogKeyword(logKeyword.value))
-const displayedContainerLogs = computed(() => {
-  return filterLogLines(containerLogs.value, normalizedLogKeyword.value)
-})
-const highlightedContainerLogLines = computed(() => {
-  return highlightLogLines(displayedContainerLogs.value, normalizedLogKeyword.value)
-})
-const displayedLogLineCount = computed(() => {
-  const text = displayedContainerLogs.value.trim()
-  return text ? text.split('\n').length : 0
-})
-const logDisplayText = computed(() => {
-  if (displayedContainerLogs.value) return displayedContainerLogs.value
-  return containerLogs.value && normalizedLogKeyword.value ? '未找到匹配日志' : '暂无日志'
-})
-const logCountLabel = computed(() => {
-  if (logsLoading.value || !containerLogs.value) return ''
-  if (normalizedLogKeyword.value) return `匹配 ${displayedLogLineCount.value} / ${logLineCount.value} 行`
-  return `共 ${logLineCount.value} 行`
+const {
+  logs: containerLogs,
+  loading: logsLoading,
+  logKeyword,
+  logMode,
+  logTailLines,
+  logTimeWindow,
+  liveActive,
+  logScrollRef,
+  totalLineCount: logLineCount,
+  normalizedKeyword: normalizedLogKeyword,
+  displayedLogs: displayedContainerLogs,
+  highlightedLines: highlightedContainerLogLines,
+  displayedLineCount: displayedLogLineCount,
+  displayText: logDisplayText,
+  countLabel: logCountLabel,
+  fetch: fetchSelectedContainerLogs,
+  startLive: startLiveFollow,
+  stopLive: stopLiveFollow,
+  scrollToBottom: scrollLogToBottom,
+  scrollToTop: scrollLogToTop,
+  copy: copyLogs,
+  download: downloadLogs,
+} = useLiveLogs({
+  fetchSnapshot: (params) => selectedContainer.value
+    ? getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, params)
+    : Promise.resolve({ data: { logs: '' } }),
+  buildStreamUrl: (sinceUnix) => selectedContainer.value
+    ? buildDockerLogStreamUrl(hostName.value, selectedContainer.value.container_id, sinceUnix)
+    : '',
+  drawerVisibleRef: logsDrawerVisible,
+  getDownloadName: () => selectedContainer.value?.name || selectedContainer.value?.container_id || 'container',
 })
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -796,113 +791,6 @@ async function openContainerLogs(row: any) {
   logKeyword.value = ''
   logsDrawerVisible.value = true
   await fetchSelectedContainerLogs()
-}
-
-async function fetchSelectedContainerLogs() {
-  if (!selectedContainer.value) return
-  // 重新加载快照前停掉旧的实时连接（随后会重新开启）
-  stopLiveFollow()
-  logsLoading.value = true
-  try {
-    let res: any
-    if (logMode.value === 'time') {
-      const since = logTimeWindow.value === 0 ? 0 : Math.floor(Date.now() / 1000) - logTimeWindow.value
-      res = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { since })
-    } else {
-      res = await getDockerContainerLogs(hostName.value, selectedContainer.value.container_id, { tail_lines: logTailLines.value })
-    }
-    containerLogs.value = res.data?.logs || ''
-    await nextTick(() => scrollLogToBottom(true))
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || '加载日志失败')
-  } finally {
-    logsLoading.value = false
-  }
-  // 以快照为起点开启近实时跟随（追加新行，不清空已有内容）
-  if (logsDrawerVisible.value) startLiveFollow()
-}
-
-// ─── 实时跟随（SSE） ───────────────────────────────────────
-function startLiveFollow() {
-  if (!selectedContainer.value) return
-  stopLiveFollow()
-  // 以「现在」为游标；快照内容保留在前，新行追加其后
-  liveSince = Math.floor(Date.now() / 1000)
-  const url = buildDockerLogStreamUrl(hostName.value, selectedContainer.value.container_id, liveSince)
-  logEs = new EventSource(url)
-  liveActive.value = true
-  logEs.onmessage = (ev) => {
-    let data: any
-    try {
-      data = JSON.parse(ev.data)
-    } catch {
-      return
-    }
-    if (data.type === 'append') {
-      const add = data.lines || ''
-      if (!add) return
-      containerLogs.value = containerLogs.value ? `${containerLogs.value}\n${add}` : add
-      trimLogsTail()
-      nextTick(() => scrollLogToBottom(false))
-    } else if (data.type === 'error') {
-      ElMessage.warning(data.message || '实时拉取出错')
-    }
-    // ready / heartbeat / done 不需要前端处理
-  }
-  logEs.onerror = () => {
-    // 401（未登录/无权限）→ readyState=CLOSED 且不自动重连；暂态网络错误由浏览器自动重连
-    if (logEs && logEs.readyState === EventSource.CLOSED) {
-      liveActive.value = false
-      ElMessage.error('实时连接已断开，请检查登录状态或权限')
-      stopLiveFollow()
-    }
-  }
-}
-
-function stopLiveFollow() {
-  liveActive.value = false
-  if (logEs) {
-    logEs.close()
-    logEs = null
-  }
-}
-
-function scrollLogToBottom(force = false) {
-  const el = logScrollRef.value
-  if (!el) return
-  const nearBottom = force || el.scrollHeight - el.scrollTop - el.clientHeight < 60
-  if (nearBottom) el.scrollTop = el.scrollHeight
-}
-
-function scrollLogToTop() {
-  const el = logScrollRef.value
-  if (el) el.scrollTop = 0
-}
-
-function trimLogsTail() {
-  const lines = containerLogs.value.split('\n')
-  if (lines.length > LIVE_LOG_MAX_LINES) {
-    containerLogs.value = lines.slice(lines.length - LIVE_LOG_MAX_LINES).join('\n')
-  }
-}
-
-function copyLogs() {
-  if (!displayedContainerLogs.value) return
-  navigator.clipboard.writeText(displayedContainerLogs.value).then(
-    () => ElMessage.success('已复制到剪贴板'),
-    () => ElMessage.error('复制失败'),
-  )
-}
-
-function downloadLogs() {
-  if (!displayedContainerLogs.value || !selectedContainer.value) return
-  const blob = new Blob([displayedContainerLogs.value], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${selectedContainer.value.name || selectedContainer.value.container_id}.log`
-  anchor.click()
-  URL.revokeObjectURL(url)
 }
 
 // ─── 容器 inspect 详情 ────────────────────────────────────

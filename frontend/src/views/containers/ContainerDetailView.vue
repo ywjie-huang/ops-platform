@@ -1097,7 +1097,7 @@ import {
   type PodQuickFilter,
   type ResourceAllocation,
 } from '@/utils/k8sCluster'
-import { filterLogLines, highlightLogLines, normalizeLogKeyword } from '@/utils/logSearch'
+import { useLiveLogs } from '@/composables/useLiveLogs'
 
 interface K8sPod {
   name: string
@@ -1298,42 +1298,39 @@ watch(() => route.query.tab, (value) => {
 const selectedPod = ref<K8sPod | null>(null)
 const drawerVisible = ref(false)
 const drawerTab = ref<'logs' | 'events'>('logs')
-const logsLoading = ref(false)
 const eventsLoading = ref(false)
-const podLogs = ref('')
-const logKeyword = ref('')
-const logMode = ref<'lines' | 'time'>('lines')
-const logTailLines = ref(300)
-const logTimeWindow = ref(900) // 近 15 分钟
-const liveActive = ref(false)
-const logScrollRef = ref<HTMLElement | null>(null)
-// 实时跟随保留的最大行数，避免 DOM 无限增长
-const LIVE_LOG_MAX_LINES = 5000
-let logEs: EventSource | null = null
-let liveSince = 0
-const podLogLineCount = computed(() => {
-  const text = podLogs.value.trim()
-  return text ? text.split('\n').length : 0
-})
-const normalizedLogKeyword = computed(() => normalizeLogKeyword(logKeyword.value))
-const displayedPodLogs = computed(() => {
-  return filterLogLines(podLogs.value, normalizedLogKeyword.value)
-})
-const highlightedPodLogLines = computed(() => {
-  return highlightLogLines(displayedPodLogs.value, normalizedLogKeyword.value)
-})
-const displayedPodLogLineCount = computed(() => {
-  const text = displayedPodLogs.value.trim()
-  return text ? text.split('\n').length : 0
-})
-const logDisplayText = computed(() => {
-  if (displayedPodLogs.value) return displayedPodLogs.value
-  return podLogs.value && normalizedLogKeyword.value ? '未找到匹配日志' : '暂无日志'
-})
-const logCountLabel = computed(() => {
-  if (logsLoading.value || !podLogs.value) return ''
-  if (normalizedLogKeyword.value) return `匹配 ${displayedPodLogLineCount.value} / ${podLogLineCount.value} 行`
-  return `共 ${podLogLineCount.value} 行`
+const {
+  logs: podLogs,
+  loading: logsLoading,
+  logKeyword,
+  logMode,
+  logTailLines,
+  logTimeWindow,
+  liveActive,
+  logScrollRef,
+  totalLineCount: podLogLineCount,
+  normalizedKeyword: normalizedLogKeyword,
+  displayedLogs: displayedPodLogs,
+  highlightedLines: highlightedPodLogLines,
+  displayedLineCount: displayedPodLogLineCount,
+  displayText: logDisplayText,
+  countLabel: logCountLabel,
+  fetch: loadPodLogs,
+  startLive: startPodLiveFollow,
+  stopLive: stopPodLiveFollow,
+  scrollToBottom: scrollPodLogToBottom,
+  scrollToTop: scrollPodLogToTop,
+  copy: copyLogs,
+  download: downloadLogs,
+} = useLiveLogs({
+  fetchSnapshot: (params) => selectedPod.value
+    ? getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, params)
+    : Promise.resolve({ data: { logs: '' } }),
+  buildStreamUrl: (sinceUnix) => selectedPod.value
+    ? buildPodLogStreamUrl(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, sinceUnix)
+    : '',
+  drawerVisibleRef: computed(() => drawerVisible.value && drawerTab.value === 'logs'),
+  getDownloadName: () => selectedPod.value ? `${selectedPod.value.namespace}_${selectedPod.value.name}` : 'pod',
 })
 const podEvents = ref<PodEvent[]>([])
 const eventPage = ref(1)
@@ -1873,25 +1870,6 @@ function clearDeployFilter() {
   podNamespace.value = ''
 }
 
-function copyLogs() {
-  if (!displayedPodLogs.value) return
-  navigator.clipboard.writeText(displayedPodLogs.value).then(
-    () => ElMessage.success('已复制到剪贴板'),
-    () => ElMessage.error('复制失败'),
-  )
-}
-
-function downloadLogs() {
-  if (!displayedPodLogs.value || !selectedPod.value) return
-  const blob = new Blob([displayedPodLogs.value], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${selectedPod.value.namespace}_${selectedPod.value.name}.log`
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
-
 function openServiceDetail(row: K8sService) {
   selectedService.value = row
   svcDetailVisible.value = true
@@ -1919,94 +1897,6 @@ function openPodDrawer(row: K8sPod, tab: 'logs' | 'events') {
   drawerVisible.value = true
   if (tab === 'logs') loadPodLogs()
   else loadPodEvents()
-}
-
-async function loadPodLogs() {
-  if (!selectedPod.value) return
-  // 重新加载快照前停掉旧的实时连接（随后会重新开启）
-  stopPodLiveFollow()
-  logsLoading.value = true
-  try {
-    let res: any
-    if (logMode.value === 'time') {
-      const since = logTimeWindow.value === 0 ? 0 : Math.floor(Date.now() / 1000) - logTimeWindow.value
-      res = await getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, { since })
-    } else {
-      res = await getPodLogs(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, { tail_lines: logTailLines.value })
-    }
-    podLogs.value = res.data?.logs || ''
-    await nextTick(() => scrollPodLogToBottom(true))
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || '加载日志失败')
-  } finally {
-    logsLoading.value = false
-  }
-  // 以快照为起点开启近实时跟随（追加新行，不清空已有内容）
-  if (drawerVisible.value && drawerTab.value === 'logs') startPodLiveFollow()
-}
-
-// ─── 实时跟随（SSE） ───────────────────────────────────────
-function startPodLiveFollow() {
-  if (!selectedPod.value) return
-  stopPodLiveFollow()
-  // 以「现在」为游标；快照内容保留在前，新行追加其后
-  liveSince = Math.floor(Date.now() / 1000)
-  const url = buildPodLogStreamUrl(clusterName.value, selectedPod.value.namespace, selectedPod.value.name, liveSince)
-  logEs = new EventSource(url)
-  liveActive.value = true
-  logEs.onmessage = (ev) => {
-    let data: any
-    try {
-      data = JSON.parse(ev.data)
-    } catch {
-      return
-    }
-    if (data.type === 'append') {
-      const add = data.lines || ''
-      if (!add) return
-      podLogs.value = podLogs.value ? `${podLogs.value}\n${add}` : add
-      trimPodLogsTail()
-      nextTick(() => scrollPodLogToBottom(false))
-    } else if (data.type === 'error') {
-      ElMessage.warning(data.message || '实时拉取出错')
-    }
-    // ready / heartbeat / done 不需要前端处理
-  }
-  logEs.onerror = () => {
-    // 401（未登录/无权限）→ readyState=CLOSED 且不自动重连；暂态网络错误由浏览器自动重连
-    if (logEs && logEs.readyState === EventSource.CLOSED) {
-      liveActive.value = false
-      ElMessage.error('实时连接已断开，请检查登录状态或权限')
-      stopPodLiveFollow()
-    }
-  }
-}
-
-function stopPodLiveFollow() {
-  liveActive.value = false
-  if (logEs) {
-    logEs.close()
-    logEs = null
-  }
-}
-
-function scrollPodLogToBottom(force = false) {
-  const el = logScrollRef.value
-  if (!el) return
-  const nearBottom = force || el.scrollHeight - el.scrollTop - el.clientHeight < 60
-  if (nearBottom) el.scrollTop = el.scrollHeight
-}
-
-function scrollPodLogToTop() {
-  const el = logScrollRef.value
-  if (el) el.scrollTop = 0
-}
-
-function trimPodLogsTail() {
-  const lines = podLogs.value.split('\n')
-  if (lines.length > LIVE_LOG_MAX_LINES) {
-    podLogs.value = lines.slice(lines.length - LIVE_LOG_MAX_LINES).join('\n')
-  }
 }
 
 async function loadPodEvents() {

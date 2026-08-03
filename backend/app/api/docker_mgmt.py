@@ -1,8 +1,6 @@
 """Docker 管理 API — 平台端 Docker 主机管理 / 容器查询 / 容器操作 / 主动拉取。"""
 
-import asyncio
 import re
-import time
 from html import unescape
 
 import httpx
@@ -14,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
 from app.api.sse_auth import validate_stream_token
-from app.api.sse_utils import log_line_ts_to_unix, sse_event
+from app.api.sse_utils import polling_log_stream
 from app.core.config import CHINA_TZ
 from app.db.database import get_db
 from app.models.container import ContainerCluster
@@ -404,50 +402,20 @@ async def _log_event_stream(
     # endpoint 以字符串传入：生成器生命周期长于 DB 会话，避免访问已 detach 的模型对象
     base = endpoint if endpoint.startswith("http") else f"http://{endpoint}"
     url = f"{base}/containers/{container_id}/logs"
-
-    # 初始游标：优先用前端传入的 since，否则取服务端当前时间
-    last_ts = int(since_arg) if since_arg is not None else int(time.time())
-    prev_batch: set[str] = set()  # 仅与上一批比较（docker since 按秒截断含本秒 → 同秒旧行会重复）
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
 
-    yield sse_event({"type": "ready", "since": last_ts})
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        tick = 0
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
+    async def fetch(last_ts: int) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(url, params={"since": last_ts, "tail": 1000})
                 data = resp.json()
-                raw = data.get("logs", "") or ""
-            except (httpx.HTTPError, ValueError) as e:
-                # 单次拉取失败不致命：发 error 事件后继续，等待下一轮
-                yield sse_event({"type": "error", "message": f"Agent 拉取失败: {e}"})
-                await asyncio.sleep(interval)
-                continue
+                return data.get("logs", "") or ""
+        except (httpx.HTTPError, ValueError) as e:
+            # 单次拉取失败不致命：交给通用流发 error 事件后继续
+            raise RuntimeError(f"Agent 拉取失败: {e}") from e
 
-            batch_lines = raw.splitlines() if raw else []
-            new_lines = [ln for ln in batch_lines if ln not in prev_batch]
-            prev_batch = set(batch_lines)
-
-            if new_lines:
-                timestamps = [ts for ts in (log_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
-                if timestamps:
-                    last_ts = max(timestamps)
-                yield sse_event({
-                    "type": "append",
-                    "lines": "\n".join(new_lines),
-                    "count": len(new_lines),
-                })
-
-            tick += 1
-            if tick % 15 == 0:  # ~30s 心跳，防代理掐断空闲连接
-                yield sse_event({"type": "heartbeat"})
-
-            await asyncio.sleep(interval)
-
-    yield sse_event({"type": "done"})
+    async for event in polling_log_stream(request, interval, since_arg, fetch):
+        yield event
 
 
 # ─── 容器操作（代理到 Agent）─────────────────────────────────

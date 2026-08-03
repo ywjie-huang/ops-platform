@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required, get_client_ip
 from app.api.sse_auth import validate_stream_token
-from app.api.sse_utils import log_line_ts_to_unix, sse_event
+from app.api.sse_utils import polling_log_stream
 from app.db.database import get_db
 from app.models.user import User
 from app.services.audit import write_log
@@ -594,14 +594,7 @@ async def _pod_log_event_stream(
     request: Request,
 ):
     """轮询 K8s /log（sinceSeconds），对相邻批次做秒级去重后以 SSE 推送新行。"""
-    last_ts = int(since_arg) if since_arg is not None else int(time.time())
-    prev_batch: set[str] = set()
-    yield sse_event({"type": "ready", "since": last_ts})
-
-    tick = 0
-    while True:
-        if await request.is_disconnected():
-            break
+    async def fetch(last_ts: int) -> str:
         try:
             # get_pod_logs 为同步 httpx 调用，丢到线程池避免阻塞事件循环
             result = await asyncio.to_thread(
@@ -611,36 +604,15 @@ async def _pod_log_event_stream(
                 since_seconds=max(1, int(time.time()) - last_ts),
             )
             if not result.get("ok"):
-                yield sse_event({"type": "error", "message": result.get("error", "拉取失败")})
-                await asyncio.sleep(interval)
-                continue
-            raw = result.get("logs", "") or ""
+                raise RuntimeError(result.get("error", "拉取失败"))
+            return result.get("logs", "") or ""
+        except RuntimeError:
+            raise
         except Exception as e:
-            yield sse_event({"type": "error", "message": f"K8s 拉取失败: {e}"})
-            await asyncio.sleep(interval)
-            continue
+            raise RuntimeError(f"K8s 拉取失败: {e}") from e
 
-        batch_lines = raw.splitlines() if raw else []
-        new_lines = [ln for ln in batch_lines if ln not in prev_batch]
-        prev_batch = set(batch_lines)
-
-        if new_lines:
-            timestamps = [ts for ts in (log_line_ts_to_unix(ln) for ln in batch_lines) if ts is not None]
-            if timestamps:
-                last_ts = max(timestamps)
-            yield sse_event({
-                "type": "append",
-                "lines": "\n".join(new_lines),
-                "count": len(new_lines),
-            })
-
-        tick += 1
-        if tick % 15 == 0:
-            yield sse_event({"type": "heartbeat"})
-
-        await asyncio.sleep(interval)
-
-    yield sse_event({"type": "done"})
+    async for event in polling_log_stream(request, interval, since_arg, fetch):
+        yield event
 
 
 @router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/events")
