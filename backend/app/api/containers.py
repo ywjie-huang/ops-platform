@@ -36,6 +36,7 @@ from app.services.k8s import (
     get_pods,
     get_services,
     restart_deployment,
+    scale_deployment,
     set_node_schedulable,
     test_connection,
 )
@@ -731,6 +732,35 @@ def api_restart_deployment(
               ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "重启已触发", "data": {"restarted_at": result.get("restarted_at")}}
+
+
+class ScaleDeploymentRequest(BaseModel):
+    replicas: int
+
+
+@router.post("/clusters/{cluster_name}/deployments/{namespace}/{deployment_name}/scale")
+def api_scale_deployment(
+    cluster_name: str,
+    namespace: str,
+    deployment_name: str,
+    body: ScaleDeploymentRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(api_permission_required("containers.update")),
+):
+    """调整 Deployment 副本数（扩缩容）。"""
+    c = _require_cluster_by_name(db, cluster_name)
+    if not c.token:
+        raise HTTPException(status_code=400, detail="集群未配置 Token，无法连接 K8s API")
+    result = scale_deployment(c.endpoint, c.token, namespace, deployment_name, body.replicas)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "调整副本数失败"))
+    write_log(db, user=current_user, action="scale", target_type="deployment",
+              target_name=f"{namespace}/{deployment_name}",
+              detail=f"扩缩容 Deployment: {namespace}/{deployment_name} -> {result.get('replicas')}",
+              ip_address=get_client_ip(request))
+    db.commit()
+    return {"code": 0, "msg": "副本数已更新", "data": {"replicas": result.get("replicas")}}
 
 
 @router.get("/clusters/{cluster_name}/services")

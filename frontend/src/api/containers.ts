@@ -79,6 +79,12 @@ export function deleteClusterPod(name: string, namespace: string, podName: strin
 export function restartClusterDeployment(name: string, namespace: string, deploymentName: string) {
   return request.post(`/containers/clusters/${encodeURIComponent(name)}/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(deploymentName)}/restart`)
 }
+export function scaleClusterDeployment(name: string, namespace: string, deploymentName: string, replicas: number) {
+  return request.post(
+    `/containers/clusters/${encodeURIComponent(name)}/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(deploymentName)}/scale`,
+    { replicas },
+  )
+}
 
 // ─── Docker 监控 ──────────────────────────────────────────
 

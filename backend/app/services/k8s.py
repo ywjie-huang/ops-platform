@@ -699,6 +699,35 @@ def restart_deployment(endpoint: str, token: str, namespace: str, deployment_nam
         return {"ok": False, "error": str(e)}
 
 
+def scale_deployment(
+    endpoint: str, token: str, namespace: str, deployment_name: str, replicas: int
+) -> dict[str, Any]:
+    """调整 Deployment 副本数（扩缩容），patch scale 子资源。"""
+    try:
+        replicas = max(0, min(int(replicas), 1000))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "replicas 必须为非负整数"}
+    ns = quote(namespace, safe="")
+    dep = quote(deployment_name, safe="")
+    url = f"{_clean(endpoint)}/apis/apps/v1/namespaces/{ns}/deployments/{dep}/scale"
+    payload = {"spec": {"replicas": replicas}}
+    headers = {**_headers(token), "Content-Type": "application/merge-patch+json"}
+    try:
+        with httpx.Client(timeout=_TIMEOUT, verify=False) as client:
+            resp = client.patch(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            return {"ok": True, "replicas": replicas}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {"ok": False, "error": "Deployment 不存在"}
+        if e.response.status_code == 403:
+            return {"ok": False, "error": "权限不足，无法调整 Deployment 副本数"}
+        return {"ok": False, "error": f"HTTP {e.response.status_code}"}
+    except Exception as e:
+        logger.error("K8s scale deployment error [%s/%s]: %s", namespace, deployment_name, e)
+        return {"ok": False, "error": str(e)}
+
+
 def get_namespaces(endpoint: str, token: str) -> list[str]:
     """获取命名空间列表。"""
     items = _get_list(endpoint, token, "/api/v1/namespaces")

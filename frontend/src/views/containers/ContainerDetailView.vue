@@ -260,9 +260,10 @@
               <el-table-column label="创建时间" width="160" align="center">
                 <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="140" align="center" fixed="right">
+              <el-table-column label="操作" width="200" align="center" fixed="right">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click.stop="drilldownDeployment(row)">Pods</el-button>
+                  <el-button link type="primary" size="small" @click.stop="openScaleDeployment(row)">扩缩容</el-button>
                   <el-button link type="warning" size="small" @click.stop="confirmRestartDeployment(row)">重启</el-button>
                 </template>
               </el-table-column>
@@ -1057,6 +1058,7 @@ import {
   getPodLogs,
   buildPodLogStreamUrl,
   restartClusterDeployment,
+  scaleClusterDeployment,
   testSavedClusterConnection,
   updateCluster,
 } from '@/api/containers'
@@ -2347,6 +2349,29 @@ async function confirmRestartDeployment(row: K8sDeployment) {
     await refreshAll()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.response?.data?.detail || '操作失败')
+  }
+}
+
+async function openScaleDeployment(row: K8sDeployment) {
+  try {
+    const result = await ElMessageBox.prompt(
+      `当前副本数：${row.ready_replicas ?? 0} / ${row.replicas ?? 0}（就绪 / 目标）。请输入新的目标副本数`,
+      `扩缩容 Deployment ${row.namespace}/${row.name}`,
+      {
+        inputValue: String(row.replicas ?? 0),
+        inputPattern: /^\d+$/,
+        inputErrorMessage: '请输入非负整数',
+        confirmButtonText: '应用',
+        cancelButtonText: '取消',
+      },
+    )
+    const replicas = Number(result.value)
+    await scaleClusterDeployment(clusterName.value, row.namespace, row.name, replicas)
+    ElMessage.success(`副本数已更新为 ${replicas}`)
+    await refreshAll()
+  } catch (e: any) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error(e?.response?.data?.detail || '操作失败')
   }
 }
 
