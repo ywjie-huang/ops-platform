@@ -24,13 +24,16 @@ docker pull <你的镜像仓库>/ops-agent:latest
 docker rm -f ops-agent >/dev/null 2>&1 || true
 docker run -d \
   -p 10.10.20.15:9001:9001 \
+  -p 10.10.20.15:9002:9002 \
   --name ops-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   <你的镜像仓库>/ops-agent:latest
 ```
 
-> Agent 挂载了 Docker Socket，具备管理宿主机容器的高权限。请在服务器启动参数与防火墙中限制 9001 端口仅允许管理平台访问，不要直接暴露到公网。
+> Agent 挂载了 Docker Socket，具备管理宿主机容器的高权限。请在服务器启动参数与防火墙中限制 9001/9002 端口仅允许管理平台访问，不要直接暴露到公网。
+>
+> 9001 为 HTTP 拉取/操作端口；9002 为容器终端（exec）WebSocket 端口。平台注册主机时填入 `9001` 地址，exec 会自动使用 `9001+1`。
 
 ### 3. 在平台注册主机
 
@@ -40,7 +43,8 @@ docker run -d \
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `AGENT_PORT` | 否 | `9001` | 监听端口 |
+| `AGENT_PORT` | 否 | `9001` | HTTP 监听端口 |
+| `AGENT_WS_PORT` | 否 | `9002` | 容器终端（exec）WebSocket 监听端口 |
 
 ## API 接口
 
@@ -56,6 +60,7 @@ docker run -d \
 | `POST /containers/{id}/stop` | 停止容器 |
 | `POST /containers/{id}/restart` | 重启容器 |
 | `POST /containers/{id}/delete` | 删除容器（force） |
+| `WS /containers/{id}/exec` | 容器交互式终端（exec），首帧可选 `{"command":["/bin/sh"]}`，支持 `{cols,rows}` 调整尺寸（端口 9002） |
 
 ## 采集内容
 

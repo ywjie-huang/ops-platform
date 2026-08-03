@@ -17,6 +17,7 @@ Docker 容器监控 Agent
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -31,10 +32,13 @@ from urllib.parse import parse_qs, urlparse
 
 import docker
 import psutil
+import websockets
 
 # ─── 配置 ──────────────────────────────────────────────────
 
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "9001"))
+# exec 终端 WebSocket 端口（与 HTTP 端口分离，默认 HTTP 端口 + 1）
+AGENT_WS_PORT = int(os.environ.get("AGENT_WS_PORT", str(AGENT_PORT + 1)))
 DEFAULT_LOG_TAIL = 300
 MAX_LOG_TAIL = 1000
 MAX_LOG_TAIL_WITH_SINCE = 5000  # 时间段模式：时间窗做主过滤后，行数上限放宽
@@ -416,6 +420,125 @@ class AgentHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+# ─── exec 终端 WebSocket ────────────────────────────────────
+
+
+def _ws_path(websocket) -> str:
+    """兼容不同 websockets 版本取请求路径。"""
+    request = getattr(websocket, "request", None)
+    path = getattr(request, "path", None) if request is not None else None
+    if path:
+        return path
+    return getattr(websocket, "path", "/")
+
+
+def _sock_recv(sock, size: int) -> bytes:
+    return sock.recv(size)
+
+
+def _sock_write(sock, data: bytes) -> None:
+    if hasattr(sock, "sendall"):
+        sock.sendall(data)
+    else:
+        sock.send(data)
+
+
+async def _handle_exec_ws(websocket):
+    """容器 exec 终端 WS 桥接：浏览器 ↔ docker hijacked socket。"""
+    path = _ws_path(websocket)
+    m = re.match(r"^/containers/([a-f0-9]{12,64})/exec$", path)
+    if not m:
+        await websocket.close(code=1008, reason="invalid path")
+        return
+    container_id = m.group(1)
+    if not _docker_client:
+        await websocket.close(code=1011, reason="docker client not available")
+        return
+
+    # 可选首帧：{"command": ["/bin/sh"]}；缺省用 /bin/sh
+    command = ["/bin/sh"]
+    try:
+        first = await asyncio.wait_for(websocket.recv(), timeout=10)
+        if isinstance(first, str) and first.startswith("{"):
+            try:
+                payload = json.loads(first)
+                cmd = payload.get("command")
+                if isinstance(cmd, list) and cmd:
+                    command = [str(x) for x in cmd]
+            except (json.JSONDecodeError, TypeError):
+                pass
+    except asyncio.TimeoutError:
+        pass  # 超时则沿用默认命令
+    except Exception:
+        pass
+
+    try:
+        exec_id = _docker_client.api.exec_create(
+            container_id, cmd=command, stdin=True, tty=True, stdout=True, stderr=True
+        )
+        sock = _docker_client.api.exec_start(exec_id, tty=True, socket=True)
+    except Exception as e:
+        log.warning("exec 建立失败 %s: %s", container_id, e)
+        await websocket.close(code=1011, reason=f"exec failed: {e}")
+        return
+
+    loop = asyncio.get_event_loop()
+
+    async def sock_to_ws():
+        try:
+            while True:
+                data = await loop.run_in_executor(None, _sock_recv, sock, 4096)
+                if not data:
+                    break
+                await websocket.send(data.decode("utf-8", errors="replace"))
+        except Exception:
+            pass
+
+    async def ws_to_sock():
+        try:
+            async for msg in websocket:
+                if isinstance(msg, str) and msg.startswith("{"):
+                    try:
+                        d = json.loads(msg)
+                        if "cols" in d and "rows" in d:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _docker_client.api.exec_resize(
+                                    exec_id, height=int(d["rows"]), width=int(d["cols"])
+                                ),
+                            )
+                            continue
+                    except Exception:
+                        pass
+                payload = msg.encode("utf-8") if isinstance(msg, str) else bytes(msg)
+                await loop.run_in_executor(None, _sock_write, sock, payload)
+        except Exception:
+            pass
+
+    try:
+        await asyncio.gather(sock_to_ws(), ws_to_sock())
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+async def _serve_exec_ws():
+    """启动 exec 终端 WebSocket 服务。"""
+    async with websockets.serve(_handle_exec_ws, "0.0.0.0", AGENT_WS_PORT, max_size=None):
+        log.info("exec 终端 WebSocket 服务已启动，端口: %d", AGENT_WS_PORT)
+        await asyncio.Future()  # 永久运行
+
+
+def _run_exec_ws_server():
+    """在守护线程里跑 exec 终端 WS 的事件循环。"""
+    try:
+        asyncio.run(_serve_exec_ws())
+    except Exception as e:
+        log.error("exec 终端 WebSocket 服务异常退出: %s", e)
+
+
 # ─── 启动 ──────────────────────────────────────────────────
 
 def main():
@@ -442,6 +565,10 @@ def main():
     collector_thread = threading.Thread(target=_background_collector, daemon=True)
     collector_thread.start()
     log.info("后台采集线程已启动（每 5 秒）")
+
+    # 启动 exec 终端 WebSocket 服务（独立端口，默认 9002）
+    ws_thread = threading.Thread(target=_run_exec_ws_server, daemon=True)
+    ws_thread.start()
 
     # 启动 HTTP 服务
     server = HTTPServer(("0.0.0.0", AGENT_PORT), AgentHandler)

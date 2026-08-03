@@ -205,9 +205,10 @@
               <el-table-column label="创建时间" width="150" align="center">
                 <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="210" align="center" fixed="right">
+              <el-table-column label="操作" width="250" align="center" fixed="right">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click="openPodDetail(row)">详情</el-button>
+                  <el-button link type="primary" size="small" @click="openPodExec(row)">终端</el-button>
                   <el-button link type="info" size="small" @click="openPodDrawer(row, 'logs')">日志</el-button>
                   <el-button link type="info" size="small" @click="openPodDrawer(row, 'events')">事件</el-button>
                   <el-button link type="danger" size="small" @click="confirmDeletePod(row)">删除</el-button>
@@ -1030,6 +1031,15 @@
         >执行 Drain</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="execVisible" title="容器终端" width="820px" :close-on-click-modal="false" destroy-on-close>
+      <div class="exec-bar">
+        <el-input v-model="execContainerInput" placeholder="container（可选，留空用默认容器）" size="small" class="exec-container-input" clearable />
+        <el-button size="small" type="primary" @click="reconnectPodExec">连接</el-button>
+      </div>
+      <ExecPane v-if="execVisible && execUrl" :key="execInstance" :ws-url="execUrl" :title="execTitle" />
+      <div class="exec-tip">默认进入 <code>/bin/sh</code>；多容器 Pod 可在上方指定 container，如需 bash 在终端内执行 <code>bash</code>。</div>
+    </el-dialog>
   </main>
 </template>
 
@@ -1039,6 +1049,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import LogHighlightedText from '@/components/LogHighlightedText'
 import MetricTrendChart from '@/components/MetricTrendChart.vue'
+import ExecPane from '@/components/ExecPane.vue'
 import {
   ArrowDown,
   ArrowLeft,
@@ -1069,6 +1080,7 @@ import {
   getPodEvents,
   getPodLogs,
   buildPodLogStreamUrl,
+  buildK8sExecWsUrl,
   restartClusterDeployment,
   scaleClusterDeployment,
   getPodTrends,
@@ -2326,6 +2338,27 @@ async function loadPodTrends() {
     podTrendLoading.value = false
   }
 }
+const execVisible = ref(false)
+const execUrl = ref('')
+const execTitle = ref('')
+const execContainerInput = ref('')
+const execInstance = ref(0)
+const execPod = ref<K8sPod | null>(null)
+function openPodExec(row: K8sPod) {
+  execPod.value = row
+  execContainerInput.value = ''
+  execTitle.value = `${row.namespace}/${row.name}`
+  execUrl.value = buildK8sExecWsUrl(clusterName.value, row.namespace, row.name, '', '/bin/sh')
+  execInstance.value++
+  execVisible.value = true
+}
+function reconnectPodExec() {
+  const pod = execPod.value
+  if (!pod) return
+  execUrl.value = buildK8sExecWsUrl(clusterName.value, pod.namespace, pod.name, execContainerInput.value.trim(), '/bin/sh')
+  execInstance.value++
+}
+
 async function openPodDetail(row: K8sPod) {
   stopPodLiveFollow()
   drawerVisible.value = false
@@ -3585,6 +3618,14 @@ button.summary-card {
 
 .pd-section { margin-bottom: 18px; }
 .pd-trend-section { margin: 16px 0; }
+.exec-bar { display: flex; gap: 8px; margin-bottom: 10px; }
+.exec-container-input { max-width: 320px; }
+.exec-tip { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.exec-tip code {
+  font-family: var(--el-font-family-mono, monospace);
+  background: var(--surface-color); padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
 .pd-trend-title {
   display: flex; align-items: baseline; gap: 8px;
   margin: 0 0 10px; font-size: 12px; font-weight: 700;

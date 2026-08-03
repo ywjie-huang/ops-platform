@@ -12,6 +12,7 @@ from app.api import (
     dashboard,
     deploy,
     docker_mgmt,
+    exec_terminal,
     monitoring,
     password,
     patrol,
@@ -66,6 +67,8 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
         api_router.include_router(sftp.router)
     if controls.batch_exec:
         api_router.include_router(batch_exec.websocket_router)
+    if controls.exec_terminal:
+        api_router.include_router(exec_terminal.router)
 
     # 定时任务
     api_router.include_router(scheduler.router)

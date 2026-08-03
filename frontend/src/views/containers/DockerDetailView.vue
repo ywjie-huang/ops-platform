@@ -147,7 +147,7 @@
             <el-table-column label="更新时间" width="150">
               <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="300" fixed="right" align="right">
+            <el-table-column label="操作" width="340" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-cell">
                   <el-button
@@ -164,6 +164,14 @@
                     :aria-label="`查看容器 ${row.name} 日志`"
                     @click.stop="openContainerLogs(row)"
                   >日志</el-button>
+                  <el-button
+                    v-if="row.status === 'running'"
+                    size="small"
+                    type="primary"
+                    link
+                    :aria-label="`进入容器 ${row.name} 终端`"
+                    @click.stop="openContainerExec(row)"
+                  >终端</el-button>
                   <el-button
                     v-if="row.status !== 'running'"
                     size="small"
@@ -510,6 +518,11 @@
         </div>
       </div>
     </el-drawer>
+
+    <el-dialog v-model="execVisible" title="容器终端" width="780px" :close-on-click-modal="false" destroy-on-close>
+      <ExecPane v-if="execVisible && execUrl" :ws-url="execUrl" :title="execTitle" />
+      <div class="exec-tip">默认进入 <code>/bin/sh</code>，如需 bash 可在终端内执行 <code>bash</code>。</div>
+    </el-dialog>
   </div>
 </template>
 
@@ -520,6 +533,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowDown, Refresh, Search } from '@element-plus/icons-vue'
 import LogHighlightedText from '@/components/LogHighlightedText'
 import MetricTrendChart from '@/components/MetricTrendChart.vue'
+import ExecPane from '@/components/ExecPane.vue'
 import {
   getDockerHost,
   deleteDockerHost,
@@ -529,6 +543,7 @@ import {
   getDockerContainerInspect,
   getDockerContainerTrends,
   buildDockerLogStreamUrl,
+  buildDockerExecWsUrl,
   startDockerContainer,
   stopDockerContainer,
   restartDockerContainer,
@@ -1134,6 +1149,19 @@ async function loadInspectTrends() {
   } finally {
     inspectTrendLoading.value = false
   }
+}
+
+const execVisible = ref(false)
+const execUrl = ref('')
+const execTitle = ref('')
+function openContainerExec(row: any) {
+  if (row.status !== 'running') {
+    ElMessage.warning('仅运行中的容器可进入终端')
+    return
+  }
+  execTitle.value = `${row.name || row.container_id} · ${host.value?.name || ''}`
+  execUrl.value = buildDockerExecWsUrl(hostName.value, row.container_id, '/bin/sh')
+  execVisible.value = true
 }
 
 async function openContainerInspect(row: any) {
@@ -1750,6 +1778,14 @@ onUnmounted(() => {
 .di-trend-sub {
   font-size: 11px; font-weight: 500; color: var(--text-muted);
   background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
+  border: 1px solid var(--border-color);
+}
+.exec-tip {
+  margin-top: 10px; font-size: 12px; color: var(--text-muted);
+}
+.exec-tip code {
+  font-family: var(--el-font-family-mono, monospace);
+  background: var(--surface-color); padding: 1px 5px; border-radius: 4px;
   border: 1px solid var(--border-color);
 }
 .di-section-title {

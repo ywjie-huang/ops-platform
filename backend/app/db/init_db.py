@@ -629,6 +629,7 @@ def _seed_permissions(db: Session) -> None:
         ("创建容器", "containers.create", "containers", "创建容器/集群"),
         ("编辑容器", "containers.update", "containers", "编辑容器配置"),
         ("删除容器", "containers.delete", "containers", "删除容器/集群"),
+        ("容器终端", "containers.exec", "containers", "进入容器交互式终端"),
         ("查看监控", "monitoring.view", "monitoring", "查看主机监控和告警规则"),
         ("查看配置", "settings.view", "settings", "查看系统配置"),
         ("编辑配置", "settings.update", "settings", "修改系统配置"),

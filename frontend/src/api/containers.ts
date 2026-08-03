@@ -64,6 +64,13 @@ export function buildPodLogStreamUrl(name: string, namespace: string, podName: s
   })
   return `${base}/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs/stream?${params.toString()}`
 }
+export function buildK8sExecWsUrl(name: string, namespace: string, podName: string, container = '', command = '/bin/sh'): string {
+  // exec 用首帧鉴权（WebSocket 无法设置请求头），token 不放在 URL
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const params = new URLSearchParams({ command })
+  if (container) params.set('container', container)
+  return `${proto}//${location.host}/api/v1/ws/exec/k8s/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}?${params.toString()}`
+}
 export function getPodEvents(name: string, namespace: string, podName: string) {
   return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/events`)
 }
@@ -137,6 +144,12 @@ export function buildDockerLogStreamUrl(hostName: string, containerId: string, s
     interval: '2',
   })
   return `${base}/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/logs/stream?${params.toString()}`
+}
+export function buildDockerExecWsUrl(hostName: string, containerId: string, command = '/bin/sh'): string {
+  // exec 用首帧鉴权（WebSocket 无法设置请求头），token 不放在 URL
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const params = new URLSearchParams({ command })
+  return `${proto}//${location.host}/api/v1/ws/exec/docker/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}?${params.toString()}`
 }
 
 // Docker 容器操作
