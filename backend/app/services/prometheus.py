@@ -205,6 +205,15 @@ def _empty_trend_series() -> list[dict[str, Any]]:
     ]
 
 
+def _empty_pod_trend_series() -> list[dict[str, Any]]:
+    return [
+        {"key": "cpu", "label": "CPU", "unit": "核", "points": []},
+        {"key": "memory", "label": "内存", "unit": "MiB", "points": []},
+        {"key": "network_in", "label": "接收", "unit": "Mbps", "points": []},
+        {"key": "network_out", "label": "发送", "unit": "Mbps", "points": []},
+    ]
+
+
 async def discover_instances(prom_url: str = "") -> dict[str, str]:
     """从 Prometheus targets 发现 instance 标签，带缓存。"""
     global _instance_cache, _instance_cache_ts
@@ -435,6 +444,45 @@ async def get_host_trends(
             {"key": "memory", "label": "内存", "unit": "%", "points": _extract_series_points(results.get("memory", {}))},
             {"key": "load", "label": "Load", "unit": "", "points": _extract_series_points(results.get("load", {}))},
             {"key": "network_in", "label": "网络", "unit": "Mbps", "points": _extract_series_points(results.get("network_in", {}))},
+        ],
+    }
+
+
+async def get_pod_trends(
+    namespace: str,
+    pod_name: str,
+    db=None,
+    minutes: int = 60,
+    step_seconds: int = 60,
+) -> dict[str, Any]:
+    """查询单个 Pod 最近一段时间的容器资源趋势（依赖 Prometheus 抓取 cAdvisor/kubelet 指标）。"""
+    prom_url = get_prometheus_url(db) if db else ""
+    if not prom_url:
+        return {
+            "range_minutes": minutes,
+            "step_seconds": step_seconds,
+            "series": _empty_pod_trend_series(),
+        }
+    now = int(time.time())
+    start = now - minutes * 60
+    # container="" 是 pause 容器，排除掉；网络指标按 pod 维度统计
+    sel = f'namespace="{namespace}",pod="{pod_name}",container!=""'
+    net_sel = f'namespace="{namespace}",pod="{pod_name}"'
+    exprs = {
+        "cpu": f'sum(rate(container_cpu_usage_seconds_total{{{sel}}}[5m]))',
+        "memory": f'max(container_memory_working_set_bytes{{{sel}}}) / 1024 / 1024',
+        "network_in": f'rate(container_network_receive_bytes_total{{{net_sel}}}[5m]) * 8 / 1024 / 1024',
+        "network_out": f'rate(container_network_transmit_bytes_total{{{net_sel}}}[5m]) * 8 / 1024 / 1024',
+    }
+    results = await _query_range_batch(exprs, prom_url, start, now, step_seconds)
+    return {
+        "range_minutes": minutes,
+        "step_seconds": step_seconds,
+        "series": [
+            {"key": "cpu", "label": "CPU", "unit": "核", "points": _extract_series_points(results.get("cpu", {}))},
+            {"key": "memory", "label": "内存", "unit": "MiB", "points": _extract_series_points(results.get("memory", {}))},
+            {"key": "network_in", "label": "接收", "unit": "Mbps", "points": _extract_series_points(results.get("network_in", {}))},
+            {"key": "network_out", "label": "发送", "unit": "Mbps", "points": _extract_series_points(results.get("network_out", {}))},
         ],
     }
 

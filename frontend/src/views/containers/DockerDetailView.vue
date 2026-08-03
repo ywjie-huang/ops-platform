@@ -345,6 +345,17 @@
         <div class="di-stat"><div class="di-stat-k">重启策略</div><div class="di-stat-v sm">{{ restartPolicyText }}</div></div>
       </div>
 
+      <div class="di-trend-section">
+        <div class="di-trend-title">指标趋势<span v-if="inspectTrendRangeText" class="di-trend-sub">{{ inspectTrendRangeText }}</span></div>
+        <MetricTrendChart
+          :series="inspectTrendData?.series || []"
+          :loading="inspectTrendLoading"
+          :range-minutes="inspectTrendData?.range_minutes || 60"
+          :columns="2"
+          empty-hint="暂无历史指标（后台每分钟采样，需运行一段时间）"
+        />
+      </div>
+
       <div class="di-body" v-loading="inspectLoading">
         <div class="di-scroll">
           <template v-if="inspectData">
@@ -508,6 +519,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowDown, Refresh, Search } from '@element-plus/icons-vue'
 import LogHighlightedText from '@/components/LogHighlightedText'
+import MetricTrendChart from '@/components/MetricTrendChart.vue'
 import {
   getDockerHost,
   deleteDockerHost,
@@ -515,12 +527,14 @@ import {
   getHostContainers,
   getDockerContainerLogs,
   getDockerContainerInspect,
+  getDockerContainerTrends,
   buildDockerLogStreamUrl,
   startDockerContainer,
   stopDockerContainer,
   restartDockerContainer,
   deleteDockerContainer,
 } from '@/api/containers'
+import type { HostTrendData } from '@/api/monitoring'
 import { getHostSyncState, secondsSince, sortContainersByRisk, summarizeContainers } from '@/utils/dockerMonitor'
 import { filterLogLines, highlightLogLines, normalizeLogKeyword } from '@/utils/logSearch'
 
@@ -1102,15 +1116,37 @@ function formatInspectTime(ts?: string): string {
   return isNaN(d.getTime()) ? ts : d.toLocaleString('zh-CN')
 }
 
+const inspectTrendData = ref<HostTrendData | null>(null)
+const inspectTrendLoading = ref(false)
+const inspectTrendRangeText = computed(() => {
+  const m = inspectTrendData.value?.range_minutes
+  if (!m) return ''
+  return m >= 60 ? `近 ${Math.max(1, Math.round(m / 60))} 小时` : `近 ${m} 分钟`
+})
+async function loadInspectTrends() {
+  if (!inspectContainer.value) return
+  inspectTrendLoading.value = true
+  try {
+    const res: any = await getDockerContainerTrends(hostName.value, inspectContainer.value.container_id, { minutes: 60 })
+    inspectTrendData.value = res.data || null
+  } catch {
+    inspectTrendData.value = null
+  } finally {
+    inspectTrendLoading.value = false
+  }
+}
+
 async function openContainerInspect(row: any) {
   stopLiveFollow()
   logsDrawerVisible.value = false
   inspectContainer.value = row
   inspectData.value = null
+  inspectTrendData.value = null
   revealedEnvKeys.value = new Set()
   Object.assign(sectionCollapse, { env: true, network: false, mounts: true, health: false, resources: false, labels: true, runconfig: true })
   inspectDrawerVisible.value = true
   await fetchContainerInspect()
+  loadInspectTrends()
 }
 
 async function fetchContainerInspect() {
@@ -1705,6 +1741,17 @@ onUnmounted(() => {
 .di-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg-color); }
 
 .di-section { margin-bottom: 18px; }
+.di-trend-section { margin: 16px 0; }
+.di-trend-title {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 0 0 10px; font-size: 12px; font-weight: 700;
+  color: var(--text-primary); letter-spacing: 0.4px;
+}
+.di-trend-sub {
+  font-size: 11px; font-weight: 500; color: var(--text-muted);
+  background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
+  border: 1px solid var(--border-color);
+}
 .di-section-title {
   display: flex; align-items: baseline; gap: 7px; margin: 0 0 10px;
   font-size: 12px; font-weight: 750; color: var(--text-primary); letter-spacing: 0.4px; text-transform: uppercase;

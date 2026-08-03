@@ -1,4 +1,5 @@
 from app.models.asset import Asset
+from app.models.container import DockerContainerMetric
 from app.models.dashboard import (
     DashboardActivityItem,
     DashboardDistributionItem,
@@ -31,6 +32,7 @@ __all__ = [
     "DeployConfig",
     "DeployEnvironment",
     "DeployRecord",
+    "DockerContainerMetric",
     "NavItem",
     "Permission",
     "Role",

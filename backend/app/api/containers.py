@@ -40,6 +40,7 @@ from app.services.k8s import (
     set_node_schedulable,
     test_connection,
 )
+from app.services.prometheus import get_pod_trends
 
 router = APIRouter(prefix="/containers", tags=["容器管理"])
 
@@ -761,6 +762,24 @@ def api_scale_deployment(
               ip_address=get_client_ip(request))
     db.commit()
     return {"code": 0, "msg": "副本数已更新", "data": {"replicas": result.get("replicas")}}
+
+
+@router.get("/clusters/{cluster_name}/pods/{namespace}/{pod_name}/trends")
+async def api_pod_trends(
+    cluster_name: str,
+    namespace: str,
+    pod_name: str,
+    minutes: int = 60,
+    step_seconds: int = 60,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("containers.view")),
+):
+    """Pod 容器资源趋势（Prometheus / cAdvisor）。"""
+    _require_cluster_by_name(db, cluster_name)
+    safe_minutes = min(max(minutes, 15), 360)
+    safe_step = min(max(step_seconds, 30), 300)
+    data = await get_pod_trends(namespace, pod_name, db, minutes=safe_minutes, step_seconds=safe_step)
+    return {"code": 0, "data": data}
 
 
 @router.get("/clusters/{cluster_name}/services")

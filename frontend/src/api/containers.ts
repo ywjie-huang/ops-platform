@@ -85,6 +85,9 @@ export function scaleClusterDeployment(name: string, namespace: string, deployme
     { replicas },
   )
 }
+export function getPodTrends(name: string, namespace: string, podName: string, params = { minutes: 60, step_seconds: 60 }) {
+  return request.get(`/containers/clusters/${encodeURIComponent(name)}/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/trends`, { params })
+}
 
 // ─── Docker 监控 ──────────────────────────────────────────
 
@@ -119,6 +122,9 @@ export function getDockerContainerLogs(
 }
 export function getDockerContainerInspect(hostName: string, containerId: string) {
   return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/inspect`)
+}
+export function getDockerContainerTrends(hostName: string, containerId: string, params = { minutes: 60 }) {
+  return request.get(`/containers/docker/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(containerId)}/trends`, { params })
 }
 
 // EventSource 无法使用 axios 实例（不能自定义请求头），单独拼全 URL + token

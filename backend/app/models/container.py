@@ -124,3 +124,28 @@ class DockerContainer(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(CHINA_TZ), onupdate=lambda: datetime.now(CHINA_TZ))
 
     host: Mapped["ContainerCluster"] = relationship(back_populates="docker_containers")
+    metrics: Mapped[list["DockerContainerMetric"]] = relationship(
+        back_populates="container", cascade="all, delete-orphan"
+    )
+
+
+class DockerContainerMetric(Base):
+    """Docker 容器指标历史（后端轮询 Agent 时采样，滚动保留近 24 小时）。"""
+
+    __tablename__ = "docker_container_metrics"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    container_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("docker_containers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cpu_percent: Mapped[float] = mapped_column(Float, default=0.0)
+    memory_usage: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes
+    memory_limit: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes
+    memory_percent: Mapped[float] = mapped_column(Float, default=0.0)
+    net_rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    net_tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(CHINA_TZ), index=True
+    )
+
+    container: Mapped["DockerContainer"] = relationship(back_populates="metrics")

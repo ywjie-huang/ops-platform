@@ -683,6 +683,17 @@
         <div class="pd-stat"><div class="pd-stat-k">优先级</div><div class="pd-stat-v sm">{{ detailSpec.priorityClassName || '-' }}</div></div>
       </div>
 
+      <div class="pd-trend-section">
+        <div class="pd-trend-title">指标趋势<span v-if="podTrendRangeText" class="pd-trend-sub">{{ podTrendRangeText }}</span></div>
+        <MetricTrendChart
+          :series="podTrendData?.series || []"
+          :loading="podTrendLoading"
+          :range-minutes="podTrendData?.range_minutes || 60"
+          :columns="2"
+          empty-hint="无容器指标数据（需 Prometheus 抓取 cAdvisor/kubelet）"
+        />
+      </div>
+
       <div class="pd-body" v-loading="podDetailLoading">
         <div class="pd-scroll">
           <template v-if="detailPodData">
@@ -1027,6 +1038,7 @@ import { computed, reactive, ref, watch, nextTick, onActivated, onDeactivated, o
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import LogHighlightedText from '@/components/LogHighlightedText'
+import MetricTrendChart from '@/components/MetricTrendChart.vue'
 import {
   ArrowDown,
   ArrowLeft,
@@ -1059,9 +1071,11 @@ import {
   buildPodLogStreamUrl,
   restartClusterDeployment,
   scaleClusterDeployment,
+  getPodTrends,
   testSavedClusterConnection,
   updateCluster,
 } from '@/api/containers'
+import type { HostTrendData } from '@/api/monitoring'
 import {
   buildClusterAnomalies,
   computeAllocation,
@@ -2293,12 +2307,32 @@ const detailContainerGroups = computed(() => {
   return groups
 })
 
+const podTrendData = ref<HostTrendData | null>(null)
+const podTrendLoading = ref(false)
+const podTrendRangeText = computed(() => {
+  const m = podTrendData.value?.range_minutes
+  if (!m) return ''
+  return m >= 60 ? `近 ${Math.max(1, Math.round(m / 60))} 小时` : `近 ${m} 分钟`
+})
+async function loadPodTrends() {
+  if (!detailPod.value) return
+  podTrendLoading.value = true
+  try {
+    const res: any = await getPodTrends(clusterName.value, detailPod.value.namespace, detailPod.value.name, { minutes: 60, step_seconds: 60 })
+    podTrendData.value = res.data || null
+  } catch {
+    podTrendData.value = null
+  } finally {
+    podTrendLoading.value = false
+  }
+}
 async function openPodDetail(row: K8sPod) {
   stopPodLiveFollow()
   drawerVisible.value = false
   detailPod.value = row
   detailPodData.value = null
   detailPodEvents.value = []
+  podTrendData.value = null
   revealedEnvKeys.value = new Set()
   Object.keys(detailCollapse).forEach((k) => delete detailCollapse[k])
   detailCollapse.volumes = true
@@ -2306,6 +2340,7 @@ async function openPodDetail(row: K8sPod) {
   detailCollapse.labels = true
   podDetailVisible.value = true
   await loadPodDetail()
+  loadPodTrends()
 }
 async function loadPodDetail() {
   if (!detailPod.value) return
@@ -3549,6 +3584,17 @@ button.summary-card {
 .pd-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg-color); }
 
 .pd-section { margin-bottom: 18px; }
+.pd-trend-section { margin: 16px 0; }
+.pd-trend-title {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 0 0 10px; font-size: 12px; font-weight: 700;
+  color: var(--text-primary); letter-spacing: 0.4px;
+}
+.pd-trend-sub {
+  font-size: 11px; font-weight: 500; color: var(--text-muted);
+  background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
+  border: 1px solid var(--border-color);
+}
 .pd-section-title {
   display: flex; align-items: baseline; gap: 7px;
   margin: 0 0 10px; font-size: 12px; font-weight: 750;

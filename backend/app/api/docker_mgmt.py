@@ -26,6 +26,7 @@ from app.services.docker_agent import (
     docker_host_name_exists,
     docker_overview,
     find_docker_hosts_by_name,
+    get_container_trends,
     is_host_online,
     list_docker_containers,
     list_docker_hosts,
@@ -341,6 +342,22 @@ def api_container_inspect(
     h = _require_docker_host_by_name(db, host_name)
     result = _proxy_to_agent(h, "GET", f"/containers/{container_id}/inspect")
     return {"code": 0, "data": {"inspect": result.get("inspect", {})}}
+
+
+@router.get("/hosts/{host_name}/containers/{container_id}/trends")
+def api_container_trends(
+    host_name: str,
+    container_id: str,
+    minutes: int = 60,
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required(DOCKER_LOG_VIEW_PERMISSION)),
+):
+    """容器指标历史趋势（自建历史表，由后台轮询采样）。"""
+    h = _require_docker_host_by_name(db, host_name)
+    data = get_container_trends(db, h.id, container_id, minutes=minutes)
+    if data is None:
+        raise HTTPException(status_code=404, detail="容器不存在")
+    return {"code": 0, "data": data}
 
 
 # ─── SSE：近实时日志流 ─────────────────────────────────────

@@ -5,16 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.core.config import CHINA_TZ
 from typing import Any
 
 import requests
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.container import ContainerCluster, DockerContainer
+from app.models.container import ContainerCluster, DockerContainer, DockerContainerMetric
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 PULL_TIMEOUT = 10
 # Agent 离线判定（秒）：超过此时间未成功拉取
 OFFLINE_TIMEOUT = 60
+# 容器指标历史采样间隔（秒）—— 后台每 10s 轮询，每 60s 采一次
+METRIC_SAMPLE_INTERVAL = 60
+# 容器指标历史保留时长（小时）
+METRIC_RETENTION_HOURS = 24
+_last_metric_sample_ts: float = 0.0
 
 
 # ─── Docker 主机管理 ──────────────────────────────────────
@@ -142,7 +147,7 @@ def pull_from_agent(host: ContainerCluster) -> dict[str, Any] | None:
     return None
 
 
-def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
+def sync_host_from_agent(db: Session, host: ContainerCluster, *, sample_metrics: bool = False) -> bool:
     """
     从 Agent 拉取数据并同步到数据库。
 
@@ -178,13 +183,13 @@ def sync_host_from_agent(db: Session, host: ContainerCluster) -> bool:
     host.agent_key = json.dumps(host_metrics)
 
     # 同步容器数据
-    _sync_containers(db, host.id, containers_data)
+    _sync_containers(db, host.id, containers_data, sample_metrics=sample_metrics)
 
     db.commit()
     return True
 
 
-def _sync_containers(db: Session, host_id: int, containers_data: list[dict]) -> None:
+def _sync_containers(db: Session, host_id: int, containers_data: list[dict], *, sample_metrics: bool = False) -> None:
     """同步容器列表到数据库。"""
     now = datetime.now(CHINA_TZ)
     reported_ids = {c["id"][:12] for c in containers_data if c.get("id")}
@@ -198,6 +203,7 @@ def _sync_containers(db: Session, host_id: int, containers_data: list[dict]) -> 
             db.delete(old)
 
     # 更新或创建容器
+    touched: list[DockerContainer] = []
     for c in containers_data:
         cid = c["id"][:12]
         container = db.scalar(
@@ -233,15 +239,36 @@ def _sync_containers(db: Session, host_id: int, containers_data: list[dict]) -> 
                 setattr(container, k, v)
             container.updated_at = now
         else:
-            db.add(DockerContainer(host_id=host_id, container_id=cid, **fields))
+            container = DockerContainer(host_id=host_id, container_id=cid, **fields)
+            db.add(container)
+        touched.append(container)
+
+    # 采样容器指标历史（仅 running 容器，受调用方节流）
+    if sample_metrics and touched:
+        db.flush()  # 确保新建容器拿到 id
+        for container in touched:
+            if container.status != "running":
+                continue
+            db.add(DockerContainerMetric(
+                container_id=container.id,
+                cpu_percent=container.cpu_percent or 0.0,
+                memory_usage=container.memory_usage or 0,
+                memory_limit=container.memory_limit or 0,
+                memory_percent=container.memory_percent or 0.0,
+                net_rx_bytes=container.net_rx_bytes or 0,
+                net_tx_bytes=container.net_tx_bytes or 0,
+                recorded_at=now,
+            ))
 
 
 def sync_all_hosts(db: Session) -> None:
     """同步所有 Docker 主机（供后台定时任务调用）。"""
+    global _last_metric_sample_ts
+    sample_metrics = (time.time() - _last_metric_sample_ts) >= METRIC_SAMPLE_INTERVAL
     hosts = list_docker_hosts(db)
     for host in hosts:
         try:
-            ok = sync_host_from_agent(db, host)
+            ok = sync_host_from_agent(db, host, sample_metrics=sample_metrics)
             if not ok:
                 # 拉取失败，标记离线
                 if host.last_heartbeat and (datetime.now(CHINA_TZ) - _ensure_utc(host.last_heartbeat)).total_seconds() > OFFLINE_TIMEOUT:
@@ -251,6 +278,58 @@ def sync_all_hosts(db: Session) -> None:
                         db.commit()
         except Exception as e:
             logger.error("同步主机 %s 失败: %s", host.name, e)
+    if sample_metrics:
+        _last_metric_sample_ts = time.time()
+        try:
+            _prune_container_metrics(db)
+        except Exception as e:
+            logger.warning("清理容器指标历史失败: %s", e)
+
+
+def _prune_container_metrics(db: Session) -> None:
+    """删除超过保留时长的容器指标历史。"""
+    cutoff = datetime.now(CHINA_TZ) - timedelta(hours=METRIC_RETENTION_HOURS)
+    db.execute(delete(DockerContainerMetric).where(DockerContainerMetric.recorded_at < cutoff))
+    db.commit()
+
+
+def get_container_trends(db: Session, host_id: int, container_id: str, minutes: int = 60) -> dict[str, Any] | None:
+    """查询单个 Docker 容器最近一段时间的指标趋势（自建历史表）。"""
+    container = db.scalar(
+        select(DockerContainer).where(
+            DockerContainer.host_id == host_id,
+            DockerContainer.container_id == container_id,
+        )
+    )
+    if not container:
+        return None
+    safe_minutes = max(15, min(int(minutes or 60), 360))
+    cutoff = datetime.now(CHINA_TZ) - timedelta(minutes=safe_minutes)
+    rows = list(db.scalars(
+        select(DockerContainerMetric)
+        .where(
+            DockerContainerMetric.container_id == container.id,
+            DockerContainerMetric.recorded_at >= cutoff,
+        )
+        .order_by(DockerContainerMetric.recorded_at.asc())
+    ).all())
+
+    def pts(getter) -> list[dict[str, float]]:
+        return [
+            {"timestamp": int(_ensure_utc(r.recorded_at).timestamp()), "value": round(float(getter(r) or 0), 2)}
+            for r in rows
+        ]
+
+    return {
+        "range_minutes": safe_minutes,
+        "step_seconds": METRIC_SAMPLE_INTERVAL,
+        "series": [
+            {"key": "cpu", "label": "CPU", "unit": "%", "points": pts(lambda r: r.cpu_percent)},
+            {"key": "memory", "label": "内存", "unit": "%", "points": pts(lambda r: r.memory_percent)},
+            {"key": "memory_usage", "label": "内存占用", "unit": "MiB", "points": pts(lambda r: (r.memory_usage or 0) / 1024 / 1024)},
+            {"key": "network", "label": "网络累计", "unit": "MiB", "points": pts(lambda r: ((r.net_rx_bytes or 0) + (r.net_tx_bytes or 0)) / 1024 / 1024)},
+        ],
+    }
 
 
 # ─── 容器查询 ──────────────────────────────────────────────
