@@ -94,6 +94,7 @@
 - **Deployment 管理**：副本状态（ready/total）、镜像、命名空间筛选；支持分页
 - **Service 管理**：类型（ClusterIP/NodePort/LoadBalancer）、Cluster IP、端口、Selector；支持分页
 - **命名空间 / 节点**：概览表格均支持分页（10/20/50 条/页）
+- **Pod 日志**：支持按行数或时间段查看、近实时跟随、关键字筛选与命中高亮；可复制或下载当前筛选结果
 
 ### 6. Docker 监控（Agent 拉取模式 + 容器操作）
 
@@ -103,7 +104,8 @@
 - **主机管理**：注册、编辑、删除 Docker 主机，自动检测在线/离线状态
 - **独立详情页**：点击主机进入独立详情页（路由 `/assets/docker/:id`），展示主机信息、系统指标（CPU/内存/磁盘带进度条）、容器列表
 - **容器操作**：支持启动、停止、重启、删除容器，操作通过 Agent 代理执行，删除有二次确认
-- **容器日志**：支持查看指定容器最近日志（`/logs?tail=300`）
+- **容器日志**：支持按行数或时间段查看、近实时跟随、关键字筛选与命中高亮；可复制或下载当前筛选结果
+- **容器终端**：运行中容器可通过 xterm.js 进入交互式 `/bin/sh`，浏览器经后端桥接到 Agent WebSocket；支持终端尺寸同步、错误透传和空闲长连接
 - **容器列表**：容器名称、镜像、状态、CPU、内存（进度条）、网络 I/O、重启次数、端口映射，支持搜索和状态筛选；低频信息（容器 ID、磁盘 I/O、更新时间）通过展开行查看
 - **概览指标**：CPU/内存/磁盘使用率 + 进度条、容器总数、运行中容器数、主机 IP
 - **手动刷新**：支持一键手动从 Agent 拉取最新数据
@@ -115,7 +117,9 @@
 ```bash
 docker rm -f ops-agent >/dev/null 2>&1 || true
 docker pull hub1.lczy.com/public/ops-agent:latest
-docker run -d -p 9001:9001 \
+docker run -d \
+  -p 9001:9001 \
+  -p 9002:9002 \
   --name ops-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -131,10 +135,12 @@ docker run -d -p 9001:9001 \
 | `/containers` | GET | 容器列表及指标 |
 | `/snapshot` | GET | 一次性返回全部数据 |
 | `/containers/{id}/logs?tail=300` | GET | 查看容器最近日志 |
+| `/containers/{id}/inspect` | GET | 查看容器完整 inspect 信息 |
 | `/containers/{id}/start` | POST | 启动容器 |
 | `/containers/{id}/stop` | POST | 停止容器 |
 | `/containers/{id}/restart` | POST | 重启容器 |
 | `/containers/{id}/delete` | POST | 删除容器（force） |
+| `/containers/{id}/exec` | WS（9002） | 交互式容器终端；首帧接收命令，支持终端尺寸同步 |
 
 ### 7. 主机监控（Prometheus）
 
@@ -591,7 +597,7 @@ docker compose --profile agent up -d
 | redis | ops-redis | 6379 | Redis 7，密码认证 + AOF 持久化 |
 | backend | ops-backend | 8000 | FastAPI，等 mysql/redis 健康后启动 |
 | frontend | ops-frontend | 80（可自定义） | nginx 托管 SPA + 反代 API |
-| agent | ops-agent | 9001 | 可选，需 `--profile agent` 启动 |
+| agent | ops-agent | 9001 / 9002 | 可选；9001 为 HTTP API，9002 为容器终端 WebSocket |
 
 **常用命令：**
 
@@ -667,7 +673,7 @@ export REDIS_DB=0
 | Prometheus | 主机指标采集 | 配置中心 UI 或 `config.py` → `PROMETHEUS_URL` |
 | Alertmanager | 告警推送 | 配置中心 UI 或 `config.py` → `ALERTMANAGER_URL` |
 | Kubernetes | 容器资源发现 | 集群接入时填写 API Server + Token |
-| Docker Agent | Docker 容器监控 | 目标主机部署 Agent 容器，平台注册时填写 IP:端口 |
+| Docker Agent | Docker 容器监控与交互终端 | 目标主机部署 Agent；平台注册时填写 `IP:9001`，终端自动连接 `9002` |
 | node_exporter | 主机指标暴露 | 每台主机部署，端口 9100 |
 
 > **提示：** Prometheus 和 Alertmanager 的地址可以在系统管理 → 配置中心中通过 UI 修改，无需改代码重启。
@@ -730,14 +736,16 @@ kubectl create token ops-monitor -n kube-system --duration=87600h
 
 ### Docker Agent 接入参考
 
-Docker 监控通过在目标主机部署轻量 Agent 容器实现，Agent 暴露 HTTP API 供平台拉取数据。
+Docker 监控通过在目标主机部署轻量 Agent 容器实现。Agent 在 9001 端口暴露 HTTP API 供平台拉取数据，在 9002 端口提供容器终端 WebSocket。
 
 **部署 Agent：**
 
 ```bash
 docker rm -f ops-agent >/dev/null 2>&1 || true
 docker pull hub1.lczy.com/public/ops-agent:latest
-docker run -d -p 9001:9001 \
+docker run -d \
+  -p 9001:9001 \
+  -p 9002:9002 \
   --name ops-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -750,6 +758,39 @@ docker run -d -p 9001:9001 \
 cd agent
 docker build -t hub1.lczy.com/public/ops-agent:latest .
 docker push hub1.lczy.com/public/ops-agent:latest
+```
+
+生产环境建议使用不可变版本标签，并将 9001/9002 仅绑定到管理网 IP。例如：
+
+```bash
+docker run -d \
+  -p 10.10.20.15:9001:9001 \
+  -p 10.10.20.15:9002:9002 \
+  --name ops-agent \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  <你的镜像仓库>/ops-agent:<版本>
+```
+
+**容器终端启用条件：**
+
+- 后端设置 `ENABLE_EXEC_TERMINAL=true` 并重启服务
+- 登录账号拥有 `containers.exec` 权限
+- 平台后端能够访问 Agent 的 9002 端口；终端端口按 Agent HTTP 端口加 1 计算
+- 修改 `agent/` 目录后必须重新构建并部署 Agent 镜像，仅更新前端或后端不会替换 Agent 中的终端桥接代码
+
+**容器终端故障排查：**
+
+| 现象 | 排查与处理 |
+|------|------------|
+| 无法连接 Agent | 检查 9002 端口映射、防火墙和管理网路由；确认 Agent 日志包含 `exec 终端 WebSocket 服务已启动` |
+| 显示已连接但没有提示符，按键后断开 | 更新 Agent 到当前源码版本；旧版未兼容 Docker SDK 返回的 `SocketIO` 包装流 |
+| 空闲约 60 秒后提示连接异常，Agent 日志出现 `exec 输出转发失败 ... timed out` | 更新到至少包含 `a79b677` 的 Agent；新版会清除 Docker exec socket 的有限读超时，并将残余超时视为正常空闲 |
+
+可用以下命令确认运行中的 Agent 已包含空闲连接修复：
+
+```bash
+docker exec ops-agent grep -n "_set_exec_stream_blocking" /app/docker_agent.py
 ```
 
 **平台注册：**
@@ -808,6 +849,7 @@ docker push hub1.lczy.com/public/ops-agent:latest
 | Docker | `GET /containers/docker/containers` | Docker 容器列表 |
 | Docker | `GET /containers/docker/hosts/{id}/containers` | 指定主机容器列表 |
 | Docker | `GET /containers/docker/hosts/{id}/containers/{cid}/logs` | 查看容器日志 |
+| Docker | `WS /ws/exec/docker/{host_name}/containers/{cid}` | Docker 容器交互式终端 |
 | Docker | `POST /containers/docker/hosts/{id}/containers/{cid}/{action}` | 容器操作（start/stop/restart/delete） |
 | 告警规则 | `GET /alertmanager/rules/hosts` | 告警规则关联主机映射 |
 | 批量执行 | `WS /batch-exec/ws/exec` | 批量命令执行（WebSocket） |
