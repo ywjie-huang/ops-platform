@@ -325,6 +325,21 @@ async def ws_docker_exec(
                     await websocket.send_text(msg)
             except Exception as e:  # noqa: BLE001
                 logger.debug("Agent→浏览器 读取结束: %s", e)
+            # Agent exec WS 关闭后透出异常关闭原因，避免 exec 失败时前端只看到连接静默断开。
+            code = getattr(agent_ws, "close_code", None)
+            reason = (getattr(agent_ws, "close_reason", None) or "").strip()
+            if code not in (None, 1000, 1001):
+                logger.warning(
+                    "Docker agent exec WS 异常关闭 code=%s reason=%s [%s]",
+                    code, reason or "(空)", f"{host_name}/{container_id}",
+                )
+                if reason:
+                    try:
+                        await websocket.send_text(
+                            json.dumps({"type": "error", "message": f"Agent: {reason}"})
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
 
         async def browser_to_agent():
             while True:
