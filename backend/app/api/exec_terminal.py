@@ -300,6 +300,11 @@ async def ws_docker_exec(
         await _send_error_and_close(websocket, f"无法连接 Agent：{e}")
         return
 
+    logger.info(
+        "exec[docker] Agent 已连接 %s command=%s [%s]",
+        agent_url, command_argv, f"{host_name}/{container_id}",
+    )
+
     # 审计
     db = SessionLocal()
     try:
@@ -316,6 +321,7 @@ async def ws_docker_exec(
     try:
         await agent_ws.send(json.dumps({"command": command_argv}))
         await _send_ready(websocket)
+        logger.info("exec[docker] 已发送 ready，进入双向桥接 [%s]", f"{host_name}/{container_id}")
 
         async def agent_to_browser():
             try:
@@ -324,28 +330,28 @@ async def ws_docker_exec(
                         msg = msg.decode("utf-8", errors="replace")
                     await websocket.send_text(msg)
             except Exception as e:  # noqa: BLE001
-                logger.debug("Agent→浏览器 读取结束: %s", e)
-            # Agent exec WS 关闭后透出异常关闭原因，避免 exec 失败时前端只看到连接静默断开。
+                logger.info("exec[docker] Agent→浏览器 异常: %s [%s]", e, f"{host_name}/{container_id}")
+            # Agent exec WS 关闭后记录关闭码；异常关闭时把原因透传给前端，避免静默断开。
             code = getattr(agent_ws, "close_code", None)
             reason = (getattr(agent_ws, "close_reason", None) or "").strip()
-            if code not in (None, 1000, 1001):
-                logger.warning(
-                    "Docker agent exec WS 异常关闭 code=%s reason=%s [%s]",
-                    code, reason or "(空)", f"{host_name}/{container_id}",
-                )
-                if reason:
-                    try:
-                        await websocket.send_text(
-                            json.dumps({"type": "error", "message": f"Agent: {reason}"})
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
+            logger.info(
+                "exec[docker] Agent 侧关闭 code=%s reason=%s [%s]",
+                code, reason or "(空)", f"{host_name}/{container_id}",
+            )
+            if code not in (None, 1000, 1001) and reason:
+                try:
+                    await websocket.send_text(
+                        json.dumps({"type": "error", "message": f"Agent: {reason}"})
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
         async def browser_to_agent():
             while True:
                 try:
                     msg = await websocket.receive_text()
                 except WebSocketDisconnect:
+                    logger.info("exec[docker] 浏览器侧断开 [%s]", f"{host_name}/{container_id}")
                     break
                 try:
                     await agent_ws.send(msg)
