@@ -10,9 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY docker_agent.py .
 
-EXPOSE 9001
+EXPOSE 9001 9002
 
 ENV AGENT_PORT=9001
+ENV AGENT_WS_PORT=9002
 
 ENTRYPOINT ["python", "docker_agent.py"]
 
