@@ -432,15 +432,92 @@ def _ws_path(websocket) -> str:
     return getattr(websocket, "path", "/")
 
 
-def _sock_recv(sock, size: int) -> bytes:
-    return sock.recv(size)
+def _stream_candidates(stream) -> tuple[Any, ...]:
+    """Return the Docker SDK wrapper and its raw socket, when exposed."""
+    raw_socket = getattr(stream, "_sock", None)
+    if raw_socket is None or raw_socket is stream:
+        return (stream,)
+    return stream, raw_socket
 
 
-def _sock_write(sock, data: bytes) -> None:
-    if hasattr(sock, "sendall"):
-        sock.sendall(data)
-    else:
-        sock.send(data)
+def _find_stream_method(stream, names: tuple[str, ...]):
+    for name in names:
+        for candidate in _stream_candidates(stream):
+            method = getattr(candidate, name, None)
+            if callable(method):
+                return name, method
+    return None, None
+
+
+def _validate_exec_stream(stream) -> None:
+    _, reader = _find_stream_method(stream, ("recv", "read"))
+    _, writer = _find_stream_method(stream, ("sendall", "send", "write"))
+    if reader is None or writer is None:
+        stream_type = type(stream).__name__
+        raise TypeError(f"unsupported Docker exec stream: {stream_type}")
+
+
+def _sock_recv(stream, size: int) -> bytes:
+    _, reader = _find_stream_method(stream, ("recv", "read"))
+    if reader is None:
+        raise TypeError(f"Docker exec stream {type(stream).__name__} is not readable")
+    return reader(size)
+
+
+def _sock_write(stream, data: bytes) -> None:
+    method_name, writer = _find_stream_method(stream, ("sendall", "send", "write"))
+    if writer is None or method_name is None:
+        raise TypeError(f"Docker exec stream {type(stream).__name__} is not writable")
+
+    if method_name == "sendall":
+        writer(data)
+        return
+
+    remaining = memoryview(data)
+    while remaining:
+        written = writer(remaining.tobytes())
+        if written is None:
+            break
+        if not isinstance(written, int) or written <= 0:
+            raise OSError("Docker exec stream write returned no progress")
+        remaining = remaining[written:]
+
+    if method_name == "write":
+        flush = getattr(getattr(writer, "__self__", None), "flush", None)
+        if callable(flush):
+            flush()
+
+
+def _exec_control_frame(frame_type: str, message: str = "") -> str:
+    payload = {"type": frame_type}
+    if message:
+        payload["message"] = message
+    return json.dumps(payload, ensure_ascii=False)
+
+
+async def _send_exec_error(websocket, message: str) -> None:
+    try:
+        await websocket.send(_exec_control_frame("error", message))
+    except Exception:
+        pass
+
+
+async def _run_bridge_until_closed(*coroutines) -> None:
+    tasks = [asyncio.create_task(coroutine) for coroutine in coroutines]
+    try:
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+            raise result
 
 
 async def _handle_exec_ws(websocket):
@@ -462,27 +539,40 @@ async def _handle_exec_ws(websocket):
         if isinstance(first, str) and first.startswith("{"):
             try:
                 payload = json.loads(first)
-                cmd = payload.get("command")
-                if isinstance(cmd, list) and cmd:
-                    command = [str(x) for x in cmd]
+                if isinstance(payload, dict):
+                    cmd = payload.get("command")
+                    if isinstance(cmd, list) and cmd:
+                        command = [str(x) for x in cmd]
             except (json.JSONDecodeError, TypeError):
                 pass
     except asyncio.TimeoutError:
         pass  # 超时则沿用默认命令
-    except Exception:
-        pass
+    except Exception as e:
+        log.info("exec 命令帧读取结束 %s: %s", container_id, e)
+        return
 
+    sock = None
     try:
         exec_id = _docker_client.api.exec_create(
             container_id, cmd=command, stdin=True, tty=True, stdout=True, stderr=True
         )
         sock = _docker_client.api.exec_start(exec_id, tty=True, socket=True)
+        _validate_exec_stream(sock)
     except Exception as e:
         log.warning("exec 建立失败 %s: %s", container_id, e)
-        await websocket.close(code=1011, reason=f"exec failed: {e}")
+        await _send_exec_error(websocket, f"无法启动容器终端：{e}")
+        try:
+            await websocket.close(code=1011, reason="exec failed")
+        except Exception:
+            pass
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
         return
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     async def sock_to_ws():
         try:
@@ -491,8 +581,11 @@ async def _handle_exec_ws(websocket):
                 if not data:
                     break
                 await websocket.send(data.decode("utf-8", errors="replace"))
-        except Exception:
-            pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("exec 输出转发失败 %s: %s", container_id, e)
+            await _send_exec_error(websocket, f"读取容器终端失败：{e}")
 
     async def ws_to_sock():
         try:
@@ -500,26 +593,48 @@ async def _handle_exec_ws(websocket):
                 if isinstance(msg, str) and msg.startswith("{"):
                     try:
                         d = json.loads(msg)
-                        if "cols" in d and "rows" in d:
+                    except json.JSONDecodeError:
+                        d = None
+                    if isinstance(d, dict) and "cols" in d and "rows" in d:
+                        try:
+                            height = int(d["rows"])
+                            width = int(d["cols"])
+                            if height <= 0 or width <= 0:
+                                raise ValueError("terminal size must be positive")
+                        except (TypeError, ValueError) as e:
+                            log.warning("exec 终端尺寸无效 %s: %s", container_id, e)
+                            await _send_exec_error(websocket, f"无效的容器终端尺寸：{e}")
+                            return
+                        try:
                             await loop.run_in_executor(
                                 None,
                                 lambda: _docker_client.api.exec_resize(
-                                    exec_id, height=int(d["rows"]), width=int(d["cols"])
+                                    exec_id, height=height, width=width
                                 ),
                             )
-                            continue
-                    except Exception:
-                        pass
+                        except Exception as e:
+                            log.warning("exec 终端尺寸调整失败 %s: %s", container_id, e)
+                            await _send_exec_error(websocket, f"调整容器终端尺寸失败：{e}")
+                            return
+                        continue
                 payload = msg.encode("utf-8") if isinstance(msg, str) else bytes(msg)
                 await loop.run_in_executor(None, _sock_write, sock, payload)
-        except Exception:
-            pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("exec 输入转发失败 %s: %s", container_id, e)
+            await _send_exec_error(websocket, f"写入容器终端失败：{e}")
 
     try:
-        await asyncio.gather(sock_to_ws(), ws_to_sock())
+        await websocket.send(_exec_control_frame("ready"))
+        await _run_bridge_until_closed(sock_to_ws(), ws_to_sock())
     finally:
         try:
             sock.close()
+        except Exception:
+            pass
+        try:
+            await websocket.close()
         except Exception:
             pass
 

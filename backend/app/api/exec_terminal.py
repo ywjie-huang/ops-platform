@@ -27,7 +27,12 @@ logger = logging.getLogger(__name__)
 
 EXEC_PERMISSION = "containers.exec"
 DEFAULT_COMMAND = "/bin/sh"
+AGENT_READY_TIMEOUT_SECONDS = 15
 router = APIRouter(tags=["容器终端"])
+
+
+class AgentExecHandshakeError(RuntimeError):
+    pass
 
 
 # ─── 公共辅助 ──────────────────────────────────────────────
@@ -247,6 +252,71 @@ def _agent_exec_url(endpoint: str, container_id: str) -> str:
     return f"ws://{host}:{port}/containers/{container_id}/exec"
 
 
+def _agent_message_text(message) -> str:
+    if isinstance(message, (bytes, bytearray)):
+        return message.decode("utf-8", errors="replace")
+    return str(message)
+
+
+def _agent_control_frame(message) -> dict | None:
+    text = _agent_message_text(message)
+    if not text.startswith("{"):
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("type") not in {"ready", "error"}:
+        return None
+    return payload
+
+
+async def _wait_for_agent_ready(agent_ws):
+    try:
+        first_message = await asyncio.wait_for(
+            agent_ws.recv(), timeout=AGENT_READY_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError as e:
+        raise AgentExecHandshakeError(
+            "Agent 启动容器终端超时，请确认 Agent 已升级并支持 exec 就绪握手"
+        ) from e
+    except Exception as e:
+        reason = (
+            getattr(e, "reason", None)
+            or getattr(agent_ws, "close_reason", None)
+            or str(e)
+            or "连接已关闭"
+        )
+        raise AgentExecHandshakeError(f"Agent 在容器终端就绪前断开：{reason}") from e
+
+    control = _agent_control_frame(first_message)
+    if control is None:
+        # 旧版 Agent 没有 ready 控制帧；收到实际输出也能证明 exec 已建立。
+        return first_message
+    if control["type"] == "error":
+        message = str(control.get("message") or "Agent 无法启动容器终端")
+        raise AgentExecHandshakeError(message)
+    return None
+
+
+async def _run_bridge_until_closed(*coroutines) -> None:
+    tasks = [asyncio.create_task(coroutine) for coroutine in coroutines]
+    try:
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+            raise result
+
+
 @router.websocket("/ws/exec/docker/{host_name}/containers/{container_id}")
 async def ws_docker_exec(
     websocket: WebSocket,
@@ -319,9 +389,26 @@ async def ws_docker_exec(
         db.close()
 
     try:
-        await agent_ws.send(json.dumps({"command": command_argv}))
+        try:
+            await agent_ws.send(json.dumps({"command": command_argv}))
+            buffered_output = await _wait_for_agent_ready(agent_ws)
+        except AgentExecHandshakeError as e:
+            logger.warning(
+                "exec[docker] Agent 就绪失败: %s [%s]", e, f"{host_name}/{container_id}"
+            )
+            await _send_error_and_close(websocket, str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "exec[docker] 命令发送失败: %s [%s]", e, f"{host_name}/{container_id}"
+            )
+            await _send_error_and_close(websocket, f"无法启动 Agent 容器终端：{e}")
+            return
+
         await _send_ready(websocket)
-        logger.info("exec[docker] 已发送 ready，进入双向桥接 [%s]", f"{host_name}/{container_id}")
+        if buffered_output is not None:
+            await websocket.send_text(_agent_message_text(buffered_output))
+        logger.info("exec[docker] Agent 已就绪，进入双向桥接 [%s]", f"{host_name}/{container_id}")
 
         async def agent_to_browser():
             try:
@@ -359,7 +446,7 @@ async def ws_docker_exec(
                     logger.debug("浏览器→Agent 写入失败: %s", e)
                     break
 
-        await asyncio.gather(agent_to_browser(), browser_to_agent())
+        await _run_bridge_until_closed(agent_to_browser(), browser_to_agent())
     finally:
         try:
             await agent_ws.close()

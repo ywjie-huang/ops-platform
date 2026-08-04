@@ -1,15 +1,21 @@
 <template>
   <div class="exec-pane">
-    <div class="exec-status">
+    <div class="exec-status" role="status" aria-live="polite">
       <span class="exec-dot" :class="statusClass" aria-hidden="true"></span>
       <span class="exec-status-text">{{ statusText }}</span>
       <span v-if="title" class="exec-title mono">{{ title }}</span>
-      <el-button v-if="connected" link size="small" @click="reconnect">
+      <el-button
+        v-if="!connecting"
+        link
+        size="small"
+        aria-label="重新连接容器终端"
+        @click="reconnect"
+      >
         <el-icon><Refresh /></el-icon>重连
       </el-button>
     </div>
     <div ref="terminalRef" class="exec-terminal" :class="{ errored }" aria-label="容器终端"></div>
-    <div v-if="errorMessage" class="exec-error">{{ errorMessage }}</div>
+    <div v-if="errorMessage" class="exec-error" role="alert">{{ errorMessage }}</div>
   </div>
 </template>
 
@@ -20,6 +26,7 @@ import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { Refresh } from '@element-plus/icons-vue'
 import { getToken } from '@/utils/auth'
+import { parseExecControlFrame } from './execConnection'
 
 const props = defineProps<{
   wsUrl: string
@@ -45,7 +52,7 @@ const statusText = ref('连接中…')
 function setStatus() {
   if (errored.value) {
     statusClass.value = 'is-error'
-    statusText.value = '连接失败'
+    statusText.value = '连接异常'
   } else if (connected.value) {
     statusClass.value = 'is-online'
     statusText.value = '已连接'
@@ -61,9 +68,18 @@ function setStatus() {
 function fitTerminal() {
   if (!fitAddon) return
   fitAddon.fit()
-  if (ws?.readyState === WebSocket.OPEN && terminal && terminal.cols > 0 && terminal.rows > 0) {
+  if (ready && ws?.readyState === WebSocket.OPEN && terminal && terminal.cols > 0 && terminal.rows > 0) {
     ws.send(JSON.stringify({ cols: terminal.cols, rows: terminal.rows }))
   }
+}
+
+function failConnection(message: string) {
+  ready = false
+  connecting.value = false
+  connected.value = false
+  errored.value = true
+  errorMessage.value = message
+  setStatus()
 }
 
 function initTerminal() {
@@ -84,7 +100,7 @@ function initTerminal() {
   terminal.open(terminalRef.value!)
   fitTerminal()
   terminal.onData((data) => {
-    if (ws?.readyState === WebSocket.OPEN) ws.send(data)
+    if (ready && ws?.readyState === WebSocket.OPEN) ws.send(data)
   })
   resizeObserver = new ResizeObserver(() => fitTerminal())
   resizeObserver.observe(terminalRef.value!)
@@ -93,9 +109,7 @@ function initTerminal() {
 function connect() {
   const token = getToken()
   if (!token) {
-    errored.value = true
-    errorMessage.value = '未登录或登录已过期'
-    setStatus()
+    failConnection('未登录或登录已过期')
     return
   }
   teardownSocket()
@@ -120,51 +134,48 @@ function connect() {
   socket.onmessage = (event) => {
     if (generation !== socketGeneration) return
     const data = event.data
-    // 仅在 ready 前解析控制帧（ready / error）
-    if (!ready && typeof data === 'string' && data.startsWith('{')) {
-      try {
-        const ctrl = JSON.parse(data)
-        if (ctrl.type === 'ready') {
-          ready = true
-          connecting.value = false
-          connected.value = true
-          setStatus()
-          nextTick(fitTerminal)
-          return
-        }
-        if (ctrl.type === 'error') {
-          errored.value = true
-          errorMessage.value = ctrl.message || '进入容器失败'
-          connecting.value = false
-          setStatus()
-          return
-        }
-      } catch {
-        // 非 JSON 控制帧，按原始输出处理
-      }
+    const ctrl = parseExecControlFrame(data)
+    if (ctrl?.type === 'ready') {
+      ready = true
+      connecting.value = false
+      connected.value = true
+      setStatus()
+      nextTick(fitTerminal)
+      return
+    }
+    if (ctrl?.type === 'error') {
+      failConnection(ctrl.message || '进入容器失败')
+      return
     }
     terminal?.write(typeof data === 'string' ? data : '')
   }
 
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     if (generation !== socketGeneration) return
+    const wasReady = ready
+    ready = false
     connecting.value = false
     connected.value = false
+    if (!errored.value && !wasReady) {
+      errored.value = true
+      errorMessage.value = event.reason || '容器终端在就绪前断开'
+    }
     setStatus()
   }
 
   socket.onerror = () => {
     if (generation !== socketGeneration) return
-    if (!ready) {
-      errored.value = true
-      errorMessage.value = '连接失败，请检查容器终端功能是否已开启（ENABLE_EXEC_TERMINAL）及权限'
+    if (!errored.value) {
+      const message = ready
+        ? '容器终端连接中断，请检查 Agent 状态'
+        : '连接失败，请检查容器终端功能是否已开启（ENABLE_EXEC_TERMINAL）及权限'
+      failConnection(message)
     }
-    connecting.value = false
-    setStatus()
   }
 }
 
 function teardownSocket() {
+  ready = false
   if (ws) {
     try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null } catch { /* noop */ }
     try { ws.close() } catch { /* noop */ }
