@@ -57,6 +57,7 @@ services:
       ENABLE_SSH_TERMINAL: ${ENABLE_SSH_TERMINAL:-false}
       ENABLE_SFTP: ${ENABLE_SFTP:-false}
       ENABLE_BATCH_EXEC: ${ENABLE_BATCH_EXEC:-false}
+      ENABLE_EXEC_TERMINAL: ${ENABLE_EXEC_TERMINAL:-false}
       ENABLE_DEPLOY_WEBHOOK: ${ENABLE_DEPLOY_WEBHOOK:-false}
       TZ: Asia/Shanghai
     ports:
