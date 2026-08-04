@@ -80,6 +80,50 @@ def test_exec_stream_retries_partial_socket_writes():
     assert bytes(stream.received) == b"abcdef"
 
 
+def test_exec_stream_disables_raw_socket_timeout():
+    class RawSocket:
+        def __init__(self):
+            self.timeout = 60
+
+        def recv(self, size: int):
+            return b""
+
+        def sendall(self, data: bytes):
+            pass
+
+        def settimeout(self, value):
+            self.timeout = value
+
+    class DockerSocketIO:
+        def __init__(self):
+            self._sock = RawSocket()
+
+    stream = DockerSocketIO()
+
+    assert docker_agent._set_exec_stream_blocking(stream) is True
+    assert stream._sock.timeout is None
+
+
+def test_exec_stream_treats_read_timeout_as_idle():
+    class TimeoutThenOutputStream:
+        def __init__(self):
+            self.reads = 0
+
+        def recv(self, size: int):
+            self.reads += 1
+            if self.reads < 3:
+                raise TimeoutError("timed out")
+            return b"still connected"
+
+        def sendall(self, data: bytes):
+            pass
+
+    stream = TimeoutThenOutputStream()
+
+    assert docker_agent._sock_recv(stream, 4096) == b"still connected"
+    assert stream.reads == 3
+
+
 def test_exec_stream_rejects_non_socket_objects():
     try:
         docker_agent._validate_exec_stream(object())

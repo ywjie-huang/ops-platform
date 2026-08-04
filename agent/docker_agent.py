@@ -457,11 +457,31 @@ def _validate_exec_stream(stream) -> None:
         raise TypeError(f"unsupported Docker exec stream: {stream_type}")
 
 
+def _set_exec_stream_blocking(stream) -> bool:
+    """Disable the Docker client's finite HTTP timeout on a hijacked exec stream."""
+    for candidate in _stream_candidates(stream):
+        set_timeout = getattr(candidate, "settimeout", None)
+        if not callable(set_timeout):
+            continue
+        try:
+            set_timeout(None)
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
 def _sock_recv(stream, size: int) -> bytes:
     _, reader = _find_stream_method(stream, ("recv", "read"))
     if reader is None:
         raise TypeError(f"Docker exec stream {type(stream).__name__} is not readable")
-    return reader(size)
+    while True:
+        try:
+            return reader(size)
+        except TimeoutError:
+            # Docker SDK sockets inherit the HTTP client's finite timeout. No output
+            # during that interval is normal for an interactive shell.
+            continue
 
 
 def _sock_write(stream, data: bytes) -> None:
@@ -558,6 +578,7 @@ async def _handle_exec_ws(websocket):
         )
         sock = _docker_client.api.exec_start(exec_id, tty=True, socket=True)
         _validate_exec_stream(sock)
+        _set_exec_stream_blocking(sock)
     except Exception as e:
         log.warning("exec 建立失败 %s: %s", container_id, e)
         await _send_exec_error(websocket, f"无法启动容器终端：{e}")
