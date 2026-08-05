@@ -93,7 +93,14 @@
             >
               <span class="event-severity" :class="toneClass(item.tone)">{{ item.badge }}</span>
               <span class="event-copy">
-                <strong>{{ item.title }}</strong>
+                <span class="event-title-line">
+                  <strong>{{ item.title }}</strong>
+                  <span
+                    v-if="item.mergedCount"
+                    class="merge-tag"
+                    :title="`同一告警合并自 ${item.mergedCount} 条状态推送`"
+                  >合并 {{ item.mergedCount }} 条</span>
+                </span>
                 <span class="event-meta">{{ item.meta }}</span>
                 <span class="event-description">{{ item.detail }}</span>
               </span>
@@ -1063,17 +1070,49 @@ onDeactivated(() => {
 .event-row--danger.selected { box-shadow: inset 3px 0 0 var(--danger-color); }
 .event-row--warning.selected { box-shadow: inset 3px 0 0 var(--warning-color); }
 
+.event-row--muted {
+  opacity: 0.68;
+}
+
+.event-row--muted .event-copy strong {
+  color: var(--text-secondary);
+}
+
 .event-copy {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
+.event-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .event-copy strong {
   overflow: hidden;
+  min-width: 0;
   font-size: 14px;
   line-height: 1.4;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px dashed color-mix(in srgb, var(--primary-color) 40%, transparent);
+  border-radius: 4px;
+  color: var(--primary-color);
+  background: var(--primary-bg);
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
 }
 

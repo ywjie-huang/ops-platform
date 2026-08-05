@@ -29,6 +29,7 @@ export interface DashboardSummaryItemLike {
   detail?: string
   tag?: string
   tone?: string
+  merged_count?: number
 }
 
 export interface DashboardTypeBreakdownLike {
@@ -74,6 +75,7 @@ export interface DashboardFocusItem {
   secondaryActionLabel?: string
   secondaryActionPath?: string
   summaryTag: string
+  mergedCount?: number
 }
 
 export type DashboardShortcutKey = 'ssh' | 'batch' | 'patrol' | 'tickets'
@@ -163,19 +165,22 @@ function buildFocusEntry(
   item: DashboardSummaryItemLike,
 ): DashboardFocusItem {
   if (source === 'alert') {
+    const isResolved = item.tag === 'resolved'
+    const mergedCount = Number(item.merged_count || 1)
     return {
       key: `alert-${normalizeText(item.title)}`,
       source,
-      badge: item.tone === 'red' ? '高优告警' : '告警',
+      badge: isResolved ? '已恢复' : item.tone === 'red' ? '高优告警' : '告警',
       title: normalizeText(item.title),
       meta: normalizeText(item.meta),
       detail: normalizeText(item.detail),
-      tone: mapTone(item.tone),
+      tone: isResolved ? 'muted' : mapTone(item.tone),
       primaryActionLabel: '查看告警事件',
       primaryActionPath: '/monitoring/events',
       secondaryActionLabel: '打开主机监控',
       secondaryActionPath: '/monitoring/hosts',
-      summaryTag: normalizeText(item.tag, '告警'),
+      summaryTag: isResolved ? '已恢复' : normalizeText(item.tag, '告警'),
+      mergedCount: mergedCount > 1 ? mergedCount : undefined,
     }
   }
 
@@ -267,7 +272,12 @@ export function buildDashboardMetricCards(
 }
 
 export function buildDashboardFocusItems(summary: DashboardSummaryLike): DashboardFocusItem[] {
-  const alerts = (summary.recent_alerts || []).map((item) => ({ source: 'alert' as const, item, weight: 300 }))
+  const alerts = (summary.recent_alerts || []).map((item) => ({
+    source: 'alert' as const,
+    item,
+    // 已恢复告警不再占用优先槽位，降级置底展示
+    weight: item.tag === 'resolved' ? 0 : 300,
+  }))
   const tickets = (summary.recent_tickets || []).map((item) => ({ source: 'ticket' as const, item, weight: 200 }))
   const assets = (summary.recent_asset_changes || []).map((item) => ({ source: 'asset' as const, item, weight: 100 }))
 

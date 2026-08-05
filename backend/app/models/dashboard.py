@@ -29,6 +29,8 @@ class DashboardActivityItem:
     detail: str
     tag: str
     tone: str = "default"
+    # 同一告警（fingerprint）在窗口内合并的状态推送条数，>1 表示由多条合并而来
+    merged_count: int = 1
 
 
 @dataclass

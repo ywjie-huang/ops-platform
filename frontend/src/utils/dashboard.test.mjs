@@ -218,6 +218,34 @@ test('builds explicit weighted resource rows with P95 and hotspot counts', () =>
   )
 })
 
+test('surfaces merge-count badge and degrades resolved alerts to the bottom', () => {
+  const items = buildDashboardFocusItems({
+    recent_alerts: [
+      { title: 'k8s CPU 告警', tone: 'red', tag: 'firing', merged_count: 2 },
+      { title: 'db-slave 主从延迟', tone: 'green', tag: 'resolved' },
+    ],
+    recent_tickets: [
+      { title: '生产环境磁盘扩容', tone: 'orange' },
+    ],
+  })
+
+  // firing 告警置顶，带合并角标
+  assert.equal(items[0].title, 'k8s CPU 告警')
+  assert.equal(items[0].badge, '高优告警')
+  assert.equal(items[0].tone, 'danger')
+  assert.equal(items[0].mergedCount, 2)
+
+  // resolved 告警降级为 muted、无角标，并排在工单之后
+  const resolved = items.find((item) => item.title === 'db-slave 主从延迟')
+  assert.equal(resolved.badge, '已恢复')
+  assert.equal(resolved.tone, 'muted')
+  assert.equal(resolved.mergedCount, undefined)
+
+  const ticketIndex = items.findIndex((item) => item.source === 'ticket')
+  const resolvedIndex = items.findIndex((item) => item === resolved)
+  assert.ok(resolvedIndex > ticketIndex, '已恢复告警应排在工单之后')
+})
+
 test('resource rows and health metrics degrade truthfully when aggregate data is unavailable', () => {
   const rows = buildDashboardResourceRows(undefined)
   assert.equal(rows.length, 3)

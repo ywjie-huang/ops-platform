@@ -39,3 +39,9 @@ test('dashboard lifecycle refresh follows keep-alive conventions', () => {
   assert.match(dashboardView, /onDeactivated/)
   assert.match(dashboardView, /refreshDashboard/)
 })
+
+test('dashboard view renders merged-alert badge and resolved degradation', () => {
+  assert.match(dashboardView, /merge-tag/)
+  assert.match(dashboardView, /mergedCount/)
+  assert.match(dashboardView, /event-row--muted/)
+})

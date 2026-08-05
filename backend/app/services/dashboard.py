@@ -37,9 +37,38 @@ def _count_open_alert_events(db: Session) -> int:
     return db.scalar(stmt) or 0
 
 
-def _list_recent_alert_events(db: Session, limit: int = 5) -> list[AlertEvent]:
-    stmt = select(AlertEvent).order_by(AlertEvent.received_at.desc(), AlertEvent.id.desc()).limit(limit)
-    return list(db.scalars(stmt).all())
+def _list_recent_alert_events(db: Session, limit: int = 5) -> list[tuple[AlertEvent, int]]:
+    """取最近告警，按 fingerprint 合并：同一告警只保留最新状态，并返回窗口内合并条数。
+
+    空 fingerprint 视为独立事件不参与合并。在 Python 层去重以兼容 MySQL 5.7 / 8.x，
+    避免依赖窗口函数。窗口取 limit 的若干倍以保证高频告警的最新状态能被覆盖。
+    """
+    window = max(limit * 8, 50)
+    rows = list(
+        db.scalars(
+            select(AlertEvent)
+            .order_by(AlertEvent.received_at.desc(), AlertEvent.id.desc())
+            .limit(window)
+        ).all()
+    )
+
+    latest_by_fp: dict[str, tuple[AlertEvent, int]] = {}
+    standalone: list[tuple[AlertEvent, int]] = []
+    for event in rows:
+        # rows 已按时间倒序，首次见到的 fingerprint 即该告警的最新状态
+        if not event.fingerprint:
+            standalone.append((event, 1))
+            continue
+        existing = latest_by_fp.get(event.fingerprint)
+        if existing is None:
+            latest_by_fp[event.fingerprint] = (event, 1)
+        else:
+            latest_event, count = existing
+            latest_by_fp[event.fingerprint] = (latest_event, count + 1)
+
+    merged = list(latest_by_fp.values()) + standalone
+    merged.sort(key=lambda pair: (pair[0].received_at or datetime.min, pair[0].id), reverse=True)
+    return merged[:limit]
 
 
 def _format_ratio(numerator: int, denominator: int) -> str:
@@ -275,7 +304,7 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         for t in recent_tickets
     ]
 
-    recent_alerts_list = _list_recent_alert_events(db, limit=5)
+    recent_alert_pairs = _list_recent_alert_events(db, limit=5)
     ALERT_TONES = {"firing": "red", "resolved": "green"}
     alert_items = [
         DashboardActivityItem(
@@ -284,8 +313,9 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
             detail=(a.summary or a.description or "")[:80],
             tag=a.status,
             tone=ALERT_TONES.get(a.status, "default"),
+            merged_count=count,
         )
-        for a in recent_alerts_list
+        for a, count in recent_alert_pairs
     ]
 
     role_items = [
