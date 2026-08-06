@@ -132,6 +132,11 @@ const processedRoutes = computed(() => {
   &.collapsed {
     width: var(--sidebar-collapsed-width);
 
+    .sidebar-logo {
+      justify-content: center;
+      padding: 0;
+    }
+
     :deep(.el-menu-item),
     :deep(.el-sub-menu__title) {
       padding: 0 !important;
@@ -242,6 +247,11 @@ const processedRoutes = computed(() => {
     .el-sub-menu__icon-arrow {
       display: none;
     }
+  }
+
+  > .el-menu-item .el-menu-tooltip__trigger {
+    padding: 0 !important;
+    justify-content: center;
   }
 
   // 折叠态隐藏内联子菜单（改为 hover 弹出）
