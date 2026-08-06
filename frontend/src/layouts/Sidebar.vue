@@ -212,35 +212,39 @@ const processedRoutes = computed(() => {
   line-height: 34px !important;
 }
 
-// 折叠态
+// 折叠态：单菜单项与含子菜单的标题严格同宽、同居中，避免竖直错位
+// 注意：Element Plus 自带折叠样式用子代选择器且特异性较高，这里必须
+// 同样使用 > 子代选择器，并对几何属性加 !important 才能稳定覆盖。
 :deep(.el-menu--collapse) {
   padding: 8px 0;
   width: 100%;
   overflow: hidden;
 
-  .el-menu-item,
-  .el-sub-menu__title {
-    padding: 0 !important;
-    margin: 0 auto 2px;
-    width: 36px;
+  > .el-menu-item,
+  > .el-sub-menu > .el-sub-menu__title {
+    width: 36px !important;
+    min-width: 36px !important;
     height: 36px !important;
     line-height: 36px !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0 !important;
+    margin: 0 auto 2px !important;
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 
     .el-icon {
-      margin: 0;
+      margin: 0 !important;
       font-size: 16px;
     }
 
-    // 隐藏箭头
+    // 隐藏展开箭头
     .el-sub-menu__icon-arrow {
       display: none;
     }
   }
 
-  // 隐藏子菜单
+  // 折叠态隐藏内联子菜单（改为 hover 弹出）
   .el-sub-menu .el-menu {
     display: none;
   }
