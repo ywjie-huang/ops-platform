@@ -4,13 +4,14 @@
       <div class="toggle-btn" @click="appStore.toggleSidebar">
         <el-icon :size="16"><Fold /></el-icon>
       </div>
-      <input
-        class="search-input"
-        type="text"
-        placeholder="搜索主机、容器、工单…"
-        readonly
-        @click="handleSearchClick"
-      />
+      <div class="search-wrap" role="button" tabindex="0" aria-label="打开命令面板" @click="handleSearchClick" @keydown.enter="handleSearchClick">
+        <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <span class="search-placeholder">搜索主机、容器、工单…</span>
+        <kbd class="search-kbd">{{ modKey }}</kbd>
+      </div>
     </div>
     <div class="header-right">
       <el-dropdown trigger="click">
@@ -46,10 +47,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
+import { useCommandPaletteStore } from '@/stores/modules/commandPalette'
 import { Fold } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import request from '@/api/request'
@@ -57,9 +59,13 @@ import request from '@/api/request'
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const palette = useCommandPaletteStore()
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+const modKey = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
 
 function handleSearchClick() {
-  // TODO: 后续实现命令面板 (⌘K)
+  palette.openPalette()
 }
 
 async function handleLogout() {
@@ -132,29 +138,57 @@ async function handleChangePwd() {
   }
 }
 
-.search-input {
+.search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  width: 240px;
   background: #f5f5f5;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 6px 12px 6px 32px;
+  padding: 0 8px 0 10px;
   font-size: 12px;
-  color: var(--text-secondary);
-  width: 240px;
-  outline: none;
-  font-family: inherit;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: border-color 0.15s;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: 10px center;
+  transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+  user-select: none;
 
-  &:focus {
+  &:hover,
+  &:focus-visible {
     border-color: #5e6ad2;
+    background: #fff;
+    outline: none;
   }
+}
 
-  &::placeholder {
-    color: var(--text-muted);
-  }
+.search-glyph {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.search-placeholder {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-kbd {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 3px 5px;
 }
 
 .header-right {

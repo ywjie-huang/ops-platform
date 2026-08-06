@@ -5,16 +5,32 @@
       <Header />
       <AppMain />
     </div>
+    <CommandPalette />
   </div>
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import Sidebar from './Sidebar.vue'
 import Header from './Header.vue'
 import AppMain from './AppMain.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
 import { useAppStore } from '@/stores/modules/app'
+import { useCommandPaletteStore } from '@/stores/modules/commandPalette'
 
 const appStore = useAppStore()
+const palette = useCommandPaletteStore()
+
+function onGlobalKey(e: KeyboardEvent) {
+  // ⌘K (mac) / Ctrl+K (win/linux) 切换命令面板
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    palette.toggle()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKey))
+onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
 </script>
 
 <style lang="scss" scoped>
