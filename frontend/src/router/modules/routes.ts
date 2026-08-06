@@ -13,25 +13,13 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: Layout,
     redirect: '/dashboard',
-    meta: { title: '报表大屏', icon: 'DataAnalysis' },
+    meta: { title: '仪表盘', icon: 'DataAnalysis' },
     children: [
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue'),
         meta: { title: '仪表盘', icon: 'Odometer', permission: 'dashboard.view' },
-      },
-      {
-        path: 'reports',
-        name: 'ReportList',
-        component: () => import('@/views/reports/ReportView.vue'),
-        meta: { title: '报表中心', icon: 'PieChart', permission: 'reports.view' },
-      },
-      {
-        path: 'reports/:id',
-        name: 'ReportDetail',
-        component: () => import('@/views/reports/ReportDetailView.vue'),
-        meta: { title: '报表详情', hidden: true, permission: 'reports.view', parentTitle: '报表中心', activeMenu: '/reports' },
       },
     ],
   },

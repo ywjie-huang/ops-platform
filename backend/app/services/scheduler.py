@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 _TASK_FUNCTIONS: dict[str, str] = {
     "patrol": "app.services.patrol.run_patrol",
     # 预留:
-    # "report": "app.services.reports.generate_scheduled_report",
     # "backup": "app.services.backup.run_backup",
 }
 
@@ -39,7 +38,6 @@ def get_supported_task_types() -> dict[str, str]:
     """返回支持的任务类型及其描述。"""
     return {
         "patrol": "定时巡检",
-        # "report": "定时报表",
         # "backup": "定时备份",
     }
 

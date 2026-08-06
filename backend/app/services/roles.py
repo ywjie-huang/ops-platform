@@ -10,7 +10,6 @@ from app.models.user import User
 DEFAULT_ROLE_PERMISSION_CODES = {
     "viewer": [
         "dashboard.view",
-        "reports.view",
         "assets.view",
         "ssh_keys.view",
         "containers.view",
@@ -22,7 +21,6 @@ DEFAULT_ROLE_PERMISSION_CODES = {
     ],
     "asset_admin": [
         "dashboard.view",
-        "reports.view",
         "assets.view",
         "assets.create",
         "assets.update",
@@ -168,7 +166,6 @@ def _get_permissions_by_ids(db: Session, permission_ids: list[int]) -> list[Perm
 
 PERMISSION_LABELS = {
     "dashboard": "仪表盘",
-    "reports": "报表中心",
     "assets": "主机管理",
     "ssh_keys": "主机密钥",
     "containers": "容器管理",
@@ -187,8 +184,7 @@ PERMISSION_LABELS = {
 def build_permission_tree(permissions):
     """构建三级权限树：父页面 -> 子页面 -> 功能。"""
     MODULE_PARENT = {
-        "dashboard": ("报表大屏", 1),
-        "reports": ("报表大屏", 1),
+        "dashboard": ("仪表盘", 1),
         "assets": ("资产管理", 2),
         "ssh_keys": ("资产管理", 2),
         "containers": ("资产管理", 2),
@@ -201,7 +197,7 @@ def build_permission_tree(permissions):
         "batch_exec": ("批量执行", 7),
         "patrol": ("巡检中心", 8),
     }
-    PARENT_ORDER = {"报表大屏": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "用户管理": 5, "系统管理": 6, "批量执行": 7, "巡检中心": 8}
+    PARENT_ORDER = {"仪表盘": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "用户管理": 5, "系统管理": 6, "批量执行": 7, "巡检中心": 8}
 
     children: dict[str, dict[str, list]] = {}
     child_order: dict[str, list[str]] = {}

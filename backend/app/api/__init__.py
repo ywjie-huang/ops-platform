@@ -16,7 +16,6 @@ from app.api import (
     monitoring,
     password,
     patrol,
-    reports,
     roles,
     scheduler,
     settings,
@@ -46,7 +45,6 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
     api_router.include_router(tickets.router)
     api_router.include_router(containers.router)
     api_router.include_router(monitoring.router)
-    api_router.include_router(reports.router)
     api_router.include_router(audit.router)
     api_router.include_router(password.router)
     api_router.include_router(alertmanager.router)

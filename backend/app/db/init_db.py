@@ -18,7 +18,7 @@ from app.core.config import (
 from app.db.database import Base, engine
 from app.models.asset import Asset, generate_asset_public_id
 from app.models.deploy import DeployAppEnv, DeployApproval, DeployApplication, DeployBuild, DeployConfig, DeployEnvironment, DeployRecord
-from app.models.rbac import Permission, Role
+from app.models.rbac import Permission, Role, role_permissions
 from app.models.ticket import Ticket
 from app.models.conversation import Conversation, Message
 from app.models.user import User
@@ -534,6 +534,7 @@ def init_db() -> None:
 
     with Session(engine) as db:
         _seed_permissions(db)
+        _cleanup_legacy_report_permissions(db)
         _seed_users(db)
         _seed_admin_permissions(db)
         _cleanup_legacy_demo_data(db)
@@ -621,10 +622,6 @@ def _seed_permissions(db: Session) -> None:
         ("编辑工单", "tickets.update", "tickets", "编辑工单"),
         ("删除工单", "tickets.delete", "tickets", "删除工单"),
         ("查看审计日志", "audit.view", "audit", "查看审计日志"),
-        ("查看报表", "reports.view", "reports", "查看报表中心"),
-        ("创建报表", "reports.create", "reports", "创建自定义报表"),
-        ("编辑报表", "reports.update", "reports", "编辑报表配置"),
-        ("删除报表", "reports.delete", "reports", "删除报表"),
         ("查看容器", "containers.view", "containers", "查看容器管理"),
         ("创建容器", "containers.create", "containers", "创建容器/集群"),
         ("编辑容器", "containers.update", "containers", "编辑容器配置"),
@@ -662,6 +659,19 @@ def _seed_permissions(db: Session) -> None:
                 )
             )
 
+    db.flush()
+
+
+def _cleanup_legacy_report_permissions(db: Session) -> None:
+    """报表中心模块已下线：清理历史遗留的 reports.* 权限及其角色关联（幂等）。"""
+    legacy_ids = db.scalars(
+        select(Permission.id).where(Permission.module == "reports")
+    ).all()
+    if not legacy_ids:
+        return
+    # role_permissions 的外键无 ON DELETE CASCADE，需先清关联再删主表
+    db.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(legacy_ids)))
+    db.execute(delete(Permission).where(Permission.id.in_(legacy_ids)))
     db.flush()
 
 
