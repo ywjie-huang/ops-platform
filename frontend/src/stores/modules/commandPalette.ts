@@ -22,7 +22,7 @@ export interface RecentItem {
 export type RecentInput = Omit<RecentItem, 'ts'>
 
 const STORAGE_KEY = 'cmd-palette-recents'
-const MAX_RECENTS = 8
+const MAX_RECENTS = 5
 
 function loadRecents(): RecentItem[] {
   try {
