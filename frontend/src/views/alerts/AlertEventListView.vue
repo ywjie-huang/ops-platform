@@ -103,7 +103,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { getAlertManagerEvents } from '@/api/alertmanager'
+
+const route = useRoute()
 
 interface AlertEvent {
   id: number
@@ -129,7 +132,7 @@ const items = ref<AlertEvent[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
-const keyword = ref('')
+const keyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const filterSeverity = ref('')
 const filterStatus = ref('')
 

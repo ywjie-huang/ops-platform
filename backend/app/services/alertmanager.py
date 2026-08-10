@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.core.config import CHINA_TZ
 from typing import Any
@@ -98,6 +98,19 @@ async def get_rules(db=None) -> list[dict[str, Any]]:
                         "last_error": rule.get("lastError", ""),
                         "group_name": group.get("name", ""),
                         "file": group.get("file", ""),
+                        # 评估信息：慢规则排查（evaluationTime 单位秒）
+                        "last_evaluation": rule.get("lastEvaluation", ""),
+                        "evaluation_time": round(rule.get("evaluationTime") or 0, 3),
+                        # 当前触发实例：value / activeAt 用于展示触发值与持续时长
+                        "alerts": [
+                            {
+                                "state": a.get("state", ""),
+                                "value": a.get("value", ""),
+                                "active_at": a.get("activeAt", ""),
+                                "instance": a.get("labels", {}).get("instance", ""),
+                            }
+                            for a in rule.get("alerts", [])
+                        ],
                     })
             return results
     except Exception as e:
@@ -365,3 +378,148 @@ def list_alert_events(
     stmt = stmt.order_by(AlertEvent.id.desc()).offset(offset).limit(limit)
     items = list(db.scalars(stmt).all())
     return items, total
+
+
+# ─── 静默（Silence）管理 ─────────────────────────────────────
+
+async def get_silences(db=None) -> list[dict[str, Any]]:
+    """获取 Alertmanager 静默列表（含 expired，前端按状态过滤）。"""
+    am_url = get_alertmanager_url(db) if db else ALERTMANAGER_URL
+    if not am_url:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(f"{am_url}/api/v2/silences")
+            resp.raise_for_status()
+            raw = resp.json()
+            return [
+                {
+                    "id": s.get("id", ""),
+                    "state": s.get("status", {}).get("state", ""),
+                    "matchers": [
+                        {
+                            "name": m.get("name", ""),
+                            "value": m.get("value", ""),
+                            "is_regex": m.get("isRegex", False),
+                        }
+                        for m in s.get("matchers", [])
+                    ],
+                    "starts_at": s.get("startsAt", ""),
+                    "ends_at": s.get("endsAt", ""),
+                    "created_by": s.get("createdBy", ""),
+                    "comment": s.get("comment", ""),
+                }
+                for s in raw
+            ]
+    except Exception as e:
+        logger.error("Failed to get silences from Alertmanager: %s", e)
+        return []
+
+
+async def create_silence(
+    db,
+    *,
+    matchers: list[dict[str, Any]],
+    starts_at: str,
+    ends_at: str,
+    created_by: str = "ops-platform",
+    comment: str = "",
+) -> str | None:
+    """创建静默，返回 silence ID；失败返回 None。"""
+    am_url = get_alertmanager_url(db) if db else ALERTMANAGER_URL
+    if not am_url:
+        return None
+    payload = {
+        "matchers": [
+            {
+                "name": m.get("name", ""),
+                "value": m.get("value", ""),
+                "isRegex": bool(m.get("is_regex", False)),
+                "isEqual": m.get("is_equal", True),
+            }
+            for m in matchers
+        ],
+        "startsAt": starts_at,
+        "endsAt": ends_at,
+        "createdBy": created_by,
+        "comment": comment,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(f"{am_url}/api/v2/silences", json=payload)
+            resp.raise_for_status()
+            return resp.json().get("silenceID")
+    except Exception as e:
+        logger.error("Failed to create silence: %s", e)
+        return None
+
+
+async def delete_silence(db, silence_id: str) -> bool:
+    """删除（解除）静默。"""
+    am_url = get_alertmanager_url(db) if db else ALERTMANAGER_URL
+    if not am_url or not silence_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.delete(f"{am_url}/api/v2/silence/{silence_id}")
+            return resp.status_code == 200
+    except Exception as e:
+        logger.error("Failed to delete silence %s: %s", silence_id, e)
+        return False
+
+
+# ─── 规则事件统计 ────────────────────────────────────────────
+
+def get_rule_event_stats(
+    db: Session,
+    alert_name: str,
+    *,
+    days: int = 7,
+    recent: int = 3,
+) -> dict[str, Any]:
+    """单条规则的告警事件统计：近 N 天每日触发数 + 最近几条记录。"""
+    from sqlalchemy import func
+
+    now = datetime.now(CHINA_TZ).replace(tzinfo=None)
+    start_day = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    rows = db.execute(
+        select(func.date(AlertEvent.received_at), func.count(AlertEvent.id))
+        .where(AlertEvent.alert_name == alert_name)
+        .where(AlertEvent.received_at >= start_day)
+        .group_by(func.date(AlertEvent.received_at))
+    ).all()
+    count_by_date = {str(day): cnt for day, cnt in rows}
+
+    daily = []
+    for i in range(days):
+        day = (start_day + timedelta(days=i)).date().isoformat()
+        daily.append({"date": day, "count": count_by_date.get(day, 0)})
+
+    recent_events = list(db.scalars(
+        select(AlertEvent)
+        .where(AlertEvent.alert_name == alert_name)
+        .order_by(AlertEvent.id.desc())
+        .limit(recent)
+    ).all())
+
+    return {
+        "alert_name": alert_name,
+        "days": days,
+        "total": sum(item["count"] for item in daily),
+        "daily": daily,
+        "recent": [
+            {
+                "id": e.id,
+                "status": e.status,
+                "severity": e.severity,
+                "instance": e.instance,
+                "alert_value": e.alert_value,
+                "summary": e.summary,
+                "starts_at": e.starts_at.isoformat() if e.starts_at else None,
+                "ends_at": e.ends_at.isoformat() if e.ends_at else None,
+                "received_at": e.received_at.isoformat() if e.received_at else None,
+            }
+            for e in recent_events
+        ],
+    }

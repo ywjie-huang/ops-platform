@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>告警规则 · 重设计 v1</title>
+<style>
+:root{
+  --primary:#5e6ad2; --primary-bg:rgba(94,106,210,.08);
+  --ok:#22c55e; --warn:#f5a623; --danger:#e5484d;
+  --bg:#fafafa; --surface:#fff; --border:#e8e8e8;
+  --t1:#111; --t2:#666; --t3:#999;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--t1);font:13px/1.6 -apple-system,'PingFang SC','Microsoft YaHei',sans-serif;padding:24px 32px}
+code{font-family:var(--mono)}
+h2{font-size:20px;font-weight:700}
+
+/* ── 页头 ── */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.header-right{display:flex;gap:8px;align-items:center}
+.conn-tag{font-size:12px;padding:2px 10px;border-radius:99px;border:1px solid}
+.conn-ok{color:#15803d;border-color:#bbf7d0;background:#f0fdf4}
+.conn-err{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
+.updated{font-size:12px;color:var(--t3)}
+.refresh-btn{border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:4px 12px;font-size:12px;color:var(--t2);cursor:pointer}
+.refresh-btn:hover{color:var(--primary);border-color:var(--primary)}
+
+/* ── 概览统计卡 ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 18px;cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.stat:hover{border-color:#d0d0d0;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.stat.active{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.stat .num{font-size:26px;font-weight:700;line-height:1.2}
+.stat .lbl{font-size:12px;color:var(--t2)}
+.stat .sub{font-size:11px;color:var(--t3);margin-top:2px}
+.stat.s-firing .num{color:var(--danger)}
+.stat.s-firing .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:8px;animation:pulse 1.6s infinite}
+.stat.s-pending .num{color:var(--warn)}
+.stat.s-err .num{color:var(--danger)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.4)}70%{box-shadow:0 0 0 8px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
+
+/* ── 工具栏 ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 20px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar input,.toolbar select{border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:13px;background:#fff;color:var(--t1);outline:none}
+.toolbar input{width:260px}
+.toolbar input:focus,.toolbar select:focus{border-color:var(--primary)}
+.toolbar .spacer{flex:1}
+.count-hint{font-size:12px;color:var(--t3);align-self:center}
+
+/* ── 分组 ── */
+.group{margin-bottom:6px}
+.group-head{display:flex;align-items:center;gap:10px;padding:8px 4px;cursor:pointer;user-select:none}
+.group-head .arrow{color:var(--t3);font-size:11px;transition:.15s;width:14px}
+.group.collapsed .group-head .arrow{transform:rotate(-90deg)}
+.group-name{font-weight:600;font-size:13px}
+.group-meta{font-size:12px;color:var(--t3)}
+.group-firing{font-size:11px;color:var(--danger);background:#fef2f2;border-radius:99px;padding:1px 8px;font-weight:600}
+.group-body{padding-left:4px}
+.group.collapsed .group-body{display:none}
+
+/* ── 规则行 ── */
+.rule{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:#fff;transition:.15s}
+.rule:hover{border-color:#d5d5d5}
+.rule.is-firing{border-left:3px solid var(--danger);background:linear-gradient(90deg,#fef5f5 0%,#fff 30%)}
+.rule.is-pending{border-left:3px solid var(--warn)}
+.rule.is-err{opacity:.92}
+.rule-main{display:grid;grid-template-columns:minmax(200px,1.4fr) 90px 90px minmax(220px,1.6fr) 80px minmax(180px,1.2fr) 70px 32px;gap:12px;align-items:center;padding:10px 16px;cursor:pointer}
+.rname{font-weight:600;font-size:13px}
+.rname .fname{display:block;font-size:11px;color:var(--t3);font-weight:400}
+.pill{font-size:11px;padding:2px 10px;border-radius:99px;text-align:center;font-weight:600;display:inline-block}
+.pill-firing{color:#fff;background:var(--danger)}
+.pill-pending{color:#fff;background:var(--warn)}
+.pill-inactive{color:var(--t2);background:#f0f0f0}
+.sev{font-size:11px;padding:2px 8px;border-radius:4px;display:inline-block}
+.sev-critical{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca}
+.sev-warning{color:#b45309;background:#fffbeb;border:1px solid #fde68a}
+.sev-info{color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe}
+.rpromql{font-family:var(--mono);font-size:11px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rdur{font-size:12px;color:var(--t2)}
+.hits{display:flex;flex-wrap:wrap;gap:4px}
+.hit-tag{font-size:11px;padding:1px 8px;border-radius:4px;background:var(--primary-bg);color:var(--primary);cursor:pointer;border:1px solid transparent}
+.hit-tag:hover{border-color:var(--primary)}
+.hit-tag b{font-weight:600;margin-left:4px}
+.hit-tag.firing-hit{background:#fef2f2;color:#b91c1c}
+.hit-tag.firing-hit:hover{border-color:var(--danger)}
+.hit-none{font-size:12px;color:var(--t3)}
+.hit-more{font-size:11px;color:var(--t3);cursor:pointer;align-self:center}
+.rhealth .h-ok{color:var(--ok);font-size:12px}
+.rhealth .h-err{color:var(--danger);font-size:12px;font-weight:600}
+.expand-btn{color:var(--t3);font-size:12px;text-align:center;transition:.15s}
+.rule.open .expand-btn{transform:rotate(180deg)}
+</style>
+<style>
+/* ── 展开详情 ── */
+.rule-detail{display:none;border-top:1px dashed var(--border);padding:14px 16px;background:#fcfcfd;border-radius:0 0 8px 8px}
+.rule.open .rule-detail{display:block}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.d-block .d-label{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.d-promql{font-family:var(--mono);font-size:11.5px;background:#f6f7fb;border:1px solid var(--border);border-radius:6px;padding:10px 12px;white-space:pre-wrap;word-break:break-all;color:#333;position:relative}
+.copy-btn{position:absolute;top:6px;right:6px;font-size:11px;color:var(--t3);border:1px solid var(--border);background:#fff;border-radius:4px;padding:1px 8px;cursor:pointer}
+.copy-btn:hover{color:var(--primary);border-color:var(--primary)}
+.d-anno{font-size:12px;color:var(--t2)}
+.d-anno b{color:var(--t1);font-weight:600}
+.d-err{font-family:var(--mono);font-size:11.5px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:6px;padding:10px 12px;white-space:pre-wrap;word-break:break-all}
+.d-meta{display:flex;gap:18px;font-size:12px;color:var(--t2);flex-wrap:wrap}
+.d-meta span b{color:var(--t1);font-weight:600}
+.firing-list{margin-top:4px}
+.firing-item{display:flex;align-items:center;gap:10px;font-size:12px;padding:5px 0;border-bottom:1px solid #f3f3f3}
+.firing-item:last-child{border-bottom:none}
+.fi-host{font-weight:600;color:var(--primary);cursor:pointer}
+.fi-val{font-family:var(--mono);color:var(--danger);font-weight:700}
+.fi-since{color:var(--t3)}
+.fi-bar{flex:1;height:4px;background:#f0f0f0;border-radius:2px;overflow:hidden;max-width:140px}
+.fi-bar i{display:block;height:100%;background:var(--danger);border-radius:2px}
+.d-actions{margin-top:12px;display:flex;gap:8px}
+.link-btn{font-size:12px;color:var(--primary);background:none;border:none;cursor:pointer;padding:0}
+.link-btn:hover{text-decoration:underline}
+
+/* ── 底部注释卡 ── */
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:28px}
+.note{background:#fff;border:1px dashed #d8d8d8;border-radius:8px;padding:12px 16px}
+.note h4{font-size:12px;color:var(--primary);margin-bottom:6px}
+.note p{font-size:12px;color:var(--t2);line-height:1.7}
+@media(max-width:1100px){
+  .rule-main{grid-template-columns:1fr 80px 80px;grid-auto-rows:auto}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ 页头 ═══ -->
+<div class="page-header">
+  <h2>告警规则</h2>
+  <div class="header-right">
+    <span class="updated">最后更新 14:32:08 · 30s 自动刷新</span>
+    <span class="conn-tag conn-ok">Prometheus 已连接</span>
+    <span class="conn-tag conn-ok">Alertmanager 已连接</span>
+    <button class="refresh-btn">↻ 刷新</button>
+  </div>
+</div>
+
+<!-- ═══ 概览统计（点击即筛选） ═══ -->
+<div class="stats">
+  <div class="stat s-firing active">
+    <div class="num"><span class="dot"></span>3</div>
+    <div class="lbl">正在告警</div>
+    <div class="sub">critical 2 · warning 1</div>
+  </div>
+  <div class="stat s-pending">
+    <div class="num">1</div>
+    <div class="lbl">待触发 Pending</div>
+    <div class="sub">等待持续时间满足</div>
+  </div>
+  <div class="stat s-err">
+    <div class="num">1</div>
+    <div class="lbl">异常规则</div>
+    <div class="sub">PromQL 评估失败</div>
+  </div>
+  <div class="stat">
+    <div class="num">24</div>
+    <div class="lbl">规则总数</div>
+    <div class="sub">4 个分组</div>
+  </div>
+</div>
+
+<div class="card">
+  <!-- ═══ 工具栏 ═══ -->
+  <div class="toolbar">
+    <input type="text" placeholder="🔍 搜索规则名 / PromQL…">
+    <select><option>严重程度：全部</option><option>critical</option><option>warning</option><option>info</option></select>
+    <select><option>状态：正在告警</option><option>全部</option><option>firing</option><option>pending</option><option>inactive</option></select>
+    <select><option>分组：全部</option><option>prod-node-alerts</option><option>k8s-cluster</option></select>
+    <span class="spacer"></span>
+    <span class="count-hint">匹配 3 条 / 共 24 条</span>
+  </div>
+  <!-- ═══ 分组一：prod-node-alerts ═══ -->
+  <div class="group">
+    <div class="group-head">
+      <span class="arrow">▼</span>
+      <span class="group-name">prod-node-alerts</span>
+      <span class="group-meta">8 条规则</span>
+      <span class="group-firing">firing 2</span>
+    </div>
+    <div class="group-body">
+
+      <!-- firing 规则（展开态） -->
+      <div class="rule is-firing open">
+        <div class="rule-main">
+          <div class="rname">NodeCpuHigh<span class="fname">node-exporter.yml</span></div>
+          <span class="pill pill-firing">firing</span>
+          <span class="sev sev-critical">critical</span>
+          <div class="rpromql">100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) &gt; 90</div>
+          <div class="rdur">持续 5m</div>
+          <div class="hits">
+            <span class="hit-tag firing-hit">web-prod-01<b>96.2%</b></span>
+            <span class="hit-tag firing-hit">k8s-node-2<b>93.8%</b></span>
+          </div>
+          <div class="rhealth"><span class="h-ok">OK</span></div>
+          <div class="expand-btn">▼</div>
+        </div>
+        <div class="rule-detail">
+          <div class="detail-grid">
+            <div class="d-block">
+              <div class="d-label">PromQL</div>
+              <div class="d-promql">100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) &gt; 90<button class="copy-btn">复制</button></div>
+              <div class="d-meta" style="margin-top:10px">
+                <span>持续 <b>5m</b></span><span>评估间隔 <b>30s</b></span><span>最近评估 <b>2s 前</b></span><span>来源 <b>node-exporter.yml</b></span>
+              </div>
+            </div>
+            <div class="d-block">
+              <div class="d-label">告警说明</div>
+              <div class="d-anno"><b>CPU 使用率过高</b><br>实例 {{ $labels.instance }} CPU 使用率超过 90%，当前值 {{ $value }}%，请检查进程负载。</div>
+            </div>
+          </div>
+          <div class="d-block" style="margin-top:12px">
+            <div class="d-label">正在触发的实例（2）</div>
+            <div class="firing-list">
+              <div class="firing-item">
+                <span class="fi-host">web-prod-01</span>
+                <span class="fi-val">96.2%</span>
+                <span class="fi-since">已持续 12 分钟 · 起始于 14:19:55</span>
+                <span class="fi-bar"><i style="width:96%"></i></span>
+              </div>
+              <div class="firing-item">
+                <span class="fi-host">k8s-node-2</span>
+                <span class="fi-val">93.8%</span>
+                <span class="fi-since">已持续 6 分钟 · 起始于 14:26:02</span>
+                <span class="fi-bar"><i style="width:94%"></i></span>
+              </div>
+            </div>
+          </div>
+          <div class="d-actions">
+            <button class="link-btn">📋 查看该规则的告警事件历史 →</button>
+            <button class="link-btn">🖥 在 Prometheus 中查看 →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- firing 规则（收起态） -->
+      <div class="rule is-firing">
+        <div class="rule-main">
+          <div class="rname">NodeDiskAlmostFull<span class="fname">node-exporter.yml</span></div>
+          <span class="pill pill-firing">firing</span>
+          <span class="sev sev-critical">critical</span>
+          <div class="rpromql">(1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 &gt; 85</div>
+          <div class="rdur">持续 10m</div>
+          <div class="hits">
+            <span class="hit-tag firing-hit">db-prod-01<b>91.5%</b></span>
+          </div>
+          <div class="rhealth"><span class="h-ok">OK</span></div>
+          <div class="expand-btn">▼</div>
+        </div>
+        <div class="rule-detail"></div>
+      </div>
+
+      <!-- pending 规则 -->
+      <div class="rule is-pending">
+        <div class="rule-main">
+          <div class="rname">NodeMemoryHigh<span class="fname">node-exporter.yml</span></div>
+          <span class="pill pill-pending">pending</span>
+          <span class="sev sev-warning">warning</span>
+          <div class="rpromql">(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 &gt; 85</div>
+          <div class="rdur">持续 10m</div>
+          <div class="hits">
+            <span class="hit-tag">k8s-master-2<b>86.1%</b></span>
+          </div>
+          <div class="rhealth"><span class="h-ok">OK</span></div>
+          <div class="expand-btn">▼</div>
+        </div>
+        <div class="rule-detail"></div>
+      </div>
+      <!-- inactive 规则 -->
+      <div class="rule">
+        <div class="rule-main">
+          <div class="rname">NodeLoadHigh<span class="fname">node-exporter.yml</span></div>
+          <span class="pill pill-inactive">inactive</span>
+          <span class="sev sev-warning">warning</span>
+          <div class="rpromql">node_load15 / count(node_cpu_seconds_total{mode="idle"}) without(cpu,mode) &gt; 2</div>
+          <div class="rdur">持续 15m</div>
+          <div class="hits"><span class="hit-none">无命中</span></div>
+          <div class="rhealth"><span class="h-ok">OK</span></div>
+          <div class="expand-btn">▼</div>
+        </div>
+        <div class="rule-detail"></div>
+      </div>
+
+      <!-- err 规则 -->
+      <div class="rule is-err">
+        <div class="rule-main">
+          <div class="rname">NodeTcpConnHigh<span class="fname">custom-rules.yml</span></div>
+          <span class="pill pill-inactive">inactive</span>
+          <span class="sev sev-info">info</span>
+          <div class="rpromql">node_netstat_Tcp_CurrEstab &gt;&gt; 8000</div>
+          <div class="rdur">持续 5m</div>
+          <div class="hits"><span class="hit-none">无命中</span></div>
+          <div class="rhealth"><span class="h-err">ERR</span></div>
+          <div class="expand-btn">▼</div>
+        </div>
+        <div class="rule-detail"></div>
+      </div>
+      <div style="font-size:11px;color:var(--t3);padding:0 8px 6px">↑ 展开 ERR 规则可见完整报错：parse error: unexpected character: '&gt;' …（排障刚需，现版页面看不到）</div>
+
+    </div>
+  </div>
+
+  <!-- ═══ 分组二（折叠态） ═══ -->
+  <div class="group collapsed">
+    <div class="group-head">
+      <span class="arrow">▼</span>
+      <span class="group-name">k8s-cluster</span>
+      <span class="group-meta">10 条规则</span>
+      <span class="group-firing">firing 1</span>
+    </div>
+    <div class="group-body"></div>
+  </div>
+
+  <!-- ═══ 分组三（折叠态） ═══ -->
+  <div class="group collapsed">
+    <div class="group-head">
+      <span class="arrow">▼</span>
+      <span class="group-name">blackbox-http</span>
+      <span class="group-meta">6 条规则</span>
+    </div>
+    <div class="group-body"></div>
+  </div>
+</div>
+
+<!-- ═══ 交互规则注释 ═══ -->
+<div class="notes">
+  <div class="note">
+    <h4>① 概览卡 = 筛选器</h4>
+    <p>点击"正在告警"卡片即筛选 firing 规则（当前演示状态），再点一次取消。卡片数字实时反映全量规则，不受筛选影响。</p>
+  </div>
+  <div class="note">
+    <h4>② 排序与视觉优先级</h4>
+    <p>排序固定为 firing → pending → inactive，同级 critical 优先。firing 行红色左边条 + 浅红渐变底，pending 黄色边条——不需要读文字就能定位重点。</p>
+  </div>
+  <div class="note">
+    <h4>③ "当前命中"列</h4>
+    <p>替代原"关联主机"：firing 规则显示主机名 + 实时触发值（红），点击跳主机详情；pending 为主色标签；inactive 显示"无命中"。超过 3 台折叠为 +N。</p>
+  </div>
+  <div class="note">
+    <h4>④ 行内展开 = 排障面板</h4>
+    <p>完整 PromQL（可复制）、annotations 说明、ERR 规则的 last_error 全文、正在触发实例的值/持续时长/开始时间、跳转告警事件历史。数据全部来自 /api/v1/rules 现有字段（后端需透传 alerts/value/activeAt）。</p>
+  </div>
+  <div class="note">
+    <h4>⑤ 30s 自动刷新</h4>
+    <p>状态与命中主机 30s 轮询（页面不可见时暂停），页头显示最后更新时间。规则列表本身仍走 TTL 缓存，避免抖动。</p>
+  </div>
+  <div class="note">
+    <h4>⑥ 分组折叠</h4>
+    <p>按 Prometheus group 组织，组头显示规则数与 firing 数；有 firing 的组默认展开并置顶。</p>
+  </div>
+</div>
+
+<script>
+// 演示交互：分组折叠 / 行展开 / 统计卡筛选
+document.querySelectorAll('.group-head').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
+document.querySelectorAll('.rule-main').forEach(m=>m.addEventListener('click',()=>m.parentElement.classList.toggle('open')));
+document.querySelectorAll('.stat').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('active')));
+</script>
+</body>
+</html>
