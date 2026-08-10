@@ -7,13 +7,18 @@
       :pane="pane"
       :asset-id="assetId"
       :host-ip="hostIp"
+      :host-name="hostName"
       :ssh-keys="sshKeys"
       :active="pane.id === activePaneId"
       :visible="visible"
       :can-close="tab.panes.length > 1"
+      :can-split="tab.layout === 'single'"
+      :dock-open="dockOpen"
       :initial-login-state="initialLoginState"
       @activate="$emit('activate-pane', $event)"
       @close="$emit('close-pane', $event)"
+      @split="$emit('pane-split')"
+      @toggle-dock="$emit('pane-toggle-dock')"
       @status-change="(paneId, status) => $emit('pane-status-change', paneId, status)"
       @meta-change="(paneId, meta) => $emit('pane-meta-change', paneId, meta)"
       @key-change="(paneId, keyId) => $emit('pane-key-change', paneId, keyId)"
@@ -32,14 +37,18 @@ const props = defineProps<{
   activePaneId: string
   assetId: number
   hostIp: string
+  hostName: string
   sshKeys: any[]
   initialLoginState: LoginFormState | null
   visible: boolean
+  dockOpen: boolean
 }>()
 
 defineEmits<{
   'activate-pane': [paneId: string]
   'close-pane': [paneId: string]
+  'pane-split': []
+  'pane-toggle-dock': []
   'pane-status-change': [paneId: string, status: SSHConnectionStatus]
   'pane-meta-change': [paneId: string, meta: SSHPaneMeta]
   'pane-key-change': [paneId: string, keyId: number | undefined]
@@ -122,9 +131,9 @@ defineExpose({
   display: grid;
   min-width: 0;
   min-height: 0;
-  gap: 0;
+  gap: 12px;
   padding: 0;
-  background: var(--ssh-term, #0a0e12);
+  background: transparent;
 }
 
 .is-hidden {
@@ -139,19 +148,11 @@ defineExpose({
 .layout-vertical {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-
-  :deep(.ssh-pane + .ssh-pane) {
-    border-left: 1px solid var(--ssh-border, #1c2430);
-  }
 }
 
 .layout-horizontal {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-
-  :deep(.ssh-pane + .ssh-pane) {
-    border-top: 1px solid var(--ssh-border, #1c2430);
-  }
 }
 
 @media (max-width: 768px) {

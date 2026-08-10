@@ -1,29 +1,71 @@
 <template>
   <section
     class="ssh-pane"
-    :class="{ 'is-active': active, 'is-connected': connected }"
+    :class="{ 'is-active': active, 'is-dim': !active, 'is-connected': connected }"
     tabindex="0"
     @mousedown="$emit('activate', pane.id)"
     @focus="$emit('activate', pane.id)"
   >
-    <div v-if="canClose" class="pane-header">
-      <div class="pane-title">
-        <span class="status-dot" :class="statusDotClass" />
-        <span>{{ pane.title }}</span>
-      </div>
-      <div class="pane-meta">
-        <span v-if="connected">{{ loginUsername }}@{{ hostIp }}:{{ loginPort }}</span>
-        <span v-if="terminalSize">{{ terminalSize }}</span>
-        <button
-          type="button"
-          class="pane-close"
-          aria-label="关闭窗格"
+    <header class="term-bar">
+      <div class="tlights">
+        <i
+          class="tl-close"
+          :title="canClose ? '关闭窗格' : '断开 / 关闭会话'"
           @click.stop="$emit('close', pane.id)"
         >
-          ×
-        </button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </i>
+        <i /><i />
       </div>
-    </div>
+      <div class="prompt-crumb" :title="`${loginUsername}@${hostName || hostIp}:${pane.currentPath || '~'}`">
+        <span class="u">{{ loginUsername }}</span><span class="at">@</span><span class="h">{{ hostName || hostIp }}</span><span class="at">:</span><span class="p">{{ pane.currentPath || '~' }}</span>
+      </div>
+      <div class="sp" />
+      <template v-if="active">
+        <button type="button" class="tb-act" title="复制选中内容（聚焦窗格）" @click.stop="copySelection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+          复制
+        </button>
+        <button type="button" class="tb-act" title="清屏（聚焦窗格）" @click.stop="clearTerminal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          清屏
+        </button>
+        <button
+          v-if="canSplit"
+          type="button"
+          class="tb-act"
+          title="左右分屏 (Ctrl+\)"
+          @click.stop="$emit('split')"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>
+          分屏
+        </button>
+        <button
+          type="button"
+          class="tb-act"
+          :class="{ on: dockOpen }"
+          title="开关文件面板 (Ctrl+B)"
+          @click.stop="$emit('toggle-dock')"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          文件
+        </button>
+        <div class="font-ctrl" @mouseleave="showFontMenu = false">
+          <button
+            type="button"
+            class="tb-act"
+            :class="{ on: showFontMenu }"
+            title="调整字号"
+            @click.stop="showFontMenu = !showFontMenu"
+          >Aa</button>
+          <div v-if="showFontMenu" class="font-menu" @mousedown.stop>
+            <button type="button" @click.stop="changeFontSize(-1)">A-</button>
+            <span class="font-size">{{ fontSize }}px</span>
+            <button type="button" @click.stop="changeFontSize(1)">A+</button>
+          </div>
+        </div>
+      </template>
+    </header>
 
     <div ref="terminalRef" class="terminal-container" />
 
@@ -31,16 +73,18 @@
       ref="loginFormRef"
       v-model:visible="showLoginForm"
       :host-ip="hostIp"
+      :host-name="hostName"
       :ssh-keys="sshKeys"
       :connecting="connecting"
       :connected="connected"
+      :last-error="pane.lastError"
       @connect="connectSSH"
     />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -77,16 +121,21 @@ const props = defineProps<{
   pane: SSHPaneState
   assetId: number
   hostIp: string
+  hostName: string
   sshKeys: any[]
   active: boolean
   visible: boolean
   canClose: boolean
+  canSplit: boolean
+  dockOpen: boolean
   initialLoginState: LoginFormState | null
 }>()
 
 const emit = defineEmits<{
   activate: [paneId: string]
   close: [paneId: string]
+  split: []
+  'toggle-dock': []
   'status-change': [paneId: string, status: SSHConnectionStatus]
   'meta-change': [paneId: string, meta: SSHPaneMeta]
   'key-change': [paneId: string, keyId: number | undefined]
@@ -105,7 +154,7 @@ const loginPort = ref(22)
 const currentKeyId = ref<number | undefined>()
 const connectionStartTime = ref(0)
 const connectionTime = ref('')
-const statusDotClass = computed(() => `is-${status.value}`)
+const showFontMenu = ref(false)
 
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
@@ -113,6 +162,32 @@ let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
 let timeInterval: ReturnType<typeof setInterval> | null = null
 let socketGeneration = 0
+
+// 注入 shell 集成钩子: 每条命令结束后通过 OSC 7 上报当前目录
+// bash -> PROMPT_COMMAND, zsh -> add-zsh-hook; 前缀空格避免进入常见 HISTCONTROL 历史
+const OSC7_SETUP_CMD =
+  " __osc7(){ printf '\\033]7;file://%s%s\\033\\\\' \"${HOSTNAME:-ssh}\" \"$PWD\"; };" +
+  " case \"$0\" in *zsh*) autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook precmd __osc7 ;;" +
+  " *) export PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND;}__osc7\" ;; esac; __osc7\r"
+
+function applyRemotePath(raw: string) {
+  // OSC 7: file://host/path
+  const match = raw.match(/^file:\/\/[^/]*(\/.*)$/)
+  const path = match?.[1]
+  if (!path) return
+
+  let decoded = path
+  try {
+    decoded = decodeURIComponent(path)
+  } catch {
+    // 保留原始路径
+  }
+
+  if (props.pane.currentPath !== decoded) {
+    props.pane.currentPath = decoded
+    emitMeta()
+  }
+}
 
 function applyInitialLoginState(state: LoginFormState | null) {
   if (!state) {
@@ -227,12 +302,12 @@ async function initTerminal() {
     fontSize: fontSize.value,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
     theme: {
-      background: '#1a1b26',
-      foreground: '#c0caf5',
-      cursor: '#c0caf5',
-      cursorAccent: '#1a1b26',
-      selectionBackground: '#33467c',
-      selectionForeground: '#c0caf5',
+      background: '#08090e',
+      foreground: '#c7d0e0',
+      cursor: '#8b9dff',
+      cursorAccent: '#08090e',
+      selectionBackground: 'rgba(139, 157, 255, 0.28)',
+      selectionForeground: '#eef1f8',
       black: '#15161e',
       red: '#f7768e',
       green: '#9ece6a',
@@ -248,7 +323,7 @@ async function initTerminal() {
       brightBlue: '#7aa2f7',
       brightMagenta: '#bb9af7',
       brightCyan: '#7dcfff',
-      brightWhite: '#c0caf5',
+      brightWhite: '#eef1f8',
     },
     allowProposedApi: true,
   })
@@ -275,6 +350,19 @@ async function initTerminal() {
     if (text) {
       navigator.clipboard?.writeText(text).catch(() => {})
     }
+  })
+
+  // 监听 shell 上报的当前目录 (OSC 7 / iTerm2 CurrentDir)
+  terminal.parser.registerOscHandler(7, (data) => {
+    applyRemotePath(data)
+    return true
+  })
+  terminal.parser.registerOscHandler(1337, (data) => {
+    const match = data.match(/CurrentDir=(.*)$/)
+    if (match?.[1]) {
+      applyRemotePath(`file://ssh${match[1]}`)
+    }
+    return true
   })
 
   resizeObserver = new ResizeObserver(() => {
@@ -337,6 +425,7 @@ function connectSSH(formData: ConnectFormData) {
       connecting.value = false
       emitStatus('connected')
       startTimeCounter()
+      scheduleShellIntegration(socket, generation)
     }
   }
 
@@ -373,6 +462,15 @@ function connectSSH(formData: ConnectFormData) {
     emitStatus('error')
     terminal?.write('\r\n\x1b[31m连接出错\x1b[0m\r\n')
   }
+}
+
+function scheduleShellIntegration(socket: WebSocket, generation: number) {
+  // 等待后端打开 channel 并出现首个 shell 提示符后再注入
+  window.setTimeout(() => {
+    if (generation !== socketGeneration || ws !== socket) return
+    if (socket.readyState !== WebSocket.OPEN) return
+    socket.send(OSC7_SETUP_CMD)
+  }, 800)
 }
 
 function copySelection() {
@@ -500,116 +598,227 @@ defineExpose({
   flex-direction: column;
   overflow: hidden;
   border: 0;
-  background: var(--ssh-term, #0a0e12);
+  border-radius: 14px;
+  background: var(--ssh-term-bg, #08090e);
+  box-shadow: inset 0 0 0 1px var(--ssh-line, rgba(255, 255, 255, 0.07)), 0 10px 34px rgba(0, 0, 0, 0.4);
   outline: none;
 
   &.is-active {
-    box-shadow: none;
+    box-shadow:
+      inset 0 0 0 1px var(--ssh-accent-glow, rgba(120, 140, 255, 0.22)),
+      0 0 30px rgba(120, 140, 255, 0.07),
+      0 10px 34px rgba(0, 0, 0, 0.4);
+  }
+
+  &.is-dim .term-bar {
+    opacity: 0.45;
+  }
+
+  &.is-dim .term-bar:hover {
+    opacity: 0.85;
   }
 
   &:focus-visible {
-    outline: 1px solid var(--ssh-accent, #5b9fd4);
-    outline-offset: -1px;
+    outline: none;
   }
 }
 
-.pane-header {
+.term-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  min-height: 22px;
-  padding: 0 8px;
-  color: var(--ssh-muted, #6b7785);
-  background: var(--ssh-panel, #0f141b);
-  border-bottom: 1px solid var(--ssh-border, #1c2430);
-  font-size: 11px;
+  height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--ssh-line, rgba(255, 255, 255, 0.07));
+  flex-shrink: 0;
+  user-select: none;
+  transition: opacity 0.15s ease;
 }
 
-.pane-title,
-.pane-meta {
-  display: inline-flex;
+.tlights {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+
+  i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    &:nth-child(1) { background: rgba(248, 113, 113, 0.85); }
+    &:nth-child(2) { background: rgba(251, 191, 36, 0.85); }
+    &:nth-child(3) { background: rgba(52, 211, 153, 0.85); }
+  }
+
+  .tl-close {
+    cursor: pointer;
+
+    svg {
+      width: 7px;
+      height: 7px;
+      color: rgba(0, 0, 0, 0.65);
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+
+    &:hover {
+      box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.25);
+
+      svg {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.term-bar:hover .tl-close svg {
+  opacity: 1;
+}
+
+.prompt-crumb {
+  font-family: var(--ssh-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--ssh-t3, #5c6577);
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
   min-width: 0;
 
-  span:last-child {
+  .u { color: var(--ssh-ok, #34d399); }
+  .h { color: var(--ssh-accent, #8b9dff); }
+  .p {
+    color: var(--ssh-accent-2, #a78bfa);
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
   }
+  .at { color: var(--ssh-t4, #3a4152); }
 }
 
-.pane-title span:last-child {
-  color: var(--ssh-text, #d8dee9);
+.sp {
+  flex: 1;
 }
 
-.pane-meta {
-  flex-shrink: 0;
-  color: var(--ssh-muted, #6b7785);
-  font-variant-numeric: tabular-nums;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--ssh-faint, #3d4754);
-
-  &.is-connected {
-    background: var(--ssh-ok, #3dd68c);
-    box-shadow: 0 0 0 3px var(--ssh-ok-dim, rgba(61, 214, 140, 0.12));
-  }
-
-  &.is-connecting {
-    background: var(--ssh-warn, #e0b44e);
-    box-shadow: 0 0 0 3px var(--ssh-warn-dim, rgba(224, 180, 78, 0.12));
-  }
-
-  &.is-error,
-  &.is-disconnected {
-    background: var(--ssh-danger, #e86c7a);
-    box-shadow: 0 0 0 3px var(--ssh-danger-dim, rgba(232, 108, 122, 0.12));
-  }
-}
-
-.pane-close {
-  width: 20px;
-  height: 20px;
+.tb-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
   border: none;
-  border-radius: 3px;
   background: transparent;
-  color: var(--ssh-muted, #6b7785);
+  color: var(--ssh-t4, #3a4152);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
 
-  &:hover,
-  &:focus-visible {
-    background: var(--ssh-hover, #1a222d);
-    color: var(--ssh-text, #d8dee9);
-    outline: none;
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  &:hover {
+    background: var(--ssh-glass, rgba(255, 255, 255, 0.03));
+    color: var(--ssh-t1, #eef1f8);
+  }
+
+  &.on {
+    color: var(--ssh-accent, #8b9dff);
+    background: var(--ssh-accent-bg, rgba(139, 157, 255, 0.13));
+  }
+}
+
+.font-ctrl {
+  position: relative;
+}
+
+.font-menu {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 9px;
+  background: var(--ssh-card, #0c0e15);
+  box-shadow: inset 0 0 0 1px var(--ssh-line-2, rgba(255, 255, 255, 0.12)), 0 10px 30px rgba(0, 0, 0, 0.5);
+
+  button {
+    height: 24px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ssh-t2, #9aa3b5);
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--ssh-glass, rgba(255, 255, 255, 0.03));
+      color: var(--ssh-t1, #eef1f8);
+    }
+  }
+
+  .font-size {
+    min-width: 34px;
+    text-align: center;
+    font-family: var(--ssh-mono, ui-monospace, monospace);
+    font-size: 10.5px;
+    color: var(--ssh-t3, #5c6577);
   }
 }
 
 .terminal-container {
   flex: 1;
   min-height: 0;
-  padding: 8px 10px;
+  padding: 0;
   overflow: hidden;
-  background: var(--ssh-term, #0a0e12);
+  background: transparent;
 
+  /* 内边距必须加在 .xterm 上: FitAddon 只会扣除 .xterm 自身的 padding,
+     加在容器上会导致屏幕画布溢出盖住 viewport 滚动条 */
   :deep(.xterm) {
     height: 100%;
+    padding: 12px 16px;
   }
 
   :deep(.xterm-viewport) {
     background: transparent !important;
   }
-}
 
-@media (max-width: 768px) {
-  .pane-meta span:first-child {
-    display: none;
+  :deep(.xterm-screen) {
+    border-radius: 0;
+  }
+
+  :deep(.xterm-viewport::-webkit-scrollbar) {
+    width: 10px;
+  }
+
+  :deep(.xterm-viewport::-webkit-scrollbar-track) {
+    background: transparent;
+  }
+
+  :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
+    background: rgba(255, 255, 255, 0.12);
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background-clip: padding-box;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.24);
+      background-clip: padding-box;
+    }
   }
 }
 </style>

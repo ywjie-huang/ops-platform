@@ -1,4 +1,5 @@
 import type {
+  SSHHostRef,
   SSHPaneLayout,
   SSHPaneState,
   SSHTabState,
@@ -7,6 +8,15 @@ import type {
 
 let nextTabId = 1
 let nextPaneId = 1
+
+const DEFAULT_HOST: SSHHostRef = {
+  assetId: 0,
+  name: '',
+  ip: '',
+  username: 'root',
+  port: 22,
+  authMode: 'asset',
+}
 
 function createPane(title: string): SSHPaneState {
   return {
@@ -23,7 +33,7 @@ function createPane(title: string): SSHPaneState {
   }
 }
 
-export function createSessionTab(title = `Session ${nextTabId}`): SSHTabState {
+export function createSessionTab(title = `Session ${nextTabId}`, host: SSHHostRef = DEFAULT_HOST): SSHTabState {
   const pane = createPane(title)
 
   return {
@@ -32,12 +42,13 @@ export function createSessionTab(title = `Session ${nextTabId}`): SSHTabState {
     pinned: false,
     status: 'idle',
     layout: 'single',
+    host,
     panes: [pane],
   }
 }
 
-export function addTab(state: SSHWorkbenchState, title?: string): SSHTabState {
-  const tab = createSessionTab(title)
+export function addTab(state: SSHWorkbenchState, title?: string, host?: SSHHostRef): SSHTabState {
+  const tab = createSessionTab(title, host)
   state.tabs.push(tab)
   state.activeTabId = tab.id
   state.activePaneId = tab.panes[0].id
@@ -46,8 +57,8 @@ export function addTab(state: SSHWorkbenchState, title?: string): SSHTabState {
 
 export const appendSessionTab = addTab
 
-export function createInitialWorkbenchState(): SSHWorkbenchState {
-  const firstTab = createSessionTab('Session 1')
+export function createInitialWorkbenchState(host?: SSHHostRef): SSHWorkbenchState {
+  const firstTab = createSessionTab('Session 1', host)
 
   return {
     activeTabId: firstTab.id,
@@ -55,6 +66,13 @@ export function createInitialWorkbenchState(): SSHWorkbenchState {
     rightPanelTab: 'files',
     rightPanelOpen: true,
     tabs: [firstTab],
+  }
+}
+
+export function setTabHost(state: SSHWorkbenchState, tabId: string, host: SSHHostRef): void {
+  const tab = state.tabs.find((item) => item.id === tabId)
+  if (tab) {
+    tab.host = host
   }
 }
 

@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SSH 工作台重设计 v2 · 静态稿</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #dfe2e8;
+    font-family: Inter, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== 预览控制条 ===== */
+  .pv-bar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 22px; background: #fff; border-bottom: 1px solid #d6d9e0;
+  }
+  .pv-bar h1 { font-size: 14px; font-weight: 700; }
+  .pv-bar .ver { font-size: 11px; color: #5e6ad2; background: rgba(94,106,210,.1); border-radius: 4px; padding: 2px 8px; font-weight: 600; }
+  .pv-seg { display: flex; background: #f1f2f5; border: 1px solid #e2e3e9; border-radius: 8px; padding: 3px; gap: 2px; }
+  .pv-seg button { border: none; background: transparent; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #555; cursor: pointer; }
+  .pv-seg button.active { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .pv-bar .note { margin-left: auto; font-size: 12px; color: #999; }
+  .pv-stage { padding: 22px; }
+
+  /* 状态切换 */
+  body[data-state="on"]    .st-login, body[data-state="on"]    .st-split { display: none !important; }
+  body[data-state="login"] .st-on, body[data-state="login"] .st-split { display: none !important; }
+  body[data-state="split"] .st-on, body[data-state="split"] .st-login { display: none !important; }
+
+  /* ===== 设计稿 ===== */
+  .ssh {
+    /* 主题令牌 - 默认 indigo */
+    --accent: #8b9dff;
+    --accent-2: #a78bfa;
+    --accent-bg: rgba(139,157,255,.13);
+    --accent-glow: rgba(120,140,255,.22);
+    --ok: #34d399;
+    --ok-bg: rgba(52,211,153,.14);
+    --warn: #fbbf24;
+    --err: #f87171;
+    --err-bg: rgba(248,113,113,.12);
+
+    --bg: #06070b;
+    --bg-soft: #0a0c12;
+    --panel: rgba(255,255,255,.03);
+    --card: #0c0e15;
+    --term: #08090e;
+    --line: rgba(255,255,255,.07);
+    --line-2: rgba(255,255,255,.12);
+    --t1: #eef1f8;
+    --t2: #9aa3b5;
+    --t3: #5c6577;
+    --t4: #3a4152;
+    --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+
+    height: calc(100vh - 96px);
+    min-height: 660px;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    position: relative;
+    background:
+      radial-gradient(1200px 500px at 70% -10%, rgba(120,130,255,.10), transparent 60%),
+      radial-gradient(900px 400px at 10% 110%, rgba(52,211,153,.05), transparent 60%),
+      var(--bg);
+    color: var(--t1);
+    font-size: 13px;
+    box-shadow: 0 24px 64px rgba(10,14,30,.28), inset 0 0 0 1px var(--line);
+  }
+  body[data-accent="emerald"] .ssh { --accent: #34d399; --accent-2: #2dd4bf; --accent-bg: rgba(52,211,153,.13); --accent-glow: rgba(52,211,153,.2); }
+  body[data-accent="amber"]   .ssh { --accent: #fbbf24; --accent-2: #fb923c; --accent-bg: rgba(251,191,36,.13); --accent-glow: rgba(251,191,36,.2); }
+
+  /* ===== 顶栏: 极简 ===== */
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    height: 48px; padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    background: rgba(255,255,255,.015);
+    backdrop-filter: blur(8px);
+  }
+  .t-icon {
+    width: 30px; height: 30px; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: var(--t3); cursor: pointer;
+  }
+  .t-icon:hover { background: var(--panel); color: var(--t1); }
+  .t-icon svg { width: 16px; height: 16px; }
+  .crumb { font-size: 12px; color: var(--t3); display: flex; gap: 7px; align-items: center; white-space: nowrap; }
+  .crumb b { color: var(--t2); font-weight: 600; }
+
+  .host-chip {
+    display: flex; align-items: center; gap: 9px;
+    padding: 4px 12px 4px 5px;
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .host-ava {
+    width: 26px; height: 26px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 2px 10px var(--accent-glow);
+  }
+  .host-chip .hc-name { font-size: 12.5px; font-weight: 700; letter-spacing: -.01em; }
+  .host-chip .hc-addr { font-family: var(--mono); font-size: 10.5px; color: var(--t3); }
+
+  .live {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11.5px; font-weight: 600; color: var(--ok);
+    padding: 4px 11px; border-radius: 999px;
+    background: var(--ok-bg);
+    box-shadow: inset 0 0 0 1px rgba(52,211,153,.22);
+  }
+  .live .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); animation: pulse 2s ease infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,.5); } 50% { box-shadow: 0 0 0 5px rgba(52,211,153,0); } }
+  .live.err { color: var(--err); background: var(--err-bg); box-shadow: inset 0 0 0 1px rgba(248,113,113,.25); }
+  .live.err .pulse { background: var(--err); animation: none; }
+
+  .topbar .sp { flex: 1; }
+
+  .search-box {
+    display: flex; align-items: center; gap: 7px;
+    width: 190px; height: 30px; padding: 0 10px;
+    border-radius: 9px; background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--t4); font-size: 12px; cursor: text;
+  }
+  .search-box kbd { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--t4); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 12px; border-radius: 9px;
+    border: none; background: transparent;
+    color: var(--t3); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .btn-ghost:hover { background: var(--panel); color: var(--t1); }
+  .btn-ghost.danger { color: var(--err); }
+  .btn-ghost.danger:hover { background: var(--err-bg); }
+
+  /* ===== 主区: 会话侧栏 + 终端 + 右面板 ===== */
+  .main { display: flex; flex: 1; min-height: 0; }
+
+  /* -- 会话侧栏 -- */
+  .sessions {
+    width: 224px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--line);
+    padding: 12px 10px;
+    gap: 4px;
+  }
+  .sess-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 6px 10px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--t4);
+  }
+  .sess-head button {
+    width: 22px; height: 22px; border-radius: 6px; border: none;
+    background: transparent; color: var(--t3); cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .sess-head button:hover { background: var(--panel); color: var(--t1); }
+
+  .sess-card {
+    position: relative;
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    cursor: pointer;
+    color: var(--t3);
+  }
+  .sess-card:hover { background: var(--panel); color: var(--t2); }
+  .sess-card.active {
+    background: var(--accent-bg);
+    color: var(--t1);
+    box-shadow: inset 0 0 0 1px var(--accent-glow);
+  }
+  .sess-card.active::before {
+    content: ''; position: absolute; left: -10px; top: 12px; bottom: 12px; width: 2.5px;
+    border-radius: 3px; background: linear-gradient(180deg, var(--accent), var(--accent-2));
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .sess-row1 { display: flex; align-items: center; gap: 8px; }
+  .sess-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--t4); flex-shrink: 0; }
+  .sess-dot.ok { background: var(--ok); box-shadow: 0 0 6px rgba(52,211,153,.6); }
+  .sess-dot.warn { background: var(--warn); }
+  .sess-dot.err { background: var(--err); }
+  .sess-dot.off { background: var(--t4); }
+  .sess-card.off .sess-name { color: var(--t3); }
+  .sess-card .relink { color: var(--accent); cursor: pointer; }
+  .sess-card .relink:hover { text-decoration: underline; }
+  .sess-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-x {
+    margin-left: auto; width: 17px; height: 17px; border-radius: 5px;
+    display: none; align-items: center; justify-content: center;
+    border: none; background: transparent; color: var(--t4); font-size: 12px; cursor: pointer;
+  }
+  .sess-card:hover .sess-x { display: inline-flex; }
+  .sess-x:hover { background: var(--line-2); color: var(--t1); }
+  .sess-sub { font-family: var(--mono); font-size: 10.5px; color: var(--t4); padding-left: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-card.active .sess-sub { color: var(--t3); }
+  .sess-badge {
+    display: inline-block; margin-left: 15px; margin-top: 3px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--t3);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; width: fit-content;
+  }
+  .sess-new {
+    margin-top: 6px; height: 34px; border-radius: 10px;
+    border: 1px dashed var(--line-2); background: transparent;
+    color: var(--t3); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .sess-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+
+  .sess-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .sess-foot button {
+    display: flex; align-items: center; gap: 9px;
+    height: 32px; padding: 0 10px; border-radius: 9px;
+    border: none; background: transparent; color: var(--t3);
+    font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .sess-foot button:hover { background: var(--panel); color: var(--t1); }
+  .sess-foot svg { width: 14px; height: 14px; }
+
+  /* -- 终端区 -- */
+  .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px; gap: 12px; }
+
+  .term {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    border-radius: 14px;
+    background: var(--term);
+    box-shadow: inset 0 0 0 1px var(--line), 0 10px 34px rgba(0,0,0,.4);
+    overflow: hidden;
+  }
+  .term.focused {
+    box-shadow: inset 0 0 0 1px var(--accent-glow), 0 0 30px rgba(120,140,255,.07), 0 10px 34px rgba(0,0,0,.4);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .tlights { display: flex; gap: 6px; }
+  .tlights i {
+    width: 11px; height: 11px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tlights i:nth-child(1) { background: rgba(248,113,113,.85); cursor: pointer; }
+  .tlights i:nth-child(2) { background: rgba(251,191,36,.85); }
+  .tlights i:nth-child(3) { background: rgba(52,211,153,.85); }
+  .tlights svg { width: 7px; height: 7px; color: rgba(0,0,0,.65); opacity: 0; transition: opacity .12s; }
+  .term-bar:hover .tlights i:nth-child(1) svg { opacity: 1; }
+  .tlights i:nth-child(1):hover { box-shadow: 0 0 0 3px rgba(248,113,113,.25); }
+  .term.dim .term-bar { opacity: .45; }
+  .term.dim .term-bar:hover { opacity: .85; }
+  .prompt-crumb {
+    font-family: var(--mono); font-size: 11.5px; color: var(--t3);
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap; overflow: hidden;
+  }
+  .prompt-crumb .u { color: var(--ok); }
+  .prompt-crumb .h { color: var(--accent); }
+  .prompt-crumb .p { color: var(--accent-2); }
+  .prompt-crumb .at { color: var(--t4); }
+  .term-bar .sp { flex: 1; }
+  .tb-act {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 26px; padding: 0 9px; border-radius: 7px;
+    border: none; background: transparent;
+    color: var(--t4); font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .tb-act:hover { background: var(--panel); color: var(--t1); }
+  .tb-act svg { width: 12px; height: 12px; }
+  .tb-act.on { color: var(--accent); background: var(--accent-bg); }
+
+  .term-body {
+    flex: 1; min-height: 0; overflow: hidden;
+    padding: 14px 18px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    color: #c7d0e0;
+  }
+  .c-dim { color: #525d72; }
+  .c-u { color: var(--ok); font-weight: 700; }
+  .c-h { color: var(--accent); font-weight: 700; }
+  .c-p { color: var(--accent-2); font-weight: 700; }
+  .c-cmd { color: #eef1f8; }
+  .c-dir { color: #7cc7ff; }
+  .c-ok { color: var(--ok); }
+  .c-warn { color: var(--warn); }
+  .c-err { color: var(--err); }
+  .cursor { display: inline-block; width: 8px; height: 15px; border-radius: 2px; background: var(--accent); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; box-shadow: 0 0 8px var(--accent-glow); }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .term-split { display: flex; gap: 12px; flex: 1; min-height: 0; }
+  .term-split .term { min-width: 0; }
+
+  /* -- 右侧浮动面板 -- */
+  .dock {
+    width: 330px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    margin: 14px 14px 14px 0;
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--line), 0 10px 34px rgba(0,0,0,.35);
+    overflow: hidden;
+  }
+  .dock-tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+  .dock-tab {
+    flex: 1; height: 32px; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: none; background: transparent;
+    color: var(--t3); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .dock-tab svg { width: 13px; height: 13px; }
+  .dock-tab:hover { color: var(--t2); }
+  .dock-tab.active { color: var(--t1); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  .crumbs {
+    display: flex; align-items: center; gap: 3px;
+    margin: 12px 12px 8px; padding: 7px 10px;
+    border-radius: 9px; background: var(--panel);
+    font-family: var(--mono); font-size: 11px; color: var(--t3);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .crumbs .c { padding: 1px 4px; border-radius: 4px; cursor: pointer; }
+  .crumbs .c:hover { background: var(--line-2); color: var(--t1); }
+  .crumbs .c.now { color: var(--t1); font-weight: 700; }
+  .crumbs .s { color: var(--t4); }
+
+  .flist { flex: 1; min-height: 0; overflow: hidden; padding: 0 6px 6px; }
+  .frow {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 9px; cursor: pointer;
+  }
+  .frow:hover { background: var(--panel); }
+  .fic {
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fic svg { width: 14px; height: 14px; }
+  .fic.dir { background: var(--accent-bg); color: var(--accent); }
+  .fic.log { background: rgba(251,191,36,.13); color: var(--warn); }
+  .fic.cfg { background: rgba(167,139,250,.14); color: var(--accent-2); }
+  .fic.sh { background: var(--ok-bg); color: var(--ok); }
+  .fmeta { flex: 1; min-width: 0; line-height: 1.35; }
+  .fname { display: block; font-family: var(--mono); font-size: 12px; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fsub { font-family: var(--mono); font-size: 10px; color: var(--t4); }
+  .fsize { font-family: var(--mono); font-size: 10.5px; color: var(--t3); }
+  .fgo { display: none; gap: 2px; }
+  .frow:hover .fgo { display: flex; }
+  .fgo button {
+    height: 22px; padding: 0 8px; border-radius: 6px;
+    border: none; background: var(--line); color: var(--t2);
+    font-size: 10.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .fgo button:hover { background: var(--accent-bg); color: var(--accent); }
+  .dock-foot { padding: 10px 12px; border-top: 1px solid var(--line); }
+  .upload {
+    width: 100%; height: 34px; border-radius: 10px;
+    border: 1px dashed var(--line-2); background: transparent;
+    color: var(--t3); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .upload:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+
+  /* -- 登录态 -- */
+  .login-stage { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .login-card {
+    width: 400px; padding: 30px;
+    border-radius: 18px;
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--line), 0 30px 80px rgba(0,0,0,.5), 0 0 60px var(--accent-glow);
+  }
+  .login-card h2 { display: flex; align-items: center; gap: 11px; font-size: 16px; font-weight: 700; }
+  .login-card h2 .lk {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px var(--accent-glow);
+  }
+  .login-card h2 .lk svg { width: 16px; height: 16px; }
+  .login-card .sub { font-family: var(--mono); font-size: 11px; color: var(--t3); margin: 6px 0 20px 45px; }
+  .login-card label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--t4); margin: 14px 0 7px; }
+  .kopt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 13px; margin-bottom: 6px;
+    border-radius: 11px; cursor: pointer;
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--t2);
+  }
+  .kopt:hover { box-shadow: inset 0 0 0 1px var(--line-2); background: var(--panel); }
+  .kopt.sel { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--accent-bg); color: var(--t1); }
+  .kopt .rd { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--t4); flex-shrink: 0; }
+  .kopt.sel .rd { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 42%, transparent 48%); }
+  .kopt .kn { font-size: 12.5px; font-weight: 600; }
+  .kopt .ks { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--t3); }
+  .lfield {
+    height: 38px; padding: 0 13px; border-radius: 10px;
+    display: flex; align-items: center;
+    font-family: var(--mono); font-size: 12.5px; color: var(--t1);
+    background: var(--term); box-shadow: inset 0 0 0 1px var(--line-2);
+  }
+  .lbtn {
+    width: 100%; height: 40px; margin-top: 22px;
+    border: none; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+    box-shadow: 0 6px 20px var(--accent-glow);
+  }
+  .lbtn:hover { filter: brightness(1.12); }
+  .lerr {
+    margin-top: 14px; padding: 9px 12px; border-radius: 10px;
+    background: var(--err-bg); box-shadow: inset 0 0 0 1px rgba(248,113,113,.25);
+    font-size: 11.5px; color: var(--err); font-family: var(--mono);
+  }
+
+  /* -- 底部极简状态线 -- */
+  .footbar {
+    display: flex; align-items: center; gap: 0;
+    height: 26px; padding: 0 14px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 10.5px; color: var(--t4);
+    flex-shrink: 0;
+  }
+  .fb { padding: 0 10px; white-space: nowrap; }
+  .fb + .fb { border-left: 1px solid var(--line); }
+  .fb .pv { color: var(--t2); }
+  .footbar .sp { flex: 1; }
+  .fb-keys { display: flex; gap: 12px; font-family: Inter, "PingFang SC", sans-serif; }
+  .fb-keys kbd { font-family: var(--mono); font-size: 9px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-right: 4px; }
+
+  /* 交互规则说明卡(预览页) */
+  .annot { margin: 16px 2px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .annot .a-card { background: #fff; border: 1px solid #e0e1e6; border-radius: 10px; padding: 12px 14px; }
+  .annot .a-card h4 { font-size: 12.5px; margin-bottom: 5px; color: #222; display: flex; align-items: center; gap: 7px; }
+  .annot .a-card h4 .no { display: inline-flex; width: 17px; height: 17px; border-radius: 5px; background: #5e6ad2; color: #fff; font-size: 10px; align-items: center; justify-content: center; flex-shrink: 0; }
+  .annot .a-card p { font-size: 12px; color: #666; line-height: 1.65; }
+  .annot .a-card code { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; background: #f2f3f6; border-radius: 4px; padding: 1px 5px; color: #444; }
+</style>
+</head>
+<body data-state="on" data-accent="indigo">
+
+<div class="pv-bar">
+  <h1>SSH 会话页重设计 v2</h1>
+  <span class="ver">Warp 风格 · 会话侧栏布局</span>
+  <div class="pv-seg" id="segState">
+    <button class="active" data-s="on">已连接</button>
+    <button data-s="split">双分屏</button>
+    <button data-s="login">未连接</button>
+  </div>
+  <div class="pv-seg" id="segAccent">
+    <button class="active" data-a="indigo">靛蓝</button>
+    <button data-a="emerald">翠绿</button>
+    <button data-a="amber">琥珀</button>
+  </div>
+  <span class="note">点击上方切换状态与主题色</span>
+</div>
+
+<div class="pv-stage">
+<div class="ssh">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <button class="t-icon" title="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m6-7l-7 7 7 7"/></svg>
+    </button>
+    <div class="crumb"><b>主机监控</b><span>/</span><span>SSH 会话</span></div>
+
+    <div class="host-chip">
+      <div class="host-ava">W</div>
+      <div>
+        <div class="hc-name">prod-web-01</div>
+        <div class="hc-addr">root@10.0.3.21:22</div>
+      </div>
+    </div>
+
+    <span class="live st-on st-split"><span class="pulse"></span>已连接 12:34</span>
+    <span class="live err st-login"><span class="pulse"></span>未连接</span>
+
+    <div class="sp"></div>
+
+    <div class="search-box">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      搜索命令或文件
+      <kbd>Ctrl K</kbd>
+    </div>
+    <button class="t-icon" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </button>
+    <button class="t-icon" title="全屏">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+    </button>
+    <button class="btn-ghost danger st-on st-split">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 11-12.72 0M12 2v10"/></svg>
+      断开
+    </button>
+  </header>
+
+  <div class="main">
+    <!-- 会话侧栏 -->
+    <aside class="sessions">
+      <div class="sess-head">会话 · 4 <button title="沿用上次认证，直接新建并连接 (⌃⇧T)">+</button></div>
+
+      <div class="sess-card active">
+        <div class="sess-row1"><span class="sess-dot ok"></span><span class="sess-name">会话 1</span><button class="sess-x">×</button></div>
+        <div class="sess-sub">/var/log/nginx · 12:34</div>
+      </div>
+      <div class="sess-card st-split">
+        <div class="sess-row1"><span class="sess-dot ok"></span><span class="sess-name">日志跟踪</span><button class="sess-x">×</button></div>
+        <div class="sess-sub">/var/log · 03:12</div>
+        <span class="sess-badge">2 分屏</span>
+      </div>
+      <div class="sess-card">
+        <div class="sess-row1"><span class="sess-dot warn"></span><span class="sess-name">会话 3</span><button class="sess-x">×</button></div>
+        <div class="sess-sub">连接中…</div>
+      </div>
+      <div class="sess-card off">
+        <div class="sess-row1"><span class="sess-dot off"></span><span class="sess-name">会话 4</span><button class="sess-x">×</button></div>
+        <div class="sess-sub">已断开 · <span class="relink">点击重连</span></div>
+      </div>
+
+      <button class="sess-new">+ 新建会话 <span style="opacity:.5;font-family:var(--mono);font-size:10px">⌃⇧T</span></button>
+
+      <div class="sess-foot">
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.9 6.3 6.6.7-5 4.5 1.4 6.5L12 16.7 6.1 20l1.4-6.5-5-4.5 6.6-.7z"/></svg>
+          命令收藏
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          历史会话
+        </button>
+      </div>
+    </aside>
+
+    <!-- 终端: 单窗格 -->
+    <section class="stage st-on">
+      <div class="term focused">
+        <div class="term-bar">
+          <div class="tlights">
+            <i title="关闭窗格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M18 6L6 18M6 6l12 12"/></svg></i><i></i><i></i>
+          </div>
+          <div class="prompt-crumb">
+            <span class="u">root</span><span class="at">@</span><span class="h">prod-web-01</span><span class="at">:</span><span class="p">/var/log/nginx</span>
+          </div>
+          <div class="sp"></div>
+          <button class="tb-act" title="复制选中内容（聚焦窗格）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>复制</button>
+          <button class="tb-act" title="清屏（聚焦窗格）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>清屏</button>
+          <button class="tb-act" title="分屏 (Ctrl+\)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>分屏</button>
+          <button class="tb-act on" title="开关文件面板 (Ctrl+B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>文件</button>
+          <button class="tb-act" title="调整字号">Aa</button>
+        </div>
+        <div class="term-body">
+          <div><span class="c-dim">Last login: Mon Aug 10 09:41:02 2026 from 10.8.0.12</span></div>
+          <div>&nbsp;</div>
+          <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">~</span> <span class="c-cmd">cd /var/log/nginx && ls -lh</span></div>
+          <div><span class="c-dim">total 128M</span></div>
+          <div>-rw-r----- 1 www adm <span class="c-warn">84M</span> Aug 10 09:40 access.log</div>
+          <div>-rw-r----- 1 www adm  12M Aug 10 09:40 error.log</div>
+          <div><span class="c-dir">drwxr-x--- 2 www adm 4.0K Aug  8 03:15 archive/</span></div>
+          <div>&nbsp;</div>
+          <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">/var/log/nginx</span> <span class="c-cmd">tail -n 5 error.log</span></div>
+          <div><span class="c-err">2026/08/10 09:41:33 [error] 812#812: *1042 upstream prematurely closed</span></div>
+          <div><span class="c-err">2026/08/10 09:41:35 [error] 812#812: *1044 connect() failed (111)</span></div>
+          <div><span class="c-ok">2026/08/10 09:41:40 [notice] 813#813: signal process started</span></div>
+          <div>&nbsp;</div>
+          <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">/var/log/nginx</span> <span class="cursor"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 终端: 分屏 -->
+    <section class="stage st-split">
+      <div class="term-split">
+        <div class="term focused">
+          <div class="term-bar">
+            <div class="tlights">
+              <i title="关闭窗格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M18 6L6 18M6 6l12 12"/></svg></i><i></i><i></i>
+            </div>
+            <div class="prompt-crumb"><span class="u">root</span><span class="at">@</span><span class="h">prod-web-01</span><span class="at">:</span><span class="p">~</span></div>
+            <div class="sp"></div>
+            <button class="tb-act" title="复制（聚焦窗格）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>复制</button>
+            <button class="tb-act" title="清屏（聚焦窗格）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>清屏</button>
+          </div>
+          <div class="term-body">
+            <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">~</span> <span class="c-cmd">htop</span></div>
+            <div>&nbsp;</div>
+            <div><span class="c-ok">CPU</span> [<span class="c-ok">|||||||</span><span class="c-dim">|||||||||||</span>] <span class="c-cmd">38%</span></div>
+            <div><span class="c-ok">MEM</span> [<span class="c-warn">||||||||||</span><span class="c-dim">||||||||</span>] <span class="c-cmd">52%</span> <span class="c-dim">3.9G / 7.5G</span></div>
+            <div><span class="c-ok">SWP</span> [<span class="c-dim">||||||||||||||||||</span>] <span class="c-cmd">0%</span></div>
+            <div>&nbsp;</div>
+            <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">~</span> <span class="cursor"></span></div>
+          </div>
+        </div>
+        <div class="term dim">
+          <div class="term-bar">
+            <div class="tlights">
+              <i title="关闭窗格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M18 6L6 18M6 6l12 12"/></svg></i><i></i><i></i>
+            </div>
+            <div class="prompt-crumb"><span class="u">root</span><span class="at">@</span><span class="h">prod-web-01</span><span class="at">:</span><span class="p">/var/log</span></div>
+          </div>
+          <div class="term-body">
+            <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">/var/log</span> <span class="c-cmd">tail -f syslog</span></div>
+            <div><span class="c-dim">Aug 10 09:41:01 prod-web-01 sshd[2210]: Accepted publickey for root</span></div>
+            <div><span class="c-dim">Aug 10 09:41:02 prod-web-01 systemd[1]: Started session 482 of user root</span></div>
+            <div><span class="c-warn">Aug 10 09:42:11 prod-web-01 kernel: [TCP] possible SYN flooding on port 443</span></div>
+            <div>&nbsp;</div>
+            <div><span class="c-u">root</span><span class="c-dim">@</span><span class="c-h">prod-web-01</span> <span class="c-p">/var/log</span> <span class="cursor"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 登录态 -->
+    <section class="login-stage st-login">
+      <div class="login-card">
+        <h2>
+          <span class="lk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg></span>
+          连接到 prod-web-01
+        </h2>
+        <div class="sub">root@10.0.3.21:22 · SSH-2.0</div>
+
+        <label>认证方式</label>
+        <div class="kopt sel">
+          <span class="rd"></span><span class="kn">prod-deploy-key</span><span class="ks">ed25519 · 资产凭据</span>
+        </div>
+        <div class="kopt">
+          <span class="rd"></span><span class="kn">ops-admin-key</span><span class="ks">rsa-4096</span>
+        </div>
+        <div class="kopt">
+          <span class="rd"></span><span class="kn">临时密码</span><span class="ks">本次会话有效</span>
+        </div>
+
+        <label>登录用户</label>
+        <div class="lfield">root</div>
+
+        <button class="lbtn">连 接</button>
+
+        <div class="lerr">上次连接失败 ssh: handshake failed, connection timeout (10s)</div>
+      </div>
+    </section>
+
+    <!-- 右侧文件面板 -->
+    <aside class="dock st-on st-split">
+      <div class="dock-tabs">
+        <button class="dock-tab active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          文件
+        </button>
+        <button class="dock-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
+          命令
+        </button>
+        <button class="dock-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>
+          信息
+        </button>
+      </div>
+
+      <div class="crumbs">
+        <span class="c">/</span><span class="s">›</span><span class="c">var</span><span class="s">›</span><span class="c">log</span><span class="s">›</span><span class="c now">nginx</span>
+      </div>
+
+      <div class="flist">
+        <div class="frow">
+          <div class="fic dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
+          <div class="fmeta"><span class="fname">archive/</span><span class="fsub">Aug 8 03:15</span></div>
+          <span class="fsize">—</span>
+        </div>
+        <div class="frow">
+          <div class="fic log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
+          <div class="fmeta"><span class="fname">access.log</span><span class="fsub">Aug 10 09:40</span></div>
+          <span class="fsize">84M</span>
+          <div class="fgo"><button>下载</button></div>
+        </div>
+        <div class="frow">
+          <div class="fic log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
+          <div class="fmeta"><span class="fname">error.log</span><span class="fsub">Aug 10 09:40</span></div>
+          <span class="fsize">12M</span>
+          <div class="fgo"><button>编辑</button><button>下载</button></div>
+        </div>
+        <div class="frow">
+          <div class="fic cfg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>
+          <div class="fmeta"><span class="fname">proxy_params</span><span class="fsub">Jul 22 14:02</span></div>
+          <span class="fsize">2.1K</span>
+          <div class="fgo"><button>编辑</button><button>下载</button></div>
+        </div>
+        <div class="frow">
+          <div class="fic sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-5-6-5M12 19h8"/></svg></div>
+          <div class="fmeta"><span class="fname">rotate.sh</span><span class="fsub">Jun 30 11:20</span></div>
+          <span class="fsize">860B</span>
+          <div class="fgo"><button>编辑</button><button>下载</button></div>
+        </div>
+      </div>
+
+      <div class="dock-foot">
+        <button class="upload">⇪ 拖拽或点击上传文件</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 底部状态线 -->
+  <footer class="footbar">
+    <span class="fb">80×24</span>
+    <span class="fb"><span class="pv">/var/log/nginx</span></span>
+    <span class="fb st-on st-split">prod-deploy-key</span>
+    <span class="fb st-split">左右分屏</span>
+    <span class="sp"></span>
+    <span class="fb-keys">
+      <span><kbd>Ctrl B</kbd>文件</span>
+      <span><kbd>Ctrl \</kbd>分屏</span>
+      <span><kbd>⌃⇧T</kbd>新会话</span>
+    </span>
+  </footer>
+</div>
+
+<div class="annot">
+  <div class="a-card">
+    <h4><span class="no">1</span>交通灯有真语义</h4>
+    <p>红点 = 关闭当前窗格（hover 窗格头才显现 ×），替代原分屏态的"关闭"按钮；黄/绿保留装饰。单窗格时红点退化为关闭会话。</p>
+  </div>
+  <div class="a-card">
+    <h4><span class="no">2</span>操作只作用于聚焦窗格</h4>
+    <p>复制 / 清屏 / 分屏 / 字号 全部作用于聚焦窗格（带光晕的那个）；非聚焦窗格头部降透明度，只留 prompt 面包屑和关闭点，点击即聚焦。</p>
+  </div>
+  <div class="a-card">
+    <h4><span class="no">3</span>新建会话直接连</h4>
+    <p>侧栏 <code>+</code> 沿用该主机上次成功的认证方式直接发起连接，失败才落到登录卡片，不再每次先填表单。</p>
+  </div>
+  <div class="a-card">
+    <h4><span class="no">4</span>断开 ≠ 关闭</h4>
+    <p>顶栏"断开"只断当前连接、会话卡片保留（状态点变灰，副标题出现<span style="color:#5e6ad2">点击重连</span>）；卡片的 × 才是移除会话。断线自动重连时终端顶部浮横幅倒计时，可 Esc 取消。</p>
+  </div>
+</div>
+</div>
+
+<script>
+  document.getElementById('segState').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    document.body.dataset.state = b.dataset.s;
+    this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === b); });
+  });
+  document.getElementById('segAccent').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    document.body.dataset.accent = b.dataset.a;
+    this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === b); });
+  });
+</script>
+</body>
+</html>

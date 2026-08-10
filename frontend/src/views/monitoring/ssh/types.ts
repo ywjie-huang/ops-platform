@@ -7,7 +7,16 @@ export type SSHConnectionStatus =
 
 export type SSHPaneLayout = 'single' | 'vertical' | 'horizontal'
 
-export type SSHRightPanelTab = 'files' | 'preview' | 'actions' | 'info'
+export type SSHRightPanelTab = 'files' | 'actions' | 'info'
+
+export interface SSHHostRef {
+  assetId: number
+  name: string
+  ip: string
+  username: string
+  port: number
+  authMode: string
+}
 
 export interface SSHPaneState {
   id: string
@@ -28,6 +37,7 @@ export interface SSHTabState {
   pinned: boolean
   status: SSHConnectionStatus
   layout: SSHPaneLayout
+  host: SSHHostRef
   panes: SSHPaneState[]
 }
 
