@@ -148,7 +148,10 @@ async def api_prometheus_instances(
         results.append({
             "asset_name": asset.name,
             "asset_ip": asset.ip_address,
-            "prometheus_instance": matched,
+            "prometheus_instance": matched["instance"] if matched else None,
+            "scrape_address_ip": matched.get("address_ip") if matched else None,
+            "target_health": matched.get("health") if matched else None,
+            "last_scrape": matched.get("last_scrape") if matched else None,
             "matched": matched is not None,
         })
     return {"code": 0, "data": {"prometheus_instances": list(instances.keys()), "asset_matching": results}}

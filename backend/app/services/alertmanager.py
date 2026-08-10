@@ -151,7 +151,8 @@ async def get_rules_hosts(db=None, rule_names: list[str] | None = None) -> dict[
     instances = await discover_instances(prom_url)
     # 构建反向映射：prometheus_instance_label → clean_ip
     instance_to_ip: dict[str, str] = {}
-    for clean_addr, inst_label in instances.items():
+    for clean_addr, info in instances.items():
+        inst_label = info["instance"] if isinstance(info, dict) else str(info)
         instance_to_ip.setdefault(inst_label, clean_addr)
 
     # 查询所有资产，构建 ip → asset 映射

@@ -28,7 +28,9 @@ _MAX_QUERY_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 0.2
 
 # instance 标签缓存
-_instance_cache: dict[str, str] = {}
+# 值结构: {"instance": 标签值, "address_ip": 实际刮削 IP, "health": up/down, "last_scrape": ISO 时间}
+# 兼容旧的 str 值（仅 instance 标签），_normalize_match 会兜底转换。
+_instance_cache: dict[str, Any] = {}
 _instance_cache_ts: float = 0
 _INSTANCE_CACHE_TTL = 60  # 60 秒刷新一次
 
@@ -214,8 +216,12 @@ def _empty_pod_trend_series() -> list[dict[str, Any]]:
     ]
 
 
-async def discover_instances(prom_url: str = "") -> dict[str, str]:
-    """从 Prometheus targets 发现 instance 标签，带缓存。"""
+async def discover_instances(prom_url: str = "") -> dict[str, Any]:
+    """从 Prometheus targets 发现 instance 标签，带缓存。
+
+    返回 {匹配键: target 信息}。匹配键包括：instance 标签、去端口 instance、
+    实际刮削地址 IP；target 信息含 instance / address_ip / health / last_scrape。
+    """
     global _instance_cache, _instance_cache_ts
     now = time.time()
     if _instance_cache and (now - _instance_cache_ts) < _INSTANCE_CACHE_TTL:
@@ -233,7 +239,7 @@ async def discover_instances(prom_url: str = "") -> dict[str, str]:
             if data.get("status") != "success":
                 return _instance_cache
 
-            mapping: dict[str, str] = {}
+            mapping: dict[str, Any] = {}
             for target in data.get("data", {}).get("activeTargets", []):
                 labels = target.get("labels", {})
                 instance = labels.get("instance", "")
@@ -243,9 +249,25 @@ async def discover_instances(prom_url: str = "") -> dict[str, str]:
                     continue
                 clean_addr = address.split(":")[0] if ":" in address else address
                 clean_instance = instance.split(":")[0] if ":" in instance else instance
-                mapping[clean_addr] = instance
-                mapping[clean_instance] = instance
-                mapping[instance] = instance
+                info = {
+                    "instance": instance,
+                    "address_ip": clean_addr,
+                    "health": target.get("health", ""),
+                    "last_scrape": target.get("lastScrape", ""),
+                }
+                for key in (clean_addr, clean_instance, instance):
+                    if not key:
+                        continue
+                    existing = mapping.get(key)
+                    # 同一 instance 常被多个 job 采集（node/cadvisor/...）：
+                    # 任一 target 存活即视为存活，避免被单个 down job 覆盖
+                    if (
+                        isinstance(existing, dict)
+                        and existing.get("health") == "up"
+                        and info["health"] != "up"
+                    ):
+                        continue
+                    mapping[key] = info
 
             _instance_cache = mapping
             _instance_cache_ts = now
@@ -256,15 +278,54 @@ async def discover_instances(prom_url: str = "") -> dict[str, str]:
         return _instance_cache
 
 
-def _find_instance(ip: str, name: str, instances: dict[str, str]) -> str | None:
-    if ip in instances:
-        return instances[ip]
-    if name and name in instances:
-        return instances[name]
-    for key, inst in instances.items():
-        if ip in key or (name and name in key):
-            return inst
+def _normalize_match(value: Any) -> dict[str, str] | None:
+    """兼容旧的 {key: instance_str} 形态，统一为 target 信息字典。"""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    instance = str(value)
+    clean = instance.split(":")[0] if ":" in instance else instance
+    return {"instance": instance, "address_ip": clean, "health": "", "last_scrape": ""}
+
+
+def _address_consistent(ip: str, match: dict[str, str]) -> bool:
+    """名称匹配命中时校验刮削 IP 与资产 IP 是否一致，防止换 IP 后串台。"""
+    addr_ip = match.get("address_ip", "")
+    # 无法确定刮削 IP（如 blackbox 的 URL 目标）时不做强校验
+    if not ip or not addr_ip:
+        return True
+    return addr_ip == ip
+
+
+def _find_instance(ip: str, name: str, instances: dict[str, Any]) -> dict[str, str] | None:
+    """按 资产 IP → 资产名称 的顺序匹配采集目标，返回 target 信息。
+
+    - IP 精确匹配（instance 标签或实际刮削地址）最可靠，直接命中；
+    - 名称匹配仅作兜底：命中但目标实际刮削 IP 与资产 IP 不一致时视为串台，
+      返回 None（服务器换 IP 后不能再把新机器的指标挂到旧资产名下）。
+    """
+    if ip and ip in instances:
+        return _normalize_match(instances[ip])
+
+    if name:
+        match = _normalize_match(instances.get(name))
+        if match is None:
+            # 宽松兜底：名称作为片段出现（如 instance 带端口/域名）
+            for key, value in instances.items():
+                if name in key or (len(key) >= 4 and key in name):
+                    match = _normalize_match(value)
+                    break
+        if match is not None and _address_consistent(ip, match):
+            return match
     return None
+
+
+def _is_target_healthy(match: dict[str, str] | None) -> bool:
+    """target 明确为 down 才视为不健康（unknown/缺失时不误伤）。"""
+    if not match:
+        return False
+    return match.get("health", "") != "down"
 
 
 async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
@@ -282,9 +343,9 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
             continue
         inst = _find_instance(asset.ip_address, asset.name, instances)
         asset_map.append((asset, inst))
-        if not inst:
+        if not _is_target_healthy(inst):
             continue
-        s = f'instance="{inst}"'
+        s = f'instance="{inst["instance"]}"'
         prefix = f"a{i}"
         all_exprs[f"{prefix}_cpu"] = f'100 - (avg by(instance)(rate(node_cpu_seconds_total{{mode="idle",{s}}}[5m])) * 100)'
         all_exprs[f"{prefix}_cpu_cores"] = f'count(node_cpu_seconds_total{{mode="idle",{s}}})'
@@ -304,7 +365,7 @@ async def get_hosts_summary(assets: list, db=None) -> list[dict[str, Any]]:
     # 组装结果
     results = []
     for i, (asset, inst) in enumerate(asset_map):
-        if not inst:
+        if not _is_target_healthy(inst):
             results.append({
                 "id": asset.id, "name": asset.name, "ip_address": asset.ip_address,
                 "owner": asset.owner or "", "status": asset.status,
@@ -345,9 +406,10 @@ async def get_host_metrics(ip: str, name: str = "", db=None) -> dict[str, Any]:
     """查询单台主机的全部监控指标。"""
     prom_url = get_prometheus_url(db) if db else ""
     instances = await discover_instances(prom_url)
-    inst = _find_instance(ip, name, instances)
-    if not inst:
+    match = _find_instance(ip, name, instances)
+    if not _is_target_healthy(match):
         return {"prometheus_ok": False, **_empty_metrics()}
+    inst = match["instance"]
 
     s = f'instance="{inst}"'
     exprs = {
@@ -417,8 +479,8 @@ async def get_host_trends(
     """查询单台主机最近一段时间的趋势数据。"""
     prom_url = get_prometheus_url(db) if db else ""
     instances = await discover_instances(prom_url)
-    inst = _find_instance(ip, name, instances)
-    if not inst:
+    match = _find_instance(ip, name, instances)
+    if not match:
         return {
             "range_minutes": minutes,
             "step_seconds": step_seconds,
@@ -427,7 +489,7 @@ async def get_host_trends(
 
     now = int(time.time())
     start = now - minutes * 60
-    s = f'instance="{inst}"'
+    s = f'instance="{match["instance"]}"'
     exprs = {
         "cpu": f'100 - (avg by(instance)(rate(node_cpu_seconds_total{{mode="idle",{s}}}[5m])) * 100)',
         "memory": f'(1 - node_memory_MemAvailable_bytes{{{s}}} / node_memory_MemTotal_bytes{{{s}}}) * 100',
