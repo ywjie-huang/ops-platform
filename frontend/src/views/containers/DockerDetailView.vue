@@ -329,16 +329,26 @@
               <span class="di-pdot" aria-hidden="true"></span>{{ inspectContainer ? containerStatusLabel(inspectContainer.status) : '-' }}
             </span>
             <span v-if="healthFlagText" class="di-flag" :class="healthFlagClass">{{ healthFlagText }}</span>
+            <span v-if="(inspectState.RestartCount ?? 0) > 0" class="di-flag di-flag-warn">重启 {{ inspectState.RestartCount }} 次</span>
+            <span v-if="inspectState.OOMKilled" class="di-flag di-flag-bad">曾 OOMKilled</span>
           </div>
           <h3 class="di-title">{{ inspectContainer?.name || '容器详情' }}</h3>
           <div class="di-chips">
-            <span class="di-chip"><span class="di-ck">镜像</span><span class="mono">{{ inspectContainer?.image || '-' }}</span></span>
-            <span class="di-chip"><span class="di-ck">ID</span><span class="mono">{{ inspectShortId || '-' }}</span></span>
+            <span class="di-chip">
+              <span class="di-ck">镜像</span><span class="mono">{{ inspectContainer?.image || '-' }}</span>
+              <button v-if="inspectContainer?.image" type="button" class="di-chip-cp" :class="{ done: copiedKey === 'chip-image' }" :aria-label="copiedKey === 'chip-image' ? '已复制' : '复制镜像'" @click="copyText(inspectContainer.image, 'chip-image')">{{ copiedKey === 'chip-image' ? '✓' : '⧉' }}</button>
+            </span>
+            <span class="di-chip">
+              <span class="di-ck">ID</span><span class="mono">{{ inspectShortId || '-' }}</span>
+              <button v-if="inspectShortId" type="button" class="di-chip-cp" :class="{ done: copiedKey === 'chip-id' }" :aria-label="copiedKey === 'chip-id' ? '已复制' : '复制容器 ID'" @click="copyText(inspectShortId, 'chip-id')">{{ copiedKey === 'chip-id' ? '✓' : '⧉' }}</button>
+            </span>
             <span class="di-chip"><span class="di-ck">启动</span>{{ inspectState.StartedAt ? formatRelativeTime(inspectState.StartedAt) : '-' }}</span>
             <span class="di-chip"><span class="di-ck">创建</span>{{ formatInspectTime(inspectData?.Created) }}</span>
           </div>
         </div>
         <div class="di-head-actions">
+          <el-button size="small" type="primary" plain @click="openContainerLogs(inspectContainer)">日志</el-button>
+          <el-button size="small" :disabled="inspectContainer?.status !== 'running'" @click="openContainerExec(inspectContainer)">终端</el-button>
           <el-button size="small" :loading="inspectLoading" @click="fetchContainerInspect">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
@@ -347,27 +357,55 @@
       </div>
 
       <div class="di-stat-strip">
-        <div class="di-stat"><div class="di-stat-k">PID</div><div class="di-stat-v mono">{{ inspectState.Pid ?? '-' }}</div></div>
-        <div class="di-stat"><div class="di-stat-k">退出码</div><div class="di-stat-v" :class="{ 'is-danger': Number(inspectState.ExitCode) > 0 }">{{ inspectState.ExitCode ?? '-' }}</div></div>
-        <div class="di-stat"><div class="di-stat-k">健康</div><div class="di-stat-v sm" :class="healthValueClass">{{ healthStatusLabel }}</div></div>
-        <div class="di-stat"><div class="di-stat-k">重启策略</div><div class="di-stat-v sm">{{ restartPolicyText }}</div></div>
+        <div class="di-stat">
+          <div class="di-stat-k">运行时长</div>
+          <div class="di-stat-v">{{ inspectUptimeText }}</div>
+          <div class="di-stat-sub">PID {{ inspectState.Pid ?? '-' }} · 退出码 {{ inspectState.ExitCode ?? '-' }}</div>
+        </div>
+        <div class="di-stat">
+          <div class="di-stat-k">重启次数</div>
+          <div class="di-stat-v" :class="{ 'is-warn': (inspectState.RestartCount ?? 0) > 0 }">{{ inspectState.RestartCount ?? 0 }}</div>
+          <div class="di-stat-sub">{{ restartPolicyText }}</div>
+        </div>
+        <div class="di-stat">
+          <div class="di-stat-k">健康状态</div>
+          <div class="di-stat-v sm" :class="healthValueClass">{{ healthStatusLabel }}</div>
+          <div v-if="healthFailingStreak > 0" class="di-stat-sub">连续失败 {{ healthFailingStreak }} 次</div>
+        </div>
+        <div class="di-stat">
+          <div class="di-stat-k">OOM</div>
+          <div class="di-stat-v sm" :class="inspectState.OOMKilled ? 'is-bad' : 'is-ok'">{{ inspectState.OOMKilled ? '曾被终止' : '未触发' }}</div>
+        </div>
       </div>
 
-      <div class="di-trend-section">
-        <div class="di-trend-title">指标趋势<span v-if="inspectTrendRangeText" class="di-trend-sub">{{ inspectTrendRangeText }}</span></div>
-        <MetricTrendChart
-          :series="inspectTrendData?.series || []"
-          :loading="inspectTrendLoading"
-          :range-minutes="inspectTrendData?.range_minutes || 60"
-          :columns="2"
-          empty-hint="暂无历史指标（后台每分钟采样，需运行一段时间）"
-        />
+      <div class="di-anchors" role="navigation" aria-label="详情区块导航">
+        <button type="button" class="di-anchor" @click="scrollDiSection('trend')">概览</button>
+        <button type="button" class="di-anchor" @click="scrollDiSection('network')">网络</button>
+        <button type="button" class="di-anchor" @click="scrollDiSection('resources')">资源</button>
+        <button type="button" class="di-anchor" @click="scrollDiSection('health')">健康检查</button>
+        <button type="button" class="di-anchor" @click="scrollDiSection('config')">配置</button>
       </div>
 
       <div class="di-body" v-loading="inspectLoading">
         <div class="di-scroll">
+          <section class="di-section" id="di-sec-trend">
+            <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.trend" @click="toggleSection('trend')" @keyup.enter="toggleSection('trend')">
+              <h4 class="di-section-title">指标趋势</h4>
+              <span class="di-section-meta">{{ inspectTrendRangeText || '近 1 小时' }}</span>
+              <el-icon class="di-caret" :class="{ open: !sectionCollapse.trend }" aria-hidden="true"><ArrowDown /></el-icon>
+            </header>
+            <div v-show="!sectionCollapse.trend" class="di-trend-body">
+              <MetricTrendChart
+                :series="inspectTrendData?.series || []"
+                :loading="inspectTrendLoading"
+                :range-minutes="inspectTrendData?.range_minutes || 60"
+                :columns="2"
+                empty-hint="暂无历史指标（后台每分钟采样，需运行一段时间）"
+              />
+            </div>
+          </section>
           <template v-if="inspectData">
-            <section class="di-section">
+            <section class="di-section" id="di-sec-network">
               <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.network" @click="toggleSection('network')" @keyup.enter="toggleSection('network')">
                 <h4 class="di-section-title">网络</h4>
                 <span class="di-section-meta">{{ networkSummary }}</span>
@@ -395,7 +433,7 @@
               </div>
             </section>
 
-            <section class="di-section">
+            <section class="di-section" id="di-sec-resources">
               <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.resources" @click="toggleSection('resources')" @keyup.enter="toggleSection('resources')">
                 <h4 class="di-section-title">资源限制</h4>
                 <span class="di-section-meta">{{ resourcesSummary }}</span>
@@ -421,7 +459,7 @@
               </div>
             </section>
 
-            <section class="di-section">
+            <section class="di-section" id="di-sec-health">
               <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.health" @click="toggleSection('health')" @keyup.enter="toggleSection('health')">
                 <h4 class="di-section-title">健康检查</h4>
                 <span class="di-section-meta">{{ healthSummary }}</span>
@@ -452,65 +490,49 @@
               </div>
             </section>
 
-            <section class="di-section">
-              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.runconfig" @click="toggleSection('runconfig')" @keyup.enter="toggleSection('runconfig')">
+            <section class="di-section" id="di-sec-config">
+              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.config" @click="toggleSection('config')" @keyup.enter="toggleSection('config')">
                 <h4 class="di-section-title">运行配置</h4>
-                <el-icon class="di-caret" :class="{ open: !sectionCollapse.runconfig }" aria-hidden="true"><ArrowDown /></el-icon>
+                <span class="di-section-meta">命令 · 挂载 {{ inspectMounts.length }} · 环境变量 {{ envItems.length }} · 标签 {{ labelEntries.length }}</span>
+                <el-icon class="di-caret" :class="{ open: !sectionCollapse.config }" aria-hidden="true"><ArrowDown /></el-icon>
               </header>
-              <div v-show="!sectionCollapse.runconfig" class="di-card">
+              <div v-show="!sectionCollapse.config">
                 <div class="di-codeblock"><span class="di-code-k">ENTRYPOINT</span><span class="mono">{{ entrypointText }}</span></div>
                 <div class="di-codeblock"><span class="di-code-k">CMD</span><span class="mono">{{ cmdText }}</span></div>
-                <dl class="di-kv-grid">
-                  <div class="di-kv"><dt>工作目录</dt><dd class="mono">{{ inspectConfig.WorkingDir || '/' }}</dd></div>
-                  <div class="di-kv"><dt>运行用户</dt><dd class="mono">{{ inspectConfig.User || 'root' }}</dd></div>
-                  <div class="di-kv"><dt>TTY</dt><dd>{{ inspectConfig.Tty ? '是' : '否' }}</dd></div>
-                  <div class="di-kv"><dt>交互 STDIN</dt><dd>{{ inspectConfig.OpenStdin ? '是' : '否' }}</dd></div>
-                </dl>
-              </div>
-            </section>
-
-            <section class="di-section">
-              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.mounts" @click="toggleSection('mounts')" @keyup.enter="toggleSection('mounts')">
-                <h4 class="di-section-title">挂载</h4>
-                <span class="di-section-meta">{{ inspectMounts.length }} 项</span>
-                <el-icon class="di-caret" :class="{ open: !sectionCollapse.mounts }" aria-hidden="true"><ArrowDown /></el-icon>
-              </header>
-              <div v-show="!sectionCollapse.mounts">
-                <div v-for="(m, i) in inspectMounts" :key="i" class="di-mount">
-                  <span class="mono">{{ m.Source || m.Name }} <span class="di-arrow">→</span> {{ m.Destination }}</span>
-                  <span class="di-mount-tag">{{ m.Type || 'bind' }}{{ m.RW === false ? ' · 只读' : '' }}</span>
+                <div class="di-card">
+                  <dl class="di-kv-grid">
+                    <div class="di-kv"><dt>工作目录</dt><dd class="mono">{{ inspectConfig.WorkingDir || '/' }}</dd></div>
+                    <div class="di-kv"><dt>运行用户</dt><dd class="mono">{{ inspectConfig.User || 'root' }}</dd></div>
+                    <div class="di-kv"><dt>TTY</dt><dd>{{ inspectConfig.Tty ? '是' : '否' }}</dd></div>
+                    <div class="di-kv"><dt>交互 STDIN</dt><dd>{{ inspectConfig.OpenStdin ? '是' : '否' }}</dd></div>
+                  </dl>
+                  <div class="di-sub">
+                    <div class="di-sub-k">挂载（{{ inspectMounts.length }}）</div>
+                    <div v-for="(m, i) in inspectMounts" :key="i" class="di-mount">
+                      <span class="mono">{{ m.Source || m.Name }} <span class="di-arrow">→</span> {{ m.Destination }}</span>
+                      <span class="di-mount-tag">{{ m.Type || 'bind' }}{{ m.RW === false ? ' · 只读' : '' }}</span>
+                    </div>
+                    <div v-if="!inspectMounts.length" class="di-empty">无挂载</div>
+                  </div>
+                  <div class="di-sub">
+                    <div class="di-sub-k">环境变量（{{ envItems.length }}）</div>
+                    <ul v-if="envItems.length" class="di-env-list">
+                      <li v-for="item in envItems" :key="item.key" class="di-env-row">
+                        <span class="di-env-key mono">{{ item.key }}</span>
+                        <span class="di-env-val mono" :class="{ masked: item.sensitive && !revealedEnvKeys.has(item.key) }">{{ envDisplayValue(item) }}</span>
+                        <el-button v-if="item.sensitive" link size="small" class="di-env-reveal" :aria-label="revealedEnvKeys.has(item.key) ? `隐藏 ${item.key}` : `显示 ${item.key}`" @click="toggleEnvReveal(item.key)">{{ revealedEnvKeys.has(item.key) ? '隐藏' : '显示' }}</el-button>
+                      </li>
+                    </ul>
+                    <div v-else class="di-empty">无环境变量</div>
+                  </div>
+                  <div class="di-sub">
+                    <div class="di-sub-k">标签（{{ labelEntries.length }}）</div>
+                    <div class="di-label-cloud">
+                      <span v-for="item in labelEntries" :key="item.key" class="di-label"><span class="di-lk mono">{{ item.key }}</span><span class="di-lv mono">{{ item.value || '(空)' }}</span></span>
+                      <span v-if="!labelEntries.length" class="di-empty">无标签</span>
+                    </div>
+                  </div>
                 </div>
-                <div v-if="!inspectMounts.length" class="di-empty">无挂载</div>
-              </div>
-            </section>
-
-            <section class="di-section">
-              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.env" @click="toggleSection('env')" @keyup.enter="toggleSection('env')">
-                <h4 class="di-section-title">环境变量</h4>
-                <span class="di-section-meta">{{ envItems.length }} 项</span>
-                <el-icon class="di-caret" :class="{ open: !sectionCollapse.env }" aria-hidden="true"><ArrowDown /></el-icon>
-              </header>
-              <div v-show="!sectionCollapse.env">
-                <ul v-if="envItems.length" class="di-env-list">
-                  <li v-for="item in envItems" :key="item.key" class="di-env-row">
-                    <span class="di-env-key mono">{{ item.key }}</span>
-                    <span class="di-env-val mono" :class="{ masked: item.sensitive && !revealedEnvKeys.has(item.key) }">{{ envDisplayValue(item) }}</span>
-                    <el-button v-if="item.sensitive" link size="small" class="di-env-reveal" :aria-label="revealedEnvKeys.has(item.key) ? `隐藏 ${item.key}` : `显示 ${item.key}`" @click="toggleEnvReveal(item.key)">{{ revealedEnvKeys.has(item.key) ? '隐藏' : '显示' }}</el-button>
-                  </li>
-                </ul>
-                <div v-else class="di-empty">无环境变量</div>
-              </div>
-            </section>
-
-            <section class="di-section">
-              <header class="di-section-head" role="button" tabindex="0" :aria-expanded="!sectionCollapse.labels" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
-                <h4 class="di-section-title">标签</h4>
-                <span class="di-section-meta">{{ labelEntries.length }} 项</span>
-                <el-icon class="di-caret" :class="{ open: !sectionCollapse.labels }" aria-hidden="true"><ArrowDown /></el-icon>
-              </header>
-              <div v-show="!sectionCollapse.labels" class="di-label-cloud">
-                <span v-for="item in labelEntries" :key="item.key" class="di-label"><span class="di-lk mono">{{ item.key }}</span><span class="di-lv mono">{{ item.value || '(空)' }}</span></span>
-                <span v-if="!labelEntries.length" class="di-empty">无标签</span>
               </div>
             </section>
           </template>
@@ -800,13 +822,11 @@ const inspectData = ref<any>(null)
 const inspectContainer = ref<any | null>(null)
 const revealedEnvKeys = ref<Set<string>>(new Set())
 const sectionCollapse = reactive({
-  env: true,
+  trend: true,
   network: false,
-  mounts: true,
   health: false,
   resources: false,
-  labels: true,
-  runconfig: true,
+  config: true,
 })
 
 // 含这些关键词的环境变量视为敏感，默认掩码，点击「显示」后明文
@@ -1010,6 +1030,34 @@ function copyText(text: string, key: string) {
 function toggleSection(key: keyof typeof sectionCollapse) {
   sectionCollapse[key] = !sectionCollapse[key]
 }
+
+function scrollDiSection(key: string) {
+  // 折叠的区块先展开再滚动定位
+  if (key in sectionCollapse && sectionCollapse[key as keyof typeof sectionCollapse]) {
+    sectionCollapse[key as keyof typeof sectionCollapse] = false
+  }
+  nextTick(() => {
+    document.getElementById(`di-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+const healthFailingStreak = computed(() => Number(inspectState.value.Health?.FailingStreak) || 0)
+
+// 运行时长（基于 StartedAt，Docker 时间可能带纳秒需截断）
+const inspectUptimeText = computed(() => {
+  const t = inspectState.value.StartedAt
+  if (!t || !inspectState.value.Running) return '-'
+  const d = new Date(t.replace(/(\.\d{3})\d+/, '$1'))
+  const ms = Date.now() - d.getTime()
+  if (isNaN(ms) || ms < 0) return '-'
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h${m % 60 ? ` ${m % 60}m` : ''}`
+  return `${Math.floor(h / 24)}d ${h % 24}h`
+})
 
 // Docker 时间可能带纳秒（>3 位小数），截断到毫秒避免 new Date 得到 Invalid Date
 function formatInspectTime(ts?: string): string {
@@ -1597,219 +1645,225 @@ onUnmounted(() => {
 .log-box:focus-visible {
   box-shadow: 0 0 0 2px var(--primary-color);
 }
-/* ─── 容器 inspect 详情（重设计） ─── */
+/* ─── 容器 inspect 详情（v2：样式与 mockups/detail-drawer-v2.html 对齐） ─── */
 .di-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px 20px 16px;
-  background: var(--surface-color);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 20px 14px;
+  background: linear-gradient(180deg, #fbfbfc 0%, var(--surface-color) 100%);
   border-bottom: 1px solid var(--border-color);
 }
 .di-head-copy { min-width: 0; flex: 1; }
-.di-hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.di-hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .di-phase {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 11px 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+  font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
 }
-.di-phase .di-pdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.di-phase.di-ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
-.di-phase.di-bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
-.di-phase.di-warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
+.di-phase .di-pdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.di-phase.di-ok { color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.di-phase.di-bad { color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.di-phase.di-warn { color: #d97706; background: rgba(245, 158, 11, 0.13); }
 .di-phase.di-info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 12%, white); }
-.di-flag { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
-.di-flag-ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
-.di-flag-bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
-.di-flag-warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
+.di-flag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.di-flag-ok { color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.di-flag-bad { color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.di-flag-warn { color: #d97706; background: rgba(245, 158, 11, 0.13); }
 .di-flag-info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 12%, white); }
-.di-title { margin: 7px 0 0; font-size: 17px; font-weight: 750; word-break: break-all; line-height: 1.3; }
-.di-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.di-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; word-break: break-all; line-height: 1.3; }
+.di-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .di-chip {
-  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; font-size: 12px;
-  color: var(--text-secondary); background: var(--bg-color); border: 1px solid var(--border-color);
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--bg-color); border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 2px 8px; font-size: 11.5px; color: var(--text-secondary);
 }
 .di-chip .di-ck { color: var(--text-muted); }
+.di-chip-cp {
+  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
+  width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center;
+  font-size: 10px; line-height: 1; opacity: 0; transition: all 0.15s;
+}
+.di-chip:hover .di-chip-cp { opacity: 1; }
+.di-chip-cp:hover { background: var(--primary-bg); color: var(--primary-color); }
+.di-chip-cp.done { opacity: 1; color: var(--success-color); }
 .di-head-actions { display: flex; gap: 6px; align-items: center; flex: none; }
 .di-close {
-  border: 0; cursor: pointer; width: 30px; height: 30px; border-radius: 8px;
-  background: var(--bg-color); color: var(--text-secondary); font-size: 15px; line-height: 1;
+  border: 0; cursor: pointer; width: 28px; height: 28px; border-radius: 7px;
+  background: var(--bg-color); color: var(--text-secondary); font-size: 14px; line-height: 1;
   display: grid; place-items: center; transition: all 0.15s ease-out;
 }
-.di-close:hover { background: color-mix(in srgb, var(--danger-color) 13%, white); color: var(--danger-color); }
+.di-close:hover { background: rgba(239, 68, 68, 0.09); color: #dc2626; }
 
+/* KPI 条 */
 .di-stat-strip {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border-color); border-bottom: 1px solid var(--border-color);
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  margin: 14px 20px 0;
+  border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;
+  background: var(--surface-color);
 }
-.di-stat { background: var(--surface-color); padding: 11px 16px; }
-.di-stat-k { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 2px; }
-.di-stat-v { font-size: 17px; font-weight: 750; color: var(--text-primary); }
-.di-stat-v.sm { font-size: 13.5px; }
-.di-stat-v.is-ok { color: #15803d; }
-.di-stat-v.is-bad { color: #b42318; }
-.di-stat-v.is-warn { color: #b45309; }
+.di-stat { padding: 10px 14px; border-right: 1px solid var(--border-color); }
+.di-stat:last-child { border-right: none; }
+.di-stat-k { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.di-stat-v { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.di-stat-v.sm { font-size: 15px; }
+.di-stat-v.is-ok { color: #16a34a; }
+.di-stat-v.is-bad { color: #dc2626; }
+.di-stat-v.is-warn { color: #d97706; }
+.di-stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 .is-danger { color: var(--danger-color) !important; }
 
-.di-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.di-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 32px; background: var(--bg-color); }
-.di-scroll::-webkit-scrollbar { width: 10px; }
-.di-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg-color); }
+/* 锚点导航 */
+.di-anchors {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 14px; padding: 8px 20px;
+  background: var(--surface-color); border-bottom: 1px solid var(--border-color);
+}
+.di-anchor {
+  border: 0; background: transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 4px 12px; border-radius: 6px; transition: all 0.12s;
+}
+.di-anchor:hover { color: var(--primary-color); background: var(--primary-bg); }
 
-.di-section { margin-bottom: 18px; }
-.di-trend-section { margin: 16px 0; }
-.di-trend-title {
-  display: flex; align-items: baseline; gap: 8px;
-  margin: 0 0 10px; font-size: 12px; font-weight: 700;
-  color: var(--text-primary); letter-spacing: 0.4px;
+.di-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.di-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 24px; background: var(--surface-color); }
+.di-scroll::-webkit-scrollbar { width: 10px; }
+.di-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--surface-color); }
+
+.di-section { margin-top: 14px; }
+.di-section-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; margin: 0 -10px 8px; border-radius: 8px;
+  cursor: pointer; user-select: none;
 }
-.di-trend-sub {
-  font-size: 11px; font-weight: 500; color: var(--text-muted);
-  background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
-  border: 1px solid var(--border-color);
+.di-section-head:hover { background: var(--bg-color); }
+.di-section-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.di-section-meta { font-size: 11.5px; color: var(--text-muted); font-weight: 500; }
+.di-caret { margin-left: auto; color: var(--text-muted); transition: transform 0.15s ease-out; font-size: 11px; flex: none; }
+.di-caret.open { transform: rotate(180deg); }
+
+.di-card { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; }
+
+/* 键值网格 */
+.di-kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 0; }
+.di-kv { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; min-width: 0; }
+.di-kv.wide { grid-column: 1 / -1; }
+.di-kv dt { flex: none; width: 76px; color: var(--text-muted); font-size: 12.5px; }
+.di-kv dd { margin: 0; flex: 1; min-width: 0; color: var(--text-primary); font-size: 12.5px; word-break: break-all; }
+.di-copy { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+.di-copy .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.di-copy-btn {
+  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 11px; transition: all 0.15s;
 }
-.exec-tip {
-  margin-top: 10px; font-size: 12px; color: var(--text-muted);
+.di-copy-btn:hover { background: var(--primary-bg); color: var(--primary-color); }
+.di-copy-btn.done { color: var(--success-color); }
+
+.di-sub { margin-top: 12px; display: block; }
+.di-sub-k { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.4px; margin-bottom: 6px; }
+.di-line { color: var(--text-secondary); font-size: 12px; padding: 3px 0; }
+
+/* 网络单元（扁平 kv 风） */
+.di-net-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+.di-net { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; min-width: 0; }
+.di-net-k { flex: none; width: 76px; color: var(--text-muted); font-size: 12.5px; }
+.di-net-v { min-width: 0; color: var(--text-primary); font-size: 12.5px; word-break: break-all; }
+
+/* 端口胶囊 */
+.di-ports { display: flex; flex-wrap: wrap; gap: 6px; }
+.di-port {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface-color); border: 1px solid var(--border-color);
+  border-radius: 7px; padding: 3px 9px; font-size: 11.5px;
 }
+.di-port-arr { color: var(--primary-color); font-weight: 700; }
+.di-port-ctr { color: var(--text-secondary); }
+.di-port-proto { font-size: 10px; color: var(--text-muted); background: var(--bg-color); border-radius: 3px; padding: 0 4px; }
+
+/* 资源条 */
+.di-res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.di-res-bar { min-width: 0; }
+.di-res-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; margin-bottom: 4px; }
+.di-res-k { color: var(--text-muted); }
+.di-res-v { color: var(--text-secondary); }
+.di-res-track { height: 5px; border-radius: 3px; background: #ececf2; overflow: hidden; }
+.di-res-track i { display: block; height: 100%; border-radius: 3px; background: var(--primary-color); }
+.di-res-track i.ok { background: var(--primary-color); }
+.di-res-track i.warn { background: #d97706; }
+.di-res-track i.hot { background: #dc2626; }
+
+/* 健康条幅 */
+.di-health-wrap { display: grid; gap: 10px; }
+.di-health-banner {
+  display: flex; align-items: center; gap: 10px; padding: 9px 13px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+}
+.di-health-banner.ok { background: rgba(34, 197, 94, 0.11); color: #16a34a; }
+.di-health-banner.bad { background: rgba(239, 68, 68, 0.09); color: #dc2626; }
+.di-health-banner.warn { background: rgba(245, 158, 11, 0.13); color: #d97706; }
+.di-health-banner.none { background: color-mix(in srgb, var(--text-muted) 10%, white); color: var(--text-secondary); }
+.di-hb-streak { margin-left: auto; font-size: 11.5px; opacity: 0.85; }
+
+/* 代码块 */
+.di-codeblock {
+  display: flex; align-items: baseline; gap: 10px;
+  background: #1c1c22; color: #d5d5de; padding: 8px 12px; border-radius: 8px;
+  font-size: 11.5px; line-height: 1.6; word-break: break-word;
+  margin-bottom: 8px;
+}
+.di-codeblock:last-child { margin-bottom: 0; }
+.di-codeblock .mono { color: inherit; }
+.di-code-k { color: #7d7d92; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; flex: none; }
+
+/* 挂载（扁平虚线行） */
+.di-mount {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border-color);
+}
+.di-mount:last-of-type { border-bottom: none; }
+.di-arrow { color: var(--text-muted); }
+.di-mount-tag {
+  margin-left: auto; font-size: 10.5px; font-weight: 500; flex: none;
+  color: var(--text-muted); background: var(--surface-color);
+  border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 6px;
+}
+
+/* 环境变量（扁平虚线行） */
+.di-env-list { list-style: none; margin: 0; padding: 0; }
+.di-env-row {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border-color);
+}
+.di-env-row:last-child { border-bottom: none; }
+.di-env-key { color: var(--text-secondary); flex: none; max-width: 45%; word-break: break-all; }
+.di-env-val { color: var(--text-primary); word-break: break-all; }
+.di-env-val.masked { color: var(--text-muted); letter-spacing: 1px; }
+.di-env-reveal { flex: none; height: auto; padding: 0; font-size: 11px; }
+
+/* 标签云（key/value 分色胶囊） */
+.di-label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+.di-label {
+  display: inline-flex; max-width: 100%;
+  border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;
+  font-size: 11px; background: var(--surface-color);
+}
+.di-label .di-lk { background: var(--bg-color); color: var(--text-muted); padding: 2px 7px; border-right: 1px solid var(--border-color); }
+.di-label .di-lv { color: var(--text-primary); padding: 2px 7px; word-break: break-all; }
+
+.di-empty { color: var(--text-muted); font-size: 12px; padding: 4px 0; }
+
+.exec-tip { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
 .exec-tip code {
   font-family: var(--el-font-family-mono, monospace);
   background: var(--surface-color); padding: 1px 5px; border-radius: 4px;
   border: 1px solid var(--border-color);
 }
-.di-section-title {
-  display: flex; align-items: baseline; gap: 7px; margin: 0 0 10px;
-  font-size: 12px; font-weight: 750; color: var(--text-primary); letter-spacing: 0.4px; text-transform: uppercase;
-}
-.di-section-meta {
-  font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--surface-color);
-  padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border-color); text-transform: none; letter-spacing: 0;
-}
-.di-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer; user-select: none; }
-.di-section-head:hover .di-section-title { color: var(--primary-color); }
-.di-section-head .di-section-title { margin: 0; }
-.di-section-head .di-section-meta { margin-left: auto; }
-.di-caret { color: var(--text-muted); transition: transform 0.2s ease-out; font-size: 12px; flex: none; }
-.di-caret.open { transform: rotate(180deg); }
 
-.di-card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 13px 16px; }
-
-/* 键值网格 */
-.di-kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; }
-.di-kv { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); min-width: 0; }
-.di-kv:nth-last-child(-n+2) { border-bottom: 0; }
-.di-kv.wide { grid-column: 1 / -1; flex-direction: column; align-items: stretch; gap: 3px; }
-.di-kv dt { flex: none; width: 86px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
-.di-kv.wide dt { width: auto; }
-.di-kv dd { margin: 0; flex: 1; min-width: 0; color: var(--text-primary); font-size: 13px; line-height: 1.55; word-break: break-word; }
-.di-copy { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.di-copy .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.di-copy-btn {
-  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
-  width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; transition: all 0.15s;
-}
-.di-copy-btn:hover { background: var(--primary-bg); color: var(--primary-color); }
-.di-copy-btn.done { color: var(--success-color); }
-
-.di-sub {
-  margin-top: 11px; padding-top: 11px;
-  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
-  display: grid; gap: 6px;
-}
-.di-sub-k { color: var(--text-muted); font-size: 12px; }
-.di-line { color: var(--text-secondary); font-size: 12.5px; }
-
-/* 网络单元 */
-.di-net-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.di-net { background: var(--bg-color); border-radius: 7px; padding: 10px 13px; }
-.di-net-k { font-size: 11px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 4px; }
-.di-net-v { font-size: 13.5px; font-weight: 650; color: var(--text-primary); }
-
-/* 端口 */
-.di-ports { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.di-port {
-  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 8px;
-  background: var(--surface-color); border: 1px solid var(--border-color); font-size: 12.5px;
-}
-.di-port-arr { color: var(--primary-color); }
-.di-port-ctr { color: var(--text-primary); font-weight: 700; }
-.di-port-proto { font-size: 10px; color: var(--text-muted); background: var(--bg-color); padding: 1px 5px; border-radius: 4px; }
-
-/* 资源条 */
-.di-res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
-.di-res-bar { min-width: 0; }
-.di-res-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
-.di-res-k { font-size: 11px; color: var(--text-muted); font-weight: 650; letter-spacing: 0.3px; }
-.di-res-v { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
-.di-res-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--border-color) 50%, white); overflow: hidden; }
-.di-res-track i { display: block; height: 100%; border-radius: inherit; }
-.di-res-track i.ok { background: linear-gradient(90deg, #34d399, var(--success-color)); }
-.di-res-track i.warn { background: linear-gradient(90deg, #fbbf24, var(--warning-color)); }
-.di-res-track i.hot { background: linear-gradient(90deg, #fb7185, var(--danger-color)); }
-
-/* 健康条幅 */
-.di-health-wrap { display: grid; gap: 10px; }
-.di-health-banner {
-  display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 7px;
-  font-size: 13px; font-weight: 650;
-}
-.di-health-banner.ok { background: color-mix(in srgb, var(--success-color) 12%, white); color: #15803d; }
-.di-health-banner.bad { background: color-mix(in srgb, var(--danger-color) 11%, white); color: #b42318; }
-.di-health-banner.warn { background: color-mix(in srgb, var(--warning-color) 14%, white); color: #b45309; }
-.di-health-banner.none { background: color-mix(in srgb, var(--text-muted) 10%, white); color: var(--text-secondary); }
-.di-hb-streak { margin-left: auto; font-size: 12px; opacity: 0.85; }
-
-/* 代码块 */
-.di-codeblock {
-  background: #1e1e2a; color: #d4d4e4; padding: 9px 12px; border-radius: 7px;
-  display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; line-height: 1.6; word-break: break-word;
-  margin-bottom: 10px;
-}
-.di-codeblock:last-child { margin-bottom: 0; }
-.di-codeblock .mono { color: #d4d4e4; }
-.di-code-k { color: #8b8ba7; font-size: 10.5px; font-weight: 750; letter-spacing: 0.5px; flex: none; }
-
-/* 挂载 */
-.di-mount {
-  display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-color);
-  border: 1px solid var(--border-color); border-radius: 7px; margin-bottom: 6px; font-size: 12.5px; flex-wrap: wrap;
-}
-.di-mount:last-of-type { margin-bottom: 0; }
-.di-arrow { color: var(--primary-color); font-weight: 700; }
-.di-mount-tag {
-  font-size: 10.5px; padding: 2px 7px; border-radius: 5px; margin-left: auto;
-  background: color-mix(in srgb, var(--text-muted) 12%, white); color: var(--text-secondary); font-weight: 600;
-}
-
-/* 环境变量 */
-.di-env-list {
-  list-style: none; margin: 0; padding: 0; display: grid; gap: 1px;
-  background: var(--border-color); border: 1px solid var(--border-color); border-radius: 7px; overflow: hidden;
-}
-.di-env-row {
-  display: grid; grid-template-columns: minmax(0, 170px) 1fr auto; align-items: center; gap: 12px;
-  padding: 7px 12px; background: var(--surface-color);
-}
-.di-env-key { color: var(--text-secondary); word-break: break-all; }
-.di-env-val { color: var(--text-primary); word-break: break-all; }
-.di-env-val.masked { color: var(--text-muted); letter-spacing: 2px; }
-.di-env-reveal { flex: none; height: auto; padding: 0; font-size: 12px; }
-
-/* 标签云 */
-.di-label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
-.di-label {
-  display: inline-flex; align-items: baseline; gap: 3px; padding: 4px 9px; border-radius: 6px;
-  background: var(--primary-bg); font-size: 11.5px; max-width: 100%;
-}
-.di-label .di-lk { color: var(--primary-color); font-weight: 700; }
-.di-label .di-lv { color: var(--text-secondary); word-break: break-all; }
-
-.di-empty { color: var(--text-muted); font-size: 13px; padding: 7px 0; }
 
 @media (max-width: 768px) {
   .di-kv-grid,
   .di-res-bars,
   .di-net-grid { grid-template-columns: 1fr; }
-  .di-env-row { grid-template-columns: 1fr; gap: 3px; }
+  .di-env-row { flex-wrap: wrap; gap: 2px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .di-caret,

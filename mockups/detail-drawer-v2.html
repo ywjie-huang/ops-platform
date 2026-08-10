@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>详情抽屉优化 v2 · 预览</title>
+<style>
+  :root {
+    --primary: #5e6ad2;
+    --primary-bg: rgba(94,106,210,.08);
+    --success: #16a34a;
+    --success-bg: rgba(34,197,94,.11);
+    --warning: #d97706;
+    --warning-bg: rgba(245,158,11,.13);
+    --danger: #dc2626;
+    --danger-bg: rgba(239,68,68,.09);
+    --bg: #f2f3f5;
+    --surface: #fff;
+    --surface-2: #f7f7f9;
+    --border: #ececf0;
+    --border-strong: #e2e2e6;
+    --text-1: #141414;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text-1); font-size: 13px; line-height: 1.5;
+  }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  code { font-family: var(--mono); font-size: 11px; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+
+  .topbar { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 14px; padding: 12px 28px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .topbar h1 { font-size: 15px; font-weight: 700; }
+  .topbar .ver { font-size: 11px; color: var(--primary); background: var(--primary-bg); border-radius: 4px; padding: 2px 7px; font-weight: 600; }
+  .seg { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button { border: none; background: transparent; padding: 5px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .seg button.active { background: var(--surface); color: var(--text-1); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .topbar .spacer { flex: 1; }
+  .topbar .hint { font-size: 12px; color: var(--text-3); }
+
+  .stage { display: flex; justify-content: center; padding: 32px 24px 120px; gap: 28px; align-items: flex-start; }
+
+  .drawer { width: 780px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 12px 40px rgba(20,20,30,.10); overflow: hidden; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .d-head { padding: 16px 20px 14px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #fbfbfc 0%, var(--surface) 100%); }
+  .d-head-top { display: flex; align-items: flex-start; gap: 12px; }
+  .d-head-copy { flex: 1; min-width: 0; }
+  .d-hero { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .phase { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+  .phase .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .phase.ok { color: var(--success); background: var(--success-bg); }
+  .phase.warn { color: var(--warning); background: var(--warning-bg); }
+  .flag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .flag.warn { color: var(--warning); background: var(--warning-bg); }
+  .flag.danger { color: var(--danger); background: var(--danger-bg); }
+  .d-title { font-size: 16px; font-weight: 700; letter-spacing: -.01em; word-break: break-all; }
+  .d-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 11.5px; color: var(--text-2); }
+  .chip-k { color: var(--text-3); }
+  .chip .cp { opacity: 0; transition: opacity .12s; font-size: 10px; color: var(--text-3); }
+  .chip:hover .cp { opacity: 1; }
+
+  .d-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.06); color: #fff; }
+  .btn.icon { width: 28px; padding: 0; justify-content: center; }
+  .new-tag { font-size: 9px; font-weight: 700; color: #fff; background: rgba(255,255,255,.28); border-radius: 3px; padding: 0 3px; line-height: 13px; }
+  .btn:not(.primary) .new-tag { background: var(--primary); }
+
+  .alert-strip { display: flex; align-items: flex-start; gap: 10px; margin: 12px 20px 0; padding: 10px 14px; border-radius: 9px; border: 1px solid rgba(239,68,68,.25); background: linear-gradient(90deg, var(--danger-bg), rgba(239,68,68,.03)); }
+  .alert-strip .ai { color: var(--danger); font-size: 14px; line-height: 1.4; }
+  .alert-strip .at { font-size: 12.5px; font-weight: 600; color: var(--danger); }
+  .alert-strip .ad { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+  .alert-strip .ad .mono { color: var(--danger); }
+  .alert-strip .aact { margin-left: auto; flex-shrink: 0; font-size: 11.5px; color: var(--danger); font-weight: 600; }
+
+  .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); margin: 14px 20px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .kpi { padding: 10px 14px; border-right: 1px solid var(--border); }
+  .kpi:last-child { border-right: none; }
+  .kpi-k { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
+  .kpi-v { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi-v .unit { font-size: 11px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .kpi-v.warn { color: var(--warning); }
+  .kpi-v.ok { color: var(--success); }
+  .kpi-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+
+  .anchor-nav { position: sticky; top: 0; z-index: 10; display: flex; gap: 2px; margin-top: 14px; padding: 6px 20px; background: rgba(255,255,255,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+  .anchor-nav a { font-size: 12px; font-weight: 600; color: var(--text-3); text-decoration: none; padding: 5px 12px; border-radius: 6px; }
+  .anchor-nav a.active, .anchor-nav a:hover { color: var(--primary); background: var(--primary-bg); }
+  .anchor-nav .an-badge { font-size: 10px; background: var(--danger-bg); color: var(--danger); border-radius: 8px; padding: 0 5px; font-weight: 700; margin-left: 2px; }
+
+  .d-body { padding: 4px 20px 24px; max-height: 640px; overflow-y: auto; scroll-behavior: smooth; }
+
+  .sec { margin-top: 14px; }
+  .sec-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 0 -10px; border-radius: 8px; cursor: pointer; user-select: none; }
+  .sec-head:hover { background: var(--surface-2); }
+  .sec-title { font-size: 13px; font-weight: 700; }
+  .sec-meta { font-size: 11.5px; color: var(--text-3); }
+  .sec-meta .warn { color: var(--warning); font-weight: 600; }
+  .sec-caret { margin-left: auto; color: var(--text-3); font-size: 11px; transition: transform .15s; }
+  .sec-head.closed .sec-caret { transform: rotate(-90deg); }
+  .sec-body { padding-top: 8px; }
+  .sec-body.collapsed { display: none; }
+
+  .card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+  .kv { display: flex; gap: 10px; font-size: 12.5px; min-width: 0; }
+  .kv.wide { grid-column: 1 / -1; }
+  .kv-k { color: var(--text-3); flex-shrink: 0; width: 76px; }
+  .kv-v { color: var(--text-1); min-width: 0; word-break: break-all; }
+  .copyable { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
+  .copyable .cp-btn { border: none; background: none; color: var(--text-3); cursor: pointer; font-size: 11px; opacity: 0; transition: opacity .12s; flex-shrink: 0; }
+  .copyable:hover .cp-btn { opacity: 1; }
+
+  .ready-track { display: flex; align-items: center; }
+  .ready-step { display: flex; align-items: center; flex: 1; min-width: 0; }
+  .ready-step:last-child { flex: 0 0 auto; }
+  .rs-dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; flex-shrink: 0; border: 1.5px solid var(--border-strong); color: var(--text-3); background: var(--surface); }
+  .ready-step.done .rs-dot { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+  .ready-step.bad .rs-dot { border-color: var(--danger); color: var(--danger); background: var(--danger-bg); }
+  .rs-line { flex: 1; height: 1.5px; background: var(--border-strong); margin: 0 6px; }
+  .ready-step.done .rs-line { background: var(--success); }
+  .rs-label { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+  .ready-step.done .rs-label { color: var(--text-2); }
+  .ready-labels { display: flex; justify-content: space-between; padding-top: 2px; }
+
+  .ccard { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 10px; overflow: hidden; }
+  .ccard.problem { border-color: rgba(239,68,68,.3); }
+  .ccard-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; user-select: none; }
+  .ccard-head:hover { background: var(--surface-2); }
+  .cdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .cdot.ok { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
+  .cdot.bad { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-bg); }
+  .ccard-main { flex: 1; min-width: 0; }
+  .ccard-namerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ccard-name { font-size: 13px; font-weight: 700; }
+  .state-badge { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+  .state-badge.ok { color: var(--success); background: var(--success-bg); }
+  .state-badge.warn { color: var(--warning); background: var(--warning-bg); }
+  .state-badge.bad { color: var(--danger); background: var(--danger-bg); }
+  .restart-mini { font-size: 10.5px; font-weight: 600; color: var(--warning); background: var(--warning-bg); border-radius: 999px; padding: 1px 7px; }
+  .ccard-image { font-size: 11px; color: var(--text-3); margin-top: 1px; word-break: break-all; }
+  .ccard-caret { color: var(--text-3); font-size: 11px; transition: transform .15s; }
+  .ccard.closed .ccard-caret { transform: rotate(-90deg); }
+  .ccard-body { border-top: 1px solid var(--border); padding: 12px; }
+  .ccard.closed .ccard-body { display: none; }
+
+  .last-exit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--danger-bg); border: 1px solid rgba(239,68,68,.22); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; }
+  .last-exit .le-k { font-weight: 700; color: var(--danger); }
+  .last-exit .mono { color: var(--text-1); }
+
+  .res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .res-bar .rb-top { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 4px; }
+  .rb-k { color: var(--text-3); }
+  .rb-v { color: var(--text-2); }
+  .rb-track { height: 5px; border-radius: 3px; background: #ececf2; overflow: hidden; }
+  .rb-track i { display: block; height: 100%; border-radius: 3px; background: var(--primary); }
+
+  .codeblock { display: flex; gap: 10px; align-items: baseline; background: #1c1c22; color: #d5d5de; border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 11.5px; }
+  .codeblock .cb-k { color: #7d7d92; font-size: 10px; font-weight: 700; letter-spacing: .5px; flex-shrink: 0; }
+  .codeblock .mono { color: inherit; }
+
+  .sub-k { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: .4px; margin: 12px 0 6px; }
+  .env-row { display: flex; gap: 10px; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border); align-items: baseline; }
+  .env-row:last-child { border-bottom: none; }
+  .env-key { color: var(--text-2); flex-shrink: 0; max-width: 45%; word-break: break-all; }
+  .env-val { color: var(--text-1); word-break: break-all; }
+  .env-val.masked { color: var(--text-3); letter-spacing: 1px; }
+  .reveal-btn { border: none; background: none; color: var(--primary); font-size: 11px; cursor: pointer; flex-shrink: 0; }
+
+  .mount-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border); }
+  .mount-row:last-child { border-bottom: none; }
+  .mount-tag { margin-left: auto; font-size: 10.5px; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; flex-shrink: 0; }
+  .arrow { color: var(--text-3); }
+
+  .ports { display: flex; flex-wrap: wrap; gap: 6px; }
+  .port { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px; padding: 3px 9px; font-size: 11.5px; }
+  .port .p-arr { color: var(--primary); font-weight: 700; }
+  .port .p-ctr { color: var(--text-2); }
+  .port .p-proto { font-size: 10px; color: var(--text-3); background: var(--surface-2); border-radius: 3px; padding: 0 4px; }
+
+  .ev-filter { display: flex; gap: 4px; margin-left: auto; }
+  .ev-filter button { border: 1px solid var(--border); background: var(--surface); font-size: 11px; color: var(--text-3); border-radius: 999px; padding: 2px 10px; cursor: pointer; font-weight: 600; }
+  .ev-filter button.active { border-color: var(--primary); color: var(--primary); background: var(--primary-bg); }
+  .timeline { position: relative; padding-left: 18px; }
+  .timeline::before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 1.5px; background: var(--border-strong); }
+  .tl-item { position: relative; padding: 7px 0; }
+  .tl-item::before { content: ""; position: absolute; left: -18px; top: 13px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); border: 2px solid #b6b6c0; }
+  .tl-item.warn::before { border-color: var(--warning); background: var(--warning-bg); }
+  .tl-top { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+  .tl-top strong { font-weight: 650; }
+  .tl-count { font-size: 10.5px; font-weight: 700; color: var(--warning); background: var(--warning-bg); border-radius: 999px; padding: 0 6px; }
+  .tl-time { margin-left: auto; font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+  .tl-msg { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+
+  .label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lbl { display: inline-flex; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 11px; }
+  .lbl .lk { background: var(--surface-2); color: var(--text-3); padding: 2px 7px; border-right: 1px solid var(--border); }
+  .lbl .lv { color: var(--text-1); padding: 2px 7px; word-break: break-all; }
+
+  .trend-box { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 12px 14px; }
+  .trend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .spark { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 4px; }
+  .spark .sk { font-size: 11px; color: var(--text-3); }
+  .spark svg { display: block; width: 100%; height: 44px; margin-top: 4px; }
+
+  .marker { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; font-style: normal; cursor: default; flex-shrink: 0; vertical-align: middle; }
+
+  .notes { width: 340px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; padding: 18px 20px; position: sticky; top: 76px; }
+  .notes h2 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .notes .n-sub { font-size: 12px; color: var(--text-3); margin-bottom: 14px; }
+  .n-item { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+  .n-item .marker { margin-top: 1px; }
+  .n-item b { font-weight: 650; }
+  .n-item .n-why { color: var(--text-2); margin-top: 2px; }
+  .n-item .n-tag { font-size: 10px; font-weight: 700; color: var(--primary); background: var(--primary-bg); border-radius: 4px; padding: 0 5px; margin-left: 4px; white-space: nowrap; }
+  .n-item .n-tag.data { color: var(--success); background: var(--success-bg); }
+
+  @media (max-width: 1280px) {
+    .stage { flex-direction: column; align-items: center; }
+    .notes { position: static; width: 780px; max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>详情抽屉优化 v2</h1>
+  <span class="ver">静态预览</span>
+  <div class="seg">
+    <button class="active" data-view="pod">K8s Pod 详情</button>
+    <button data-view="docker">Docker 容器详情</button>
+  </div>
+  <div class="spacer"></div>
+  <span class="hint">点击区块标题可折叠 · 右侧为改动说明</span>
+</div>
+
+<div class="stage">
+
+  <div class="drawer view active" id="view-pod">
+    <div class="d-head">
+      <div class="d-head-top">
+        <div class="d-head-copy">
+          <div class="d-hero">
+            <span class="phase ok"><span class="dot"></span>Running</span>
+            <span class="flag warn">重启 12 次</span>
+            <span class="flag danger">曾 OOMKilled</span>
+            <i class="marker">1</i>
+          </div>
+          <div class="d-title mono">payment-service-7d8f9c-x2k9l</div>
+          <div class="d-chips">
+            <span class="chip"><span class="chip-k">命名空间</span>prod</span>
+            <span class="chip"><span class="chip-k">节点</span>worker-node-03</span>
+            <span class="chip"><span class="chip-k">Pod IP</span><span class="mono">10.244.1.45</span><span class="cp">⧉</span></span>
+            <span class="chip"><span class="chip-k">控制器</span>Deployment / payment-service</span>
+          </div>
+        </div>
+        <div class="d-actions">
+          <button class="btn primary">📄 日志 <span class="new-tag">NEW</span></button>
+          <button class="btn">⌨ 终端 <span class="new-tag">NEW</span></button>
+          <button class="btn">⟳ 刷新</button>
+          <button class="btn icon" title="关闭">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert-strip">
+      <span class="ai">⚠</span>
+      <div>
+        <div class="at">容器 <span class="mono">app</span> 上次因内存超限被终止 <i class="marker">2</i></div>
+        <div class="ad">OOMKilled · 退出码 <span class="mono">137</span> · 08-06 22:41:03 · 内存 limit <span class="mono">512Mi</span>，建议调高至 <span class="mono">1Gi</span></div>
+      </div>
+      <span class="aact">查看相关事件 ↓</span>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-k">容器就绪 <i class="marker">3</i></div>
+        <div class="kpi-v ok">2/2</div>
+        <div class="kpi-sub">含 1 个 init（已完成）</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">重启次数</div>
+        <div class="kpi-v warn">12</div>
+        <div class="kpi-sub">近 24h +3</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">运行时长</div>
+        <div class="kpi-v">5<span class="unit">d</span> 3<span class="unit">h</span></div>
+        <div class="kpi-sub">创建于 08-02 09:42</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">QoS</div>
+        <div class="kpi-v" style="font-size:15px">Burstable</div>
+        <div class="kpi-sub">优先级 prod-high</div>
+      </div>
+    </div>
+
+    <div class="anchor-nav">
+      <a href="#pd-ov" class="active">概览</a>
+      <a href="#pd-containers">容器</a>
+      <a href="#pd-events">事件<span class="an-badge">2</span></a>
+      <a href="#pd-config">配置</a>
+      <i class="marker" style="margin-left:auto">4</i>
+    </div>
+
+    <div class="d-body">
+
+      <div class="sec" id="pd-ov">
+        <div class="sec-head closed">
+          <span class="sec-title">就绪状态</span>
+          <span class="sec-meta">4/4 条件满足</span>
+          <i class="marker">5</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body collapsed">
+          <div class="card">
+            <div class="ready-track">
+              <div class="ready-step done"><span class="rs-dot">✓</span><span class="rs-line"></span></div>
+              <div class="ready-step done"><span class="rs-dot">✓</span><span class="rs-line"></span></div>
+              <div class="ready-step done"><span class="rs-dot">✓</span><span class="rs-line"></span></div>
+              <div class="ready-step done"><span class="rs-dot">✓</span></div>
+            </div>
+            <div class="ready-labels">
+              <span class="rs-label">PodScheduled</span>
+              <span class="rs-label">Initialized</span>
+              <span class="rs-label">ContainersReady</span>
+              <span class="rs-label">Ready</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head closed">
+          <span class="sec-title">指标趋势</span>
+          <span class="sec-meta">近 1h · CPU / 内存 · 默认折叠</span>
+          <i class="marker">6</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body collapsed">
+          <div class="trend-box">
+            <div class="trend-grid">
+              <div class="spark"><span class="sk">CPU 用量</span>
+                <svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#5e6ad2" stroke-width="1.6" points="0,30 20,28 40,31 60,24 80,26 100,18 120,22 140,15 160,20 180,12 200,16"/></svg>
+              </div>
+              <div class="spark"><span class="sk">内存用量</span>
+                <svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#f59e0b" stroke-width="1.6" points="0,34 20,32 40,30 60,28 80,26 100,20 120,16 140,12 160,8 180,34 200,30"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="pd-containers">
+        <div class="sec-head">
+          <span class="sec-title">容器</span>
+          <span class="sec-meta">2 个 · 异常容器已自动展开</span>
+          <i class="marker">7</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body">
+
+          <div class="ccard problem">
+            <div class="ccard-head">
+              <span class="cdot bad"></span>
+              <div class="ccard-main">
+                <div class="ccard-namerow">
+                  <span class="ccard-name">app</span>
+                  <span class="state-badge ok">Running</span>
+                  <span class="restart-mini">重启 12</span>
+                </div>
+                <div class="ccard-image mono">registry.internal/payment/app:v2.14.3</div>
+              </div>
+              <span class="ccard-caret">▼</span>
+            </div>
+            <div class="ccard-body">
+              <div class="last-exit">
+                <span class="le-k">上次终止</span>
+                <span>OOMKilled</span>
+                <span class="mono">exit 137</span>
+                <span class="mono">08-06 22:41:03</span>
+                <span style="color:var(--text-3)">· 本次已运行 6h 12m</span>
+              </div>
+              <div class="res-bars">
+                <div class="res-bar">
+                  <div class="rb-top"><span class="rb-k">CPU request / limit</span><span class="rb-v mono">250m / 500m</span></div>
+                  <div class="rb-track"><i style="width:50%"></i></div>
+                </div>
+                <div class="res-bar">
+                  <div class="rb-top"><span class="rb-k">内存 request / limit</span><span class="rb-v mono">256Mi / 512Mi</span></div>
+                  <div class="rb-track"><i style="width:92%;background:var(--warning)"></i></div>
+                </div>
+              </div>
+              <div class="kv-grid">
+                <div class="kv wide"><span class="kv-k">镜像</span><span class="kv-v"><span class="copyable"><span class="mono">registry.internal/payment/app:v2.14.3</span><button class="cp-btn" title="复制">⧉</button></span></span></div>
+                <div class="kv"><span class="kv-k">就绪探针</span><span class="kv-v mono">httpGet :8080/healthz</span></div>
+                <div class="kv"><span class="kv-k">存活探针</span><span class="kv-v mono">httpGet :8080/livez</span></div>
+                <div class="kv"><span class="kv-k">端口</span><span class="kv-v mono">8080/TCP</span></div>
+                <div class="kv"><span class="kv-k">拉取策略</span><span class="kv-v">IfNotPresent</span></div>
+              </div>
+              <div class="sub-k">环境变量（6，敏感值已掩码）</div>
+              <div class="env-row"><span class="env-key mono">SPRING_PROFILES_ACTIVE</span><span class="env-val mono">prod</span></div>
+              <div class="env-row"><span class="env-key mono">DB_PASSWORD</span><span class="env-val mono masked">••••••••</span><button class="reveal-btn">显示</button></div>
+              <div class="sub-k">卷挂载（2）</div>
+              <div class="mount-row"><span class="mono">config <span class="arrow">→</span> /etc/payment</span><span class="mount-tag">configMap · 只读</span></div>
+              <div class="mount-row"><span class="mono">logs <span class="arrow">→</span> /var/log/payment</span><span class="mount-tag">emptyDir</span></div>
+            </div>
+          </div>
+
+          <div class="ccard closed">
+            <div class="ccard-head">
+              <span class="cdot ok"></span>
+              <div class="ccard-main">
+                <div class="ccard-namerow">
+                  <span class="ccard-name">log-sidecar</span>
+                  <span class="state-badge ok">Running</span>
+                </div>
+                <div class="ccard-image mono">fluent/fluent-bit:2.1</div>
+              </div>
+              <span class="ccard-caret">▼</span>
+            </div>
+            <div class="ccard-body">
+              <div class="kv-grid">
+                <div class="kv"><span class="kv-k">状态</span><span class="kv-v">Running，已运行 5d 3h，重启 0</span></div>
+                <div class="kv"><span class="kv-k">拉取策略</span><span class="kv-v">IfNotPresent</span></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sec" id="pd-events">
+        <div class="sec-head">
+          <span class="sec-title">事件</span>
+          <span class="sec-meta">8 条 · <span class="warn">Warning 2</span></span>
+          <div class="ev-filter">
+            <button>全部</button><button class="active">仅 Warning</button>
+          </div>
+          <i class="marker">8</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body">
+          <div class="timeline">
+            <div class="tl-item warn">
+              <div class="tl-top"><strong>OOMKilling</strong><span class="tl-count">×3</span><span class="tl-time">08-06 22:41</span></div>
+              <p class="tl-msg">Memory cgroup out of memory: Killed process 23145 (java) total-vm:1.8G</p>
+            </div>
+            <div class="tl-item warn">
+              <div class="tl-top"><strong>BackOff</strong><span class="tl-count">×5</span><span class="tl-time">08-06 22:41</span></div>
+              <p class="tl-msg">Back-off restarting failed container app in pod payment-service-7d8f9c-x2k9l</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="pd-config">
+        <div class="sec-head closed">
+          <span class="sec-title">配置与调度</span>
+          <span class="sec-meta">基本信息 · 卷 · 标签注解</span>
+          <i class="marker">9</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body collapsed">
+          <div class="card">
+            <div class="kv-grid">
+              <div class="kv wide"><span class="kv-k">UID</span><span class="kv-v"><span class="copyable"><span class="mono">f47ac10b-58cc-4372-a567-0e02b2c3d479</span><button class="cp-btn" title="复制">⧉</button></span></span></div>
+              <div class="kv"><span class="kv-k">ServiceAccount</span><span class="kv-v mono">payment-sa</span></div>
+              <div class="kv"><span class="kv-k">DNS 策略</span><span class="kv-v">ClusterFirst</span></div>
+              <div class="kv"><span class="kv-k">重启策略</span><span class="kv-v">Always</span></div>
+              <div class="kv"><span class="kv-k">hostNetwork</span><span class="kv-v">否</span></div>
+            </div>
+            <div class="sub-k">卷（2）</div>
+            <div class="mount-row"><span class="mono"><b>config</b> · configMap · payment-config</span></div>
+            <div class="mount-row"><span class="mono"><b>logs</b> · emptyDir</span></div>
+            <div class="sub-k">标签（3） / 注解（5）</div>
+            <div class="label-cloud">
+              <span class="lbl"><span class="lk mono">app</span><span class="lv mono">payment-service</span></span>
+              <span class="lbl"><span class="lk mono">tier</span><span class="lv mono">backend</span></span>
+              <span class="lbl"><span class="lk mono">pod-template-hash</span><span class="lv mono">7d8f9c</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="drawer view" id="view-docker">
+    <div class="d-head">
+      <div class="d-head-top">
+        <div class="d-head-copy">
+          <div class="d-hero">
+            <span class="phase ok"><span class="dot"></span>运行中</span>
+            <span class="flag warn">健康检查失败 ×2</span>
+            <i class="marker">1</i>
+          </div>
+          <div class="d-title mono">nginx-gateway</div>
+          <div class="d-chips">
+            <span class="chip"><span class="chip-k">镜像</span><span class="mono">nginx:1.25-alpine</span><span class="cp">⧉</span></span>
+            <span class="chip"><span class="chip-k">ID</span><span class="mono">a3f8c91d2e</span><span class="cp">⧉</span></span>
+            <span class="chip"><span class="chip-k">启动</span>3 天前</span>
+            <span class="chip"><span class="chip-k">创建</span>2026-08-04 10:12</span>
+          </div>
+        </div>
+        <div class="d-actions">
+          <button class="btn primary">📄 日志 <span class="new-tag">NEW</span></button>
+          <button class="btn">⌨ 终端 <span class="new-tag">NEW</span></button>
+          <button class="btn">⟳ 刷新</button>
+          <button class="btn icon" title="关闭">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-k">运行时长 <i class="marker">10</i></div>
+        <div class="kpi-v">3<span class="unit">d</span> 4<span class="unit">h</span></div>
+        <div class="kpi-sub">PID 1842 · 退出码 0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">重启次数</div>
+        <div class="kpi-v">1</div>
+        <div class="kpi-sub">策略 unless-stopped</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">健康状态</div>
+        <div class="kpi-v warn" style="font-size:15px">Unhealthy</div>
+        <div class="kpi-sub">连续失败 2 次</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-k">OOM</div>
+        <div class="kpi-v ok" style="font-size:15px">未触发</div>
+        <div class="kpi-sub">OOMKilled: false</div>
+      </div>
+    </div>
+
+    <div class="anchor-nav">
+      <a href="#dd-net" class="active">网络</a>
+      <a href="#dd-res">资源</a>
+      <a href="#dd-health">健康检查</a>
+      <a href="#dd-config">配置</a>
+    </div>
+
+    <div class="d-body">
+
+      <div class="sec">
+        <div class="sec-head closed">
+          <span class="sec-title">指标趋势</span>
+          <span class="sec-meta">近 1h · 默认折叠，空数据时收缩为一行提示</span>
+          <i class="marker">6</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body collapsed">
+          <div class="trend-box">
+            <div class="trend-grid">
+              <div class="spark"><span class="sk">CPU 用量</span>
+                <svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#5e6ad2" stroke-width="1.6" points="0,36 25,33 50,35 75,30 100,32 125,28 150,30 175,26 200,28"/></svg>
+              </div>
+              <div class="spark"><span class="sk">内存用量</span>
+                <svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#f59e0b" stroke-width="1.6" points="0,30 25,29 50,30 75,28 100,29 125,27 150,28 175,27 200,27"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="dd-net">
+        <div class="sec-head">
+          <span class="sec-title">网络</span>
+          <span class="sec-meta">bridge · 2 个端口映射</span>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body">
+          <div class="card">
+            <div class="kv-grid">
+              <div class="kv"><span class="kv-k">IP 地址</span><span class="kv-v mono">172.17.0.4</span></div>
+              <div class="kv"><span class="kv-k">网络模式</span><span class="kv-v mono">bridge</span></div>
+              <div class="kv"><span class="kv-k">MAC 地址</span><span class="kv-v mono">02:42:ac:11:00:04</span></div>
+              <div class="kv"><span class="kv-k">网关</span><span class="kv-v mono">172.17.0.1</span></div>
+            </div>
+            <div class="sub-k">端口映射</div>
+            <div class="ports">
+              <span class="port"><span class="mono">0.0.0.0:80</span><span class="p-arr">→</span><span class="mono p-ctr">80</span><span class="p-proto">tcp</span></span>
+              <span class="port"><span class="mono">0.0.0.0:443</span><span class="p-arr">→</span><span class="mono p-ctr">443</span><span class="p-proto">tcp</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="dd-res">
+        <div class="sec-head">
+          <span class="sec-title">资源限制</span>
+          <span class="sec-meta">CPU 1.0/4 核 · 内存 512Mi/8Gi</span>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body">
+          <div class="card">
+            <div class="res-bars">
+              <div class="res-bar">
+                <div class="rb-top"><span class="rb-k">CPU 限额</span><span class="rb-v mono">1.0 / 4 核</span></div>
+                <div class="rb-track"><i style="width:25%"></i></div>
+              </div>
+              <div class="res-bar">
+                <div class="rb-top"><span class="rb-k">内存限额</span><span class="rb-v mono">512Mi / 8Gi</span></div>
+                <div class="rb-track"><i style="width:6%"></i></div>
+              </div>
+            </div>
+            <div class="kv-grid">
+              <div class="kv"><span class="kv-k">CPU 权重</span><span class="kv-v mono">1024</span></div>
+              <div class="kv"><span class="kv-k">PID 限制</span><span class="kv-v">未限制</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="dd-health">
+        <div class="sec-head">
+          <span class="sec-title">健康检查</span>
+          <span class="sec-meta"><span class="warn">Unhealthy · 连续失败 2 次</span></span>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body">
+          <div class="card">
+            <div class="kv-grid">
+              <div class="kv wide"><span class="kv-k">探针命令</span><span class="kv-v"><span class="copyable"><span class="mono">curl -f http://localhost/health || exit 1</span><button class="cp-btn" title="复制">⧉</button></span></span></div>
+              <div class="kv"><span class="kv-k">检测间隔</span><span class="kv-v mono">30s</span></div>
+              <div class="kv"><span class="kv-k">超时 / 重试</span><span class="kv-v mono">5s / 3 次</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" id="dd-config">
+        <div class="sec-head closed">
+          <span class="sec-title">运行配置</span>
+          <span class="sec-meta">命令 · 挂载 · 环境变量 · 标签</span>
+          <i class="marker">9</i>
+          <span class="sec-caret">▼</span>
+        </div>
+        <div class="sec-body collapsed">
+          <div class="codeblock"><span class="cb-k">CMD</span><span class="mono">nginx -g "daemon off;"</span></div>
+          <div class="card" style="margin-top:10px">
+            <div class="kv-grid">
+              <div class="kv"><span class="kv-k">工作目录</span><span class="kv-v mono">/</span></div>
+              <div class="kv"><span class="kv-k">运行用户</span><span class="kv-v mono">root</span></div>
+            </div>
+            <div class="sub-k">挂载（2）</div>
+            <div class="mount-row"><span class="mono">/etc/nginx/conf.d <span class="arrow">→</span> /etc/nginx/conf.d</span><span class="mount-tag">bind · 只读</span></div>
+            <div class="mount-row"><span class="mono">nginx-logs <span class="arrow">→</span> /var/log/nginx</span><span class="mount-tag">volume</span></div>
+            <div class="sub-k">环境变量（3）</div>
+            <div class="env-row"><span class="env-key mono">NGINX_HOST</span><span class="env-val mono">gateway.internal</span></div>
+            <div class="sub-k">标签（2）</div>
+            <div class="label-cloud">
+              <span class="lbl"><span class="lk mono">maintainer</span><span class="lv mono">ops-team</span></span>
+              <span class="lbl"><span class="lk mono">com.docker.compose.service</span><span class="lv mono">gateway</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>本轮优化点</h2>
+    <div class="n-sub">编号对应左侧抽屉中的圆形标记 1~10</div>
+
+    <div class="n-item"><i class="marker">1</i><div>
+      <b>头部加快捷操作 + 风险标记<span class="n-tag">UX</span></b>
+      <div class="n-why">新增「日志 / 终端」入口，看详情时不用再关抽屉回列表点；曾 OOMKilled、重启频繁等风险以 flag 形式钉在标题旁。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">2</i><div>
+      <b>诊断横幅<span class="n-tag data">新信息</span></b>
+      <div class="n-why">从容器 <code>lastState.terminated</code> 提取上次终止原因（OOMKilled / 退出码 / 时间），排障第一眼要看的信息，当前版本完全没有展示。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">3</i><div>
+      <b>KPI 条改为「就绪 x/y」<span class="n-tag data">数据修正</span></b>
+      <div class="n-why">原第一格只显示容器总数，改成 Ready 2/2 才有意义；补「近 24h 重启增量」等副信息。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">4</i><div>
+      <b>锚点导航<span class="n-tag">UX</span></b>
+      <div class="n-why">抽屉内容很长，加吸顶锚点 tab（概览/容器/事件/配置），事件 Warning 数带角标，一键跳转。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">5</i><div>
+      <b>状态条件改为 Ready 步骤条<span class="n-tag">UX</span></b>
+      <div class="n-why">4 行 True/False 布尔改成进度步骤条（PodScheduled → Initialized → ContainersReady → Ready），哪步卡住一眼可见；默认折叠。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">6</i><div>
+      <b>指标趋势可折叠<span class="n-tag">UX</span></b>
+      <div class="n-why">趋势图占近半屏，改为默认折叠；无采样数据时收缩成一行提示，不再空占大块区域。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">7</i><div>
+      <b>容器卡片智能展开<span class="n-tag">UX</span></b>
+      <div class="n-why">当前全部默认展开。改为：有异常（重启 / 非 Running）的容器自动展开，正常容器默认折叠成一行；卡片内新增「上次终止」高亮条。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">8</i><div>
+      <b>事件 Warning 过滤 + 置顶<span class="n-tag">UX</span></b>
+      <div class="n-why">加「全部 / 仅 Warning」筛选，Warning 优先展示；详情抽屉与日志抽屉的事件区有重复，可后续合并。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">9</i><div>
+      <b>低频字段合并为「配置」区<span class="n-tag">UX</span></b>
+      <div class="n-why">基本信息 12 个字段一半低频（DNS 策略、hostNetwork、ServiceAccount…），且与头部 chips 重复 4 项。去重后与卷/标签/注解合并成一个默认折叠区，首屏更干净。</div>
+    </div></div>
+
+    <div class="n-item"><i class="marker">10</i><div>
+      <b>Docker KPI 重排<span class="n-tag data">数据修正</span></b>
+      <div class="n-why">原 PID 单独占一格价值低，改为「运行时长（PID 降为副信息）/ 重启次数 / 健康状态 / OOM 是否触发」，把 inspect 里的 State.OOMKilled、RestartCount 提到首屏。</div>
+    </div></div>
+  </div>
+
+</div>
+
+<script>
+  var seg = document.querySelectorAll('.seg button');
+  seg.forEach(function(b) {
+    b.addEventListener('click', function() {
+      seg.forEach(function(x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      document.querySelectorAll('.view').forEach(function(v) {
+        v.classList.toggle('active', v.id === 'view-' + b.dataset.view);
+      });
+    });
+  });
+
+  document.querySelectorAll('.sec-head').forEach(function(head) {
+    head.addEventListener('click', function(e) {
+      if (e.target.closest('.ev-filter')) return;
+      head.classList.toggle('closed');
+      var body = head.nextElementSibling;
+      if (body && body.classList.contains('sec-body')) body.classList.toggle('collapsed');
+    });
+  });
+
+  document.querySelectorAll('.ccard-head').forEach(function(head) {
+    head.addEventListener('click', function() {
+      head.parentElement.classList.toggle('closed');
+    });
+  });
+
+  document.querySelectorAll('.ev-filter button').forEach(function(b) {
+    b.addEventListener('click', function(e) {
+      e.stopPropagation();
+      b.parentElement.querySelectorAll('button').forEach(function(x) { x.classList.remove('active'); });
+      b.classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.anchor-nav a').forEach(function(a) {
+    a.addEventListener('click', function() {
+      a.parentElement.querySelectorAll('a').forEach(function(x) { x.classList.remove('active'); });
+      a.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

@@ -659,17 +659,22 @@
           <div class="pd-hero">
             <span class="pd-phase" :class="detailPhaseClass"><span class="pd-pdot" aria-hidden="true"></span>{{ detailPhaseLabel }}</span>
             <span v-if="detailRestartCount > 0" class="pd-flag">重启 {{ detailRestartCount }}</span>
+            <span v-if="detailHadOom" class="pd-flag pd-flag-bad">曾 OOMKilled</span>
           </div>
           <h3 class="pd-title mono">{{ detailPod?.name || 'Pod 详情' }}</h3>
           <div class="pd-chips">
             <span class="pd-chip"><span class="pd-ck">命名空间</span>{{ detailMeta.namespace || '-' }}</span>
             <span class="pd-chip"><span class="pd-ck">节点</span>{{ detailSpec.nodeName || '-' }}</span>
-            <span class="pd-chip"><span class="pd-ck">Pod IP</span><span class="mono">{{ detailStatus.podIP || '-' }}</span></span>
-            <span class="pd-chip"><span class="pd-ck">Host IP</span><span class="mono">{{ detailStatus.hostIP || '-' }}</span></span>
-            <span class="pd-chip"><span class="pd-ck">运行</span>{{ detailAgeText }}</span>
+            <span class="pd-chip">
+              <span class="pd-ck">Pod IP</span><span class="mono">{{ detailStatus.podIP || '-' }}</span>
+              <button v-if="detailStatus.podIP" type="button" class="pd-chip-cp" :class="{ done: copiedKey === 'podip' }" :aria-label="copiedKey === 'podip' ? '已复制' : '复制 Pod IP'" @click="copyText(detailStatus.podIP, 'podip')">{{ copiedKey === 'podip' ? '✓' : '⧉' }}</button>
+            </span>
+            <span class="pd-chip"><span class="pd-ck">控制器</span>{{ detailOwnersText }}</span>
           </div>
         </div>
         <div class="pd-head-actions">
+          <el-button size="small" type="primary" plain @click="openDetailLogs">日志</el-button>
+          <el-button size="small" @click="openDetailExec">终端</el-button>
           <el-button size="small" :loading="podDetailLoading" @click="loadPodDetail">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
@@ -677,64 +682,98 @@
         </div>
       </div>
 
-      <div class="pd-stat-strip">
-        <div class="pd-stat"><div class="pd-stat-k">容器</div><div class="pd-stat-v">{{ detailContainerCount }}</div></div>
-        <div class="pd-stat"><div class="pd-stat-k">重启</div><div class="pd-stat-v" :class="{ 'is-warn': detailRestartCount > 0 }">{{ detailRestartCount }}</div></div>
-        <div class="pd-stat"><div class="pd-stat-k">QoS</div><div class="pd-stat-v sm">{{ detailStatus.qosClass || '-' }}</div></div>
-        <div class="pd-stat"><div class="pd-stat-k">优先级</div><div class="pd-stat-v sm">{{ detailSpec.priorityClassName || '-' }}</div></div>
+      <!-- 诊断横幅：上次终止原因（OOMKilled 等排障关键信息） -->
+      <div v-if="detailAlert" class="pd-alert" role="alert">
+        <span class="pd-alert-icon" aria-hidden="true">⚠</span>
+        <div class="pd-alert-copy">
+          <div class="pd-alert-title">
+            容器 <span class="mono">{{ detailAlert.name }}</span> 上次终止：{{ detailAlert.reason || '异常退出' }}
+          </div>
+          <div class="pd-alert-desc">
+            退出码 <span class="mono">{{ detailAlert.exitCode ?? '-' }}</span>
+            <template v-if="detailAlert.finishedAt"> · {{ formatTime(detailAlert.finishedAt) }}</template>
+            <template v-if="detailAlert.memLimit"> · 内存 limit <span class="mono">{{ detailAlert.memLimit }}</span>，建议适当调高</template>
+          </div>
+        </div>
+        <button type="button" class="pd-alert-act" @click="scrollPdSection('events')">查看事件 ↓</button>
       </div>
 
-      <div class="pd-trend-section">
-        <div class="pd-trend-title">指标趋势<span v-if="podTrendRangeText" class="pd-trend-sub">{{ podTrendRangeText }}</span></div>
-        <MetricTrendChart
-          :series="podTrendData?.series || []"
-          :loading="podTrendLoading"
-          :range-minutes="podTrendData?.range_minutes || 60"
-          :columns="2"
-          empty-hint="无容器指标数据（需 Prometheus 抓取 cAdvisor/kubelet）"
-        />
+      <div class="pd-stat-strip">
+        <div class="pd-stat">
+          <div class="pd-stat-k">容器就绪</div>
+          <div class="pd-stat-v" :class="detailReadyAllOk ? 'is-ok' : 'is-warn'">{{ detailReadyText }}</div>
+          <div v-if="detailInitContainers.length" class="pd-stat-sub">含 {{ detailInitContainers.length }} 个 init</div>
+        </div>
+        <div class="pd-stat">
+          <div class="pd-stat-k">重启次数</div>
+          <div class="pd-stat-v" :class="{ 'is-warn': detailRestartCount > 0 }">{{ detailRestartCount }}</div>
+        </div>
+        <div class="pd-stat">
+          <div class="pd-stat-k">运行时长</div>
+          <div class="pd-stat-v">{{ detailAgeText }}</div>
+          <div class="pd-stat-sub">创建于 {{ formatTime(detailMeta.creationTimestamp) }}</div>
+        </div>
+        <div class="pd-stat">
+          <div class="pd-stat-k">QoS</div>
+          <div class="pd-stat-v sm">{{ detailStatus.qosClass || '-' }}</div>
+          <div class="pd-stat-sub">优先级 {{ detailSpec.priorityClassName || '默认' }}</div>
+        </div>
+      </div>
+
+      <div class="pd-anchors" role="navigation" aria-label="详情区块导航">
+        <button type="button" class="pd-anchor" @click="scrollPdSection('trend')">概览</button>
+        <button type="button" class="pd-anchor" @click="scrollPdSection('containers')">容器</button>
+        <button type="button" class="pd-anchor" @click="scrollPdSection('events')">事件<span v-if="detailPodEventsWarningCount" class="pd-anchor-badge">{{ detailPodEventsWarningCount }}</span></button>
+        <button type="button" class="pd-anchor" @click="scrollPdSection('config')">配置</button>
       </div>
 
       <div class="pd-body" v-loading="podDetailLoading">
         <div class="pd-scroll">
           <template v-if="detailPodData">
+            <section class="pd-section" id="pd-sec-trend">
+              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('trend')" @click="toggleSection('trend')" @keyup.enter="toggleSection('trend')">
+                <h4 class="pd-section-title">指标趋势</h4>
+                <span class="pd-section-meta">{{ podTrendRangeText || '近 1 小时' }}</span>
+                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('trend') }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!isSectionCollapsed('trend')">
+                <MetricTrendChart
+                  :series="podTrendData?.series || []"
+                  :loading="podTrendLoading"
+                  :range-minutes="podTrendData?.range_minutes || 60"
+                  :columns="2"
+                  empty-hint="无容器指标数据（需 Prometheus 抓取 cAdvisor/kubelet）"
+                />
+              </div>
+            </section>
+
             <section class="pd-section">
-              <h4 class="pd-section-title">基本信息</h4>
-              <div class="pd-card">
-                <dl class="pd-kv-grid">
-                  <div class="pd-kv wide">
-                    <dt>UID</dt>
-                    <dd>
-                      <span class="pd-copy">
-                        <span class="mono">{{ detailMeta.uid || '-' }}</span>
-                        <button type="button" class="pd-copy-btn" :class="{ done: copiedKey === 'uid' }" :aria-label="copiedKey === 'uid' ? '已复制' : '复制 UID'" @click="copyText(detailMeta.uid || '', 'uid')">{{ copiedKey === 'uid' ? '✓' : '⧉' }}</button>
-                      </span>
-                    </dd>
-                  </div>
-                  <div class="pd-kv"><dt>命名空间</dt><dd>{{ detailMeta.namespace || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>节点</dt><dd class="mono">{{ detailSpec.nodeName || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>Pod IP</dt><dd class="mono">{{ detailStatus.podIP || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>Host IP</dt><dd class="mono">{{ detailStatus.hostIP || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>所属控制器</dt><dd>{{ detailOwnersText }}</dd></div>
-                  <div class="pd-kv"><dt>创建时间</dt><dd>{{ formatTime(detailMeta.creationTimestamp) }}</dd></div>
-                  <div class="pd-kv"><dt>启动时间</dt><dd>{{ formatTime(detailStatus.startTime) }}</dd></div>
-                  <div class="pd-kv"><dt>重启策略</dt><dd>{{ detailSpec.restartPolicy || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>ServiceAccount</dt><dd class="mono">{{ detailSpec.serviceAccountName || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>DNS 策略</dt><dd>{{ detailSpec.dnsPolicy || '-' }}</dd></div>
-                  <div class="pd-kv"><dt>hostNetwork</dt><dd>{{ detailSpec.hostNetwork ? '是' : '否' }}</dd></div>
-                </dl>
-                <div v-if="detailNodeSelectorText !== '-'" class="pd-sub">
-                  <div class="pd-sub-k">nodeSelector</div>
-                  <div class="mono">{{ detailNodeSelectorText }}</div>
+              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('conds')" @click="toggleSection('conds')" @keyup.enter="toggleSection('conds')">
+                <h4 class="pd-section-title">就绪状态</h4>
+                <span class="pd-section-meta">{{ detailReadySummary }}</span>
+                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('conds') }" aria-hidden="true"><ArrowDown /></el-icon>
+              </header>
+              <div v-show="!isSectionCollapsed('conds')" class="pd-card">
+                <div class="pd-steps">
+                  <template v-for="(s, i) in detailReadySteps" :key="s.type">
+                    <div class="pd-step" :class="s.cls" :title="s.reason || s.type">
+                      <span class="pd-step-dot">{{ s.icon }}</span>
+                      <span class="pd-step-label">{{ s.type }}</span>
+                    </div>
+                    <span v-if="i < detailReadySteps.length - 1" class="pd-step-line" :class="{ done: s.cls === 'done' && detailReadySteps[i + 1].cls === 'done' }"></span>
+                  </template>
                 </div>
-                <div v-if="detailTolerations.length" class="pd-sub">
-                  <div class="pd-sub-k">容忍（{{ detailTolerations.length }}）</div>
-                  <div v-for="(t, i) in detailTolerations" :key="i" class="mono">{{ t }}</div>
+                <div v-if="detailExtraConditions.length" class="pd-cond-list" style="margin-top: 12px">
+                  <div v-for="(cond, i) in detailExtraConditions" :key="i" class="pd-cond">
+                    <span class="pd-bool" :class="cond.status === 'True' ? 'yes' : 'no'">{{ cond.status }}</span>
+                    <span class="pd-cond-type">{{ cond.type }}</span>
+                    <span v-if="cond.reason" class="pd-cond-reason">{{ cond.reason }}</span>
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section class="pd-section" v-for="group in detailContainerGroups" :key="group.label">
+            <section class="pd-section" v-for="group in detailContainerGroups" :key="group.label" :id="group.label === '容器' ? 'pd-sec-containers' : undefined">
               <h4 class="pd-section-title">{{ group.label }}<span class="pd-section-meta">{{ group.list.length }}</span></h4>
               <div
                 v-for="(c, idx) in group.list"
@@ -762,6 +801,12 @@
                   <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed(c.foldKey) }" aria-hidden="true"><ArrowDown /></el-icon>
                 </header>
                 <div v-show="!isSectionCollapsed(c.foldKey)" class="pd-ccard-body">
+                  <div v-if="lastExitOf(c)" class="pd-last-exit">
+                    <span class="pd-le-k">上次终止</span>
+                    <span>{{ lastExitOf(c)?.reason || '异常退出' }}</span>
+                    <span class="mono">exit {{ lastExitOf(c)?.exitCode ?? '-' }}</span>
+                    <span v-if="lastExitOf(c)?.finishedAt" class="mono">{{ formatTime(lastExitOf(c)!.finishedAt) }}</span>
+                  </div>
                   <div v-if="resOf(c).cpu.show || resOf(c).mem.show" class="pd-res-bars">
                     <div v-if="resOf(c).cpu.show" class="pd-res-bar">
                       <div class="pd-res-top"><span class="pd-res-k">CPU 申请</span><span class="pd-res-v mono">{{ c.spec.resources?.requests?.cpu || '-' }} / {{ c.spec.resources?.limits?.cpu || '-' }}</span></div>
@@ -826,43 +871,18 @@
               </div>
             </section>
 
-            <section class="pd-section">
-              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('conds')" @click="toggleSection('conds')" @keyup.enter="toggleSection('conds')">
-                <h4 class="pd-section-title">状态条件</h4>
-                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('conds') }" aria-hidden="true"><ArrowDown /></el-icon>
-              </header>
-              <div v-show="!isSectionCollapsed('conds')" class="pd-cond-list">
-                <div v-for="(cond, i) in detailConditions" :key="i" class="pd-cond">
-                  <span class="pd-bool" :class="cond.status === 'True' ? 'yes' : 'no'">{{ cond.status }}</span>
-                  <span class="pd-cond-type">{{ cond.type }}</span>
-                  <span v-if="cond.reason" class="pd-cond-reason">{{ cond.reason }}</span>
-                </div>
-                <div v-if="!detailConditions.length" class="pd-empty">无状态信息</div>
-              </div>
-            </section>
-
-            <section class="pd-section">
-              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('volumes')" @click="toggleSection('volumes')" @keyup.enter="toggleSection('volumes')">
-                <h4 class="pd-section-title">卷 Volumes</h4>
-                <span class="pd-section-meta">{{ detailVolumes.length }} 项</span>
-                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('volumes') }" aria-hidden="true"><ArrowDown /></el-icon>
-              </header>
-              <div v-show="!isSectionCollapsed('volumes')" class="pd-volume-list">
-                <div v-for="(v, i) in detailVolumes" :key="i" class="pd-volume">
-                  <span class="mono"><b>{{ v.name }}</b> · {{ v.type }}<template v-if="v.detail"> · {{ v.detail }}</template></span>
-                </div>
-                <div v-if="!detailVolumes.length" class="pd-empty">无卷</div>
-              </div>
-            </section>
-
-            <section class="pd-section">
+            <section class="pd-section" id="pd-sec-events">
               <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('events')" @click="toggleSection('events')" @keyup.enter="toggleSection('events')">
                 <h4 class="pd-section-title">事件</h4>
                 <span class="pd-section-meta">{{ detailPodEvents.length }} 条 · Warning {{ detailPodEventsWarningCount }}</span>
+                <span class="pd-ev-filter" @click.stop @keyup.stop>
+                  <button type="button" :class="{ active: podEventFilter === 'all' }" @click="podEventFilter = 'all'">全部</button>
+                  <button type="button" :class="{ active: podEventFilter === 'warning' }" @click="podEventFilter = 'warning'">仅 Warning</button>
+                </span>
                 <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('events') }" aria-hidden="true"><ArrowDown /></el-icon>
               </header>
               <div v-show="!isSectionCollapsed('events')" class="pd-timeline">
-                <div v-for="(ev, i) in detailPodEvents" :key="i" class="pd-tl-item" :class="ev.type === 'Warning' ? 'warn' : 'normal'">
+                <div v-for="(ev, i) in detailFilteredEvents" :key="i" class="pd-tl-item" :class="ev.type === 'Warning' ? 'warn' : 'normal'">
                   <div class="pd-tl-top">
                     <strong>{{ ev.reason || '-' }}</strong>
                     <span v-if="(ev.count ?? 1) > 1" class="pd-tl-count">×{{ ev.count }}</span>
@@ -870,26 +890,64 @@
                   </div>
                   <p v-if="ev.message" class="pd-tl-msg">{{ ev.message }}</p>
                 </div>
-                <el-empty v-if="!detailPodEvents.length" description="暂无事件" :image-size="48" />
+                <el-empty v-if="!detailFilteredEvents.length" :description="podEventFilter === 'warning' ? '暂无 Warning 事件' : '暂无事件'" :image-size="48" />
               </div>
             </section>
 
-            <section class="pd-section">
-              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('labels')" @click="toggleSection('labels')" @keyup.enter="toggleSection('labels')">
-                <h4 class="pd-section-title">标签 / 注解</h4>
-                <span class="pd-section-meta">{{ detailLabelCount }}</span>
-                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('labels') }" aria-hidden="true"><ArrowDown /></el-icon>
+            <section class="pd-section" id="pd-sec-config">
+              <header class="pd-section-head" role="button" tabindex="0" :aria-expanded="!isSectionCollapsed('config')" @click="toggleSection('config')" @keyup.enter="toggleSection('config')">
+                <h4 class="pd-section-title">配置与调度</h4>
+                <span class="pd-section-meta">基本信息 · 卷 {{ detailVolumes.length }} · {{ detailLabelCount }}</span>
+                <el-icon class="pd-caret" :class="{ open: !isSectionCollapsed('config') }" aria-hidden="true"><ArrowDown /></el-icon>
               </header>
-              <div v-show="!isSectionCollapsed('labels')" class="pd-card">
-                <div class="pd-sub-k">标签（{{ detailLabels.length }}）</div>
-                <div class="pd-label-cloud">
-                  <span v-for="item in detailLabels" :key="item.key" class="pd-label"><span class="pd-lk mono">{{ item.key }}</span><span class="pd-lv mono">{{ item.value || '(空)' }}</span></span>
-                  <span v-if="!detailLabels.length" class="pd-empty">无标签</span>
+              <div v-show="!isSectionCollapsed('config')" class="pd-card">
+                <dl class="pd-kv-grid">
+                  <div class="pd-kv wide">
+                    <dt>UID</dt>
+                    <dd>
+                      <span class="pd-copy">
+                        <span class="mono">{{ detailMeta.uid || '-' }}</span>
+                        <button type="button" class="pd-copy-btn" :class="{ done: copiedKey === 'uid' }" :aria-label="copiedKey === 'uid' ? '已复制' : '复制 UID'" @click="copyText(detailMeta.uid || '', 'uid')">{{ copiedKey === 'uid' ? '✓' : '⧉' }}</button>
+                      </span>
+                    </dd>
+                  </div>
+                  <div class="pd-kv"><dt>Host IP</dt><dd class="mono">{{ detailStatus.hostIP || '-' }}</dd></div>
+                  <div class="pd-kv"><dt>启动时间</dt><dd>{{ formatTime(detailStatus.startTime) }}</dd></div>
+                  <div class="pd-kv"><dt>重启策略</dt><dd>{{ detailSpec.restartPolicy || '-' }}</dd></div>
+                  <div class="pd-kv"><dt>ServiceAccount</dt><dd class="mono">{{ detailSpec.serviceAccountName || '-' }}</dd></div>
+                  <div class="pd-kv"><dt>DNS 策略</dt><dd>{{ detailSpec.dnsPolicy || '-' }}</dd></div>
+                  <div class="pd-kv"><dt>hostNetwork</dt><dd>{{ detailSpec.hostNetwork ? '是' : '否' }}</dd></div>
+                </dl>
+                <div v-if="detailNodeSelectorText !== '-'" class="pd-sub">
+                  <div class="pd-sub-k">nodeSelector</div>
+                  <div class="mono">{{ detailNodeSelectorText }}</div>
                 </div>
-                <div class="pd-sub-k gap">注解（{{ detailAnnotations.length }}）</div>
-                <div class="pd-label-cloud">
-                  <span v-for="item in detailAnnotations" :key="item.key" class="pd-label"><span class="pd-lk mono">{{ item.key }}</span><span class="pd-lv mono">{{ item.value || '(空)' }}</span></span>
-                  <span v-if="!detailAnnotations.length" class="pd-empty">无注解</span>
+                <div v-if="detailTolerations.length" class="pd-sub">
+                  <div class="pd-sub-k">容忍（{{ detailTolerations.length }}）</div>
+                  <div v-for="(t, i) in detailTolerations" :key="i" class="mono">{{ t }}</div>
+                </div>
+                <div class="pd-sub">
+                  <div class="pd-sub-k">卷（{{ detailVolumes.length }}）</div>
+                  <div class="pd-volume-list">
+                    <div v-for="(v, i) in detailVolumes" :key="i" class="pd-volume">
+                      <span class="mono"><b>{{ v.name }}</b> · {{ v.type }}<template v-if="v.detail"> · {{ v.detail }}</template></span>
+                    </div>
+                    <div v-if="!detailVolumes.length" class="pd-empty">无卷</div>
+                  </div>
+                </div>
+                <div class="pd-sub">
+                  <div class="pd-sub-k">标签（{{ detailLabels.length }}）</div>
+                  <div class="pd-label-cloud">
+                    <span v-for="item in detailLabels" :key="item.key" class="pd-label"><span class="pd-lk mono">{{ item.key }}</span><span class="pd-lv mono">{{ item.value || '(空)' }}</span></span>
+                    <span v-if="!detailLabels.length" class="pd-empty">无标签</span>
+                  </div>
+                </div>
+                <div class="pd-sub">
+                  <div class="pd-sub-k">注解（{{ detailAnnotations.length }}）</div>
+                  <div class="pd-label-cloud">
+                    <span v-for="item in detailAnnotations" :key="item.key" class="pd-label"><span class="pd-lk mono">{{ item.key }}</span><span class="pd-lv mono">{{ item.value || '(空)' }}</span></span>
+                    <span v-if="!detailAnnotations.length" class="pd-empty">无注解</span>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1984,8 +2042,73 @@ const detailAnnotations = computed(() => labelEntries(detailMeta.value.annotatio
 const detailLabelCount = computed(() => `${detailLabels.value.length} 标签 · ${detailAnnotations.value.length} 注解`)
 const detailPodEventsWarningCount = computed(() => detailPodEvents.value.filter((e) => e.type === 'Warning').length)
 
+// 事件筛选：Warning 优先，可只看 Warning
+const podEventFilter = ref<'all' | 'warning'>('all')
+const detailFilteredEvents = computed(() => {
+  const list = detailPodEvents.value
+  if (podEventFilter.value === 'warning') return list.filter((e) => e.type === 'Warning')
+  return [...list].sort((a, b) => Number(b.type === 'Warning') - Number(a.type === 'Warning'))
+})
+
+// 状态条件 → 就绪步骤条（标准四步 + 其余条件附加展示）
+const READY_STEP_TYPES = ['PodScheduled', 'Initialized', 'ContainersReady', 'Ready']
+const detailReadySteps = computed(() => {
+  return READY_STEP_TYPES.map((type) => {
+    const cond = detailConditions.value.find((c: any) => c.type === type)
+    if (!cond) return { type, cls: '', icon: '·', reason: '' }
+    if (cond.status === 'True') return { type, cls: 'done', icon: '✓', reason: cond.reason || '' }
+    return { type, cls: 'bad', icon: '✕', reason: cond.reason || '' }
+  })
+})
+const detailExtraConditions = computed(() => detailConditions.value.filter((c: any) => !READY_STEP_TYPES.includes(c.type)))
+const detailReadySummary = computed(() => {
+  const ok = detailReadySteps.value.filter((s) => s.cls === 'done').length
+  return `${ok}/${READY_STEP_TYPES.length} 条件满足`
+})
+
+// 容器就绪 x/y
+const detailReadyText = computed(() => {
+  const statuses: any[] = detailStatus.value.containerStatuses || []
+  if (!statuses.length) return '-'
+  const ready = statuses.filter((s: any) => s.ready).length
+  return `${ready}/${statuses.length}`
+})
+const detailReadyAllOk = computed(() => {
+  const statuses: any[] = detailStatus.value.containerStatuses || []
+  return statuses.length > 0 && statuses.every((s: any) => s.ready)
+})
+
+// 上次终止信息（排障关键数据，来自 containerStatuses[].lastState.terminated）
+function lastExitOf(c: PodDetailContainer) {
+  const t = c.status?.lastState?.terminated
+  if (!t) return null
+  return t as { reason?: string; exitCode?: number; finishedAt?: string }
+}
+const detailHadOom = computed(() => {
+  const statuses = [...(detailStatus.value.containerStatuses || []), ...(detailStatus.value.initContainerStatuses || [])]
+  return statuses.some((s: any) => s.lastState?.terminated?.reason === 'OOMKilled')
+})
+// 诊断横幅：优先展示 OOMKilled，其次非零退出码的容器
+const detailAlert = computed(() => {
+  const all = [...detailContainers.value, ...detailInitContainers.value]
+  const withExit = all
+    .map((c) => ({ c, t: lastExitOf(c) }))
+    .filter((x): x is { c: PodDetailContainer; t: { reason?: string; exitCode?: number; finishedAt?: string } } => !!x.t)
+  if (!withExit.length) return null
+  const pick = withExit.find((x) => x.t.reason === 'OOMKilled')
+    || withExit.find((x) => Number(x.t.exitCode) > 0)
+    || null
+  if (!pick) return null
+  return {
+    name: pick.c.name,
+    reason: pick.t.reason || '',
+    exitCode: pick.t.exitCode,
+    finishedAt: pick.t.finishedAt || '',
+    memLimit: pick.t.reason === 'OOMKilled' ? (pick.c.spec?.resources?.limits?.memory || '') : '',
+  }
+})
+
 // ── 抽屉头部摘要 / 资源条 ──
-const detailContainerCount = computed(() => detailContainers.value.length + detailInitContainers.value.length)
 const detailRestartCount = computed(() => {
   const s = detailStatus.value
   const sum = (arr: any[]) => (arr || []).reduce((n, c: any) => n + (Number(c.restartCount) || 0), 0)
@@ -2249,6 +2372,9 @@ function reconnectPodExec() {
   execInstance.value++
 }
 
+// 首次加载时按容器健康度决定默认展开：异常容器展开，正常容器折叠；刷新不打断用户手动折叠状态
+let detailDefaultsPending = false
+
 async function openPodDetail(row: K8sPod) {
   stopPodLiveFollow()
   drawerVisible.value = false
@@ -2256,14 +2382,32 @@ async function openPodDetail(row: K8sPod) {
   detailPodData.value = null
   detailPodEvents.value = []
   podTrendData.value = null
+  podEventFilter.value = 'all'
   revealedEnvKeys.value = new Set()
   Object.keys(detailCollapse).forEach((k) => delete detailCollapse[k])
-  detailCollapse.volumes = true
+  detailCollapse.trend = true
+  detailCollapse.conds = true
   detailCollapse.events = true
-  detailCollapse.labels = true
+  detailCollapse.config = true
+  detailDefaultsPending = true
   podDetailVisible.value = true
   await loadPodDetail()
   loadPodTrends()
+}
+
+function openDetailLogs() {
+  if (detailPod.value) openPodDrawer(detailPod.value, 'logs')
+}
+function openDetailExec() {
+  if (detailPod.value) openPodExec(detailPod.value)
+}
+
+function scrollPdSection(key: string) {
+  // 折叠的区块先展开再滚动定位
+  if (key in detailCollapse && isSectionCollapsed(key)) detailCollapse[key] = false
+  nextTick(() => {
+    document.getElementById(`pd-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 async function loadPodDetail() {
   if (!detailPod.value) return
@@ -2272,6 +2416,18 @@ async function loadPodDetail() {
     const res: any = await getPodDetail(clusterName.value, detailPod.value.namespace, detailPod.value.name)
     detailPodData.value = res.data?.pod || null
     detailPodEvents.value = res.data?.events || []
+    if (detailDefaultsPending) {
+      detailDefaultsPending = false
+      // 异常容器（非 Running 或有重启）自动展开，正常容器折叠
+      for (const g of detailContainerGroups.value) {
+        for (const c of g.list) {
+          const problem = c.state.tag !== 'success' || (c.status?.restartCount ?? 0) > 0
+          detailCollapse[c.foldKey] = !problem
+        }
+      }
+      // 有 Warning 事件时默认展开事件区
+      if (detailPodEventsWarningCount.value > 0) detailCollapse.events = false
+    }
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '加载 Pod 详情失败')
     detailPodData.value = null
@@ -3439,75 +3595,119 @@ button.summary-card {
   box-shadow: 0 0 0 2px var(--primary-color);
 }
 
-/* ─── Pod 详情抽屉（重设计） ─── */
+/* ─── Pod 详情抽屉（v2：样式与 mockups/detail-drawer-v2.html 对齐） ─── */
 .pd-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px 20px 16px;
-  background: var(--surface-color);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 20px 14px;
+  background: linear-gradient(180deg, #fbfbfc 0%, var(--surface-color) 100%);
   border-bottom: 1px solid var(--border-color);
 }
 .pd-head-copy { min-width: 0; flex: 1; }
-.pd-hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pd-hero { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .pd-phase {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 11px 3px 9px; border-radius: 999px;
-  font-size: 12.5px; font-weight: 700;
+  font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
 }
-.pd-phase .pd-pdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.pd-phase.pd-ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
-.pd-phase.pd-bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
-.pd-phase.pd-warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
-.pd-flag {
-  font-size: 11.5px; font-weight: 700; color: #b45309;
-  background: color-mix(in srgb, var(--warning-color) 14%, white);
-  padding: 3px 9px; border-radius: 999px;
-}
-.pd-title {
-  margin: 7px 0 0; font-size: 17px; font-weight: 750;
-  word-break: break-all; line-height: 1.3;
-}
-.pd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.pd-phase .pd-pdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pd-phase.pd-ok { color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.pd-phase.pd-bad { color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.pd-phase.pd-warn { color: #d97706; background: rgba(245, 158, 11, 0.13); }
+.pd-flag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #d97706; background: rgba(245, 158, 11, 0.13); }
+.pd-flag.pd-flag-bad { color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.pd-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; word-break: break-all; line-height: 1.3; }
+.pd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .pd-chip {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 6px; font-size: 12px;
-  color: var(--text-secondary); background: var(--bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--bg-color); border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 2px 8px; font-size: 11.5px; color: var(--text-secondary);
 }
 .pd-chip .pd-ck { color: var(--text-muted); }
+.pd-chip-cp {
+  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
+  width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center;
+  font-size: 10px; line-height: 1; opacity: 0; transition: all 0.15s;
+}
+.pd-chip:hover .pd-chip-cp { opacity: 1; }
+.pd-chip-cp:hover { background: var(--primary-bg); color: var(--primary-color); }
+.pd-chip-cp.done { opacity: 1; color: var(--success-color); }
 .pd-head-actions { display: flex; gap: 6px; align-items: center; flex: none; }
 .pd-close {
-  border: 0; cursor: pointer; width: 30px; height: 30px; border-radius: 8px;
-  background: var(--bg-color); color: var(--text-secondary); font-size: 15px; line-height: 1;
+  border: 0; cursor: pointer; width: 28px; height: 28px; border-radius: 7px;
+  background: var(--bg-color); color: var(--text-secondary); font-size: 14px; line-height: 1;
   display: grid; place-items: center; transition: all 0.15s ease-out;
 }
-.pd-close:hover { background: color-mix(in srgb, var(--danger-color) 13%, white); color: var(--danger-color); }
+.pd-close:hover { background: rgba(239, 68, 68, 0.09); color: #dc2626; }
 
+/* 诊断横幅 */
+.pd-alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 12px 20px 0; padding: 10px 14px; border-radius: 9px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.09), rgba(239, 68, 68, 0.03));
+}
+.pd-alert-icon { color: #dc2626; font-size: 14px; line-height: 1.4; }
+.pd-alert-copy { min-width: 0; flex: 1; }
+.pd-alert-title { font-size: 12.5px; font-weight: 600; color: #dc2626; }
+.pd-alert-desc { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+.pd-alert-act {
+  border: 0; background: transparent; cursor: pointer; flex: none;
+  font-size: 11.5px; font-weight: 600; color: #dc2626; padding: 2px 0;
+}
+.pd-alert-act:hover { text-decoration: underline; }
+
+/* KPI 条 */
 .pd-stat-strip {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border-color); border-bottom: 1px solid var(--border-color);
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  margin: 14px 20px 0;
+  border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;
+  background: var(--surface-color);
 }
-.pd-stat { background: var(--surface-color); padding: 11px 16px; }
-.pd-stat-k {
-  font-size: 11px; color: var(--text-muted); font-weight: 600;
-  letter-spacing: 0.3px; margin-bottom: 2px;
+.pd-stat { padding: 10px 14px; border-right: 1px solid var(--border-color); }
+.pd-stat:last-child { border-right: none; }
+.pd-stat-k { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.pd-stat-v { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.pd-stat-v.sm { font-size: 15px; }
+.pd-stat-v.is-warn { color: #d97706; }
+.pd-stat-v.is-ok { color: #16a34a; }
+.pd-stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+/* 锚点导航 */
+.pd-anchors {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 14px; padding: 8px 20px;
+  background: var(--surface-color); border-bottom: 1px solid var(--border-color);
 }
-.pd-stat-v { font-size: 17px; font-weight: 750; color: var(--text-primary); }
-.pd-stat-v.sm { font-size: 13.5px; }
-.pd-stat-v.is-warn { color: var(--warning-color); }
+.pd-anchor {
+  border: 0; background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 4px 12px; border-radius: 6px; transition: all 0.12s;
+}
+.pd-anchor:hover { color: var(--primary-color); background: var(--primary-bg); }
+.pd-anchor-badge {
+  font-size: 10px; font-weight: 700; line-height: 1.4;
+  color: #dc2626; background: rgba(239, 68, 68, 0.09);
+  border-radius: 8px; padding: 0 5px;
+}
 
 .pd-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.pd-scroll {
-  flex: 1; min-height: 0; overflow-y: auto;
-  padding: 16px 20px 32px; background: var(--bg-color);
-}
+.pd-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 24px; background: var(--surface-color); }
 .pd-scroll::-webkit-scrollbar { width: 10px; }
-.pd-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--bg-color); }
+.pd-scroll::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 6px; border: 3px solid var(--surface-color); }
 
-.pd-section { margin-bottom: 18px; }
-.pd-trend-section { margin: 16px 0; }
+.pd-section { margin-top: 14px; }
+.pd-section-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; margin: 0 -10px 8px; border-radius: 8px;
+  cursor: pointer; user-select: none;
+}
+.pd-section-head:hover { background: var(--bg-color); }
+.pd-section-title { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.pd-section-head .pd-section-title { margin: 0; }
+.pd-section-meta { font-size: 11.5px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+.pd-caret { margin-left: auto; color: var(--text-muted); transition: transform 0.15s ease-out; font-size: 11px; flex: none; }
+.pd-caret.open { transform: rotate(180deg); }
+
 .exec-bar { display: flex; gap: 8px; margin-bottom: 10px; }
 .exec-container-input { max-width: 320px; }
 .exec-tip { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
@@ -3516,231 +3716,210 @@ button.summary-card {
   background: var(--surface-color); padding: 1px 5px; border-radius: 4px;
   border: 1px solid var(--border-color);
 }
-.pd-trend-title {
-  display: flex; align-items: baseline; gap: 8px;
-  margin: 0 0 10px; font-size: 12px; font-weight: 700;
-  color: var(--text-primary); letter-spacing: 0.4px;
-}
-.pd-trend-sub {
-  font-size: 11px; font-weight: 500; color: var(--text-muted);
-  background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
-  border: 1px solid var(--border-color);
-}
-.pd-section-title {
-  display: flex; align-items: baseline; gap: 7px;
-  margin: 0 0 10px; font-size: 12px; font-weight: 750;
-  color: var(--text-primary); letter-spacing: 0.4px; text-transform: uppercase;
-}
-.pd-section-meta {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  background: var(--surface-color); padding: 1px 7px; border-radius: 5px;
-  border: 1px solid var(--border-color); text-transform: none; letter-spacing: 0;
-}
-.pd-section-head {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 10px; cursor: pointer; user-select: none;
-}
-.pd-section-head:hover .pd-section-title { color: var(--primary-color); }
-.pd-section-head .pd-section-title { margin: 0; }
-.pd-section-head .pd-section-meta { margin-left: auto; }
-.pd-caret { color: var(--text-muted); transition: transform 0.2s ease-out; font-size: 12px; flex: none; }
-.pd-caret.open { transform: rotate(180deg); }
 
-.pd-card {
-  background: var(--surface-color); border: 1px solid var(--border-color);
-  border-radius: var(--border-radius); padding: 13px 16px;
-}
+.pd-card { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; }
 
 /* 键值网格 */
-.pd-kv-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0; margin: 0;
-}
-.pd-kv {
-  display: flex; align-items: baseline; gap: 10px; padding: 8px 0;
-  border-bottom: 1px solid var(--border-color); min-width: 0;
-}
-.pd-kv:nth-last-child(-n+2) { border-bottom: 0; }
-.pd-kv.wide { grid-column: 1 / -1; flex-direction: column; align-items: stretch; gap: 3px; }
-.pd-kv dt { flex: none; width: 86px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
-.pd-kv.wide dt { width: auto; }
-.pd-kv dd {
-  margin: 0; flex: 1; min-width: 0; color: var(--text-primary);
-  font-size: 13px; line-height: 1.55; word-break: break-word;
-}
-.pd-copy { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pd-kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 0; }
+.pd-kv { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; min-width: 0; }
+.pd-kv.wide { grid-column: 1 / -1; }
+.pd-kv dt { flex: none; width: 92px; color: var(--text-muted); font-size: 12.5px; }
+.pd-kv dd { margin: 0; flex: 1; min-width: 0; color: var(--text-primary); font-size: 12.5px; word-break: break-all; }
+.pd-copy { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
 .pd-copy .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pd-copy-btn {
-  border: 0; background: transparent; cursor: pointer; color: var(--text-muted);
-  flex: none; width: 24px; height: 24px; border-radius: 6px;
-  display: grid; place-items: center; transition: all 0.15s;
+  border: 0; background: transparent; cursor: pointer; color: var(--text-muted); flex: none;
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 11px; transition: all 0.15s;
 }
 .pd-copy-btn:hover { background: var(--primary-bg); color: var(--primary-color); }
 .pd-copy-btn.done { color: var(--success-color); }
 
-.pd-sub {
-  margin-top: 11px; padding-top: 11px;
-  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
-  display: grid; gap: 4px;
+.pd-sub { margin-top: 12px; display: block; }
+.pd-sub-k { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.4px; margin-bottom: 6px; }
+
+/* 就绪步骤条 */
+.pd-steps { display: flex; align-items: flex-start; }
+.pd-step { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; width: 88px; }
+.pd-step-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px;
+  border: 1.5px solid var(--border-color); color: var(--text-muted); background: var(--surface-color);
 }
-.pd-sub-k { color: var(--text-muted); font-size: 12px; }
-.pd-sub-k.gap { margin-top: 4px; }
+.pd-step.done .pd-step-dot { border-color: #16a34a; color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.pd-step.bad .pd-step-dot { border-color: #dc2626; color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.pd-step-label { font-size: 10.5px; color: var(--text-muted); text-align: center; }
+.pd-step.done .pd-step-label, .pd-step.bad .pd-step-label { color: var(--text-secondary); }
+.pd-step-line { flex: 1; height: 1.5px; background: var(--border-color); margin-top: 11px; }
+.pd-step-line.done { background: #16a34a; }
+
+/* 状态条件（附加条件的扁平行） */
+.pd-cond-list { display: block; }
+.pd-cond {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border-color);
+}
+.pd-cond:last-child { border-bottom: none; }
+.pd-bool { flex: none; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.pd-bool.yes { color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.pd-bool.no { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, white); }
+.pd-cond-type { font-weight: 600; color: var(--text-primary); }
+.pd-cond-reason { color: var(--text-muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 容器卡片 */
 .pd-ccard {
-  background: var(--surface-color); border: 1px solid var(--border-color);
-  border-radius: var(--border-radius); margin-bottom: 10px; overflow: hidden;
-  transition: border-color 0.15s;
+  border: 1px solid var(--border-color); border-radius: 10px;
+  background: var(--surface-color); margin-bottom: 10px; overflow: hidden;
 }
-.pd-ccard:hover { border-color: color-mix(in srgb, var(--border-color), #000 12%); }
 .pd-ccard-head {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  cursor: pointer; user-select: none; transition: background 0.15s;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  cursor: pointer; user-select: none;
 }
 .pd-ccard-head:hover { background: var(--bg-color); }
 .pd-ccard-head:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--primary-color); }
 .pd-ccard-main { flex: 1; min-width: 0; }
 .pd-ccard-namerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pd-ccard-name { font-size: 14px; font-weight: 700; }
-.pd-ccard-image { color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pd-sdot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.pd-sdot.running { background: var(--success-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 18%, transparent); }
-.pd-sdot.waiting { background: var(--warning-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning-color) 20%, transparent); }
-.pd-sdot.failed { background: var(--danger-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger-color) 18%, transparent); }
+.pd-ccard-name { font-size: 13px; font-weight: 700; }
+.pd-ccard-image { font-size: 11px; color: var(--text-muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.pd-sdot.running { background: #16a34a; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.11); }
+.pd-sdot.waiting { background: #d97706; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.13); }
+.pd-sdot.failed { background: #dc2626; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.09); }
 .pd-sdot.terminated { background: var(--text-muted); }
-
-.pd-state { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 5px; }
-.pd-state.sm { font-size: 11px; padding: 1px 7px; }
-.pd-state.ok { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
-.pd-state.bad { color: #b42318; background: color-mix(in srgb, var(--danger-color) 13%, white); }
-.pd-state.warn { color: #b45309; background: color-mix(in srgb, var(--warning-color) 16%, white); }
+.pd-state { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+.pd-state.sm { font-size: 10.5px; }
+.pd-state.ok { color: #16a34a; background: rgba(34, 197, 94, 0.11); }
+.pd-state.bad { color: #dc2626; background: rgba(239, 68, 68, 0.09); }
+.pd-state.warn { color: #d97706; background: rgba(245, 158, 11, 0.13); }
 .pd-state.info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 12%, white); }
 .pd-restart-mini {
-  font-size: 11.5px; font-weight: 700; color: #b45309;
-  background: color-mix(in srgb, var(--warning-color) 14%, white);
-  padding: 2px 8px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  color: #d97706; background: rgba(245, 158, 11, 0.13);
 }
+.pd-ccard-body { border-top: 1px solid var(--border-color); padding: 12px 14px; }
 
-.pd-ccard-body { padding: 4px 14px 14px; display: grid; gap: 12px; }
+/* 上次终止高亮条 */
+.pd-last-exit {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 10px; padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; color: var(--text-secondary);
+  background: rgba(239, 68, 68, 0.09);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+}
+.pd-last-exit .pd-le-k { font-weight: 700; color: #dc2626; }
+.pd-last-exit .mono { color: var(--text-primary); }
 
 /* 资源条 */
-.pd-res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pd-res-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .pd-res-bar { min-width: 0; }
-.pd-res-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
-.pd-res-k { font-size: 11px; color: var(--text-muted); font-weight: 650; letter-spacing: 0.3px; }
-.pd-res-v { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
-.pd-res-track {
-  height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--border-color) 50%, white);
-  overflow: hidden;
-}
-.pd-res-track i {
-  display: block; height: 100%; border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 70%, white), var(--primary-color));
-}
+.pd-res-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; margin-bottom: 4px; }
+.pd-res-k { color: var(--text-muted); }
+.pd-res-v { color: var(--text-secondary); }
+.pd-res-track { height: 5px; border-radius: 3px; background: #ececf2; overflow: hidden; }
+.pd-res-track i { display: block; height: 100%; border-radius: 3px; background: var(--primary-color); }
 
 /* 代码块 */
 .pd-codeblock {
-  background: #1e1e2a; color: #d4d4e4; padding: 9px 12px; border-radius: 7px;
   display: flex; align-items: baseline; gap: 10px;
-  font-size: 12.5px; line-height: 1.6; word-break: break-word;
+  background: #1c1c22; color: #d5d5de; padding: 8px 12px; border-radius: 8px;
+  font-size: 11.5px; line-height: 1.6; word-break: break-word;
+  margin-top: 8px;
 }
-.pd-codeblock .mono { color: #d4d4e4; }
-.pd-code-k { color: #8b8ba7; font-size: 10.5px; font-weight: 750; letter-spacing: 0.5px; flex: none; }
+.pd-codeblock .mono { color: inherit; }
+.pd-code-k { color: #7d7d92; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; flex: none; }
 
-/* 探针 */
+/* 探针（扁平虚线行） */
 .pd-probe {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  background: var(--bg-color); border-radius: 7px; margin-bottom: 6px; font-size: 12.5px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border-color);
 }
-.pd-probe:last-child { margin-bottom: 0; }
-.pd-probe-k { font-weight: 700; color: var(--primary-color); flex: none; width: 64px; }
+.pd-probe:last-child { border-bottom: none; }
+.pd-probe-k { font-weight: 700; color: var(--primary-color); flex: none; width: 64px; font-size: 11px; }
 .pd-probe-what { color: var(--text-secondary); flex: 1; min-width: 0; }
-.pd-probe-time { color: var(--text-muted); flex: none; font-size: 11.5px; }
+.pd-probe-time { color: var(--text-muted); flex: none; font-size: 11px; }
 
-/* 环境变量 */
-.pd-env-list {
-  list-style: none; margin: 0; padding: 0; display: grid; gap: 1px;
-  background: var(--border-color); border: 1px solid var(--border-color);
-  border-radius: 7px; overflow: hidden;
-}
+/* 环境变量（扁平虚线行） */
+.pd-env-list { list-style: none; margin: 0; padding: 0; }
 .pd-env-row {
-  display: grid; grid-template-columns: minmax(0, 160px) 1fr auto;
-  align-items: center; gap: 12px; padding: 7px 12px; background: var(--surface-color);
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border-color);
 }
-.pd-env-key { color: var(--text-secondary); word-break: break-all; }
+.pd-env-row:last-child { border-bottom: none; }
+.pd-env-key { color: var(--text-secondary); flex: none; max-width: 45%; word-break: break-all; }
 .pd-env-val { color: var(--text-primary); word-break: break-all; }
-.pd-env-val.masked { color: var(--text-muted); letter-spacing: 2px; }
-.pd-env-reveal { flex: none; height: auto; padding: 0; font-size: 12px; }
+.pd-env-val.masked { color: var(--text-muted); letter-spacing: 1px; }
+.pd-env-reveal { flex: none; height: auto; padding: 0; font-size: 11px; }
 
-/* 挂载 */
+/* 挂载（扁平虚线行） */
 .pd-mount {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  background: var(--bg-color); border-radius: 7px; margin-bottom: 6px; font-size: 12.5px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border-color);
 }
-.pd-mount:last-child { margin-bottom: 0; }
-.pd-arrow { color: var(--primary-color); font-weight: 700; }
+.pd-mount:last-child { border-bottom: none; }
+.pd-arrow { color: var(--text-muted); }
 .pd-mount-tag {
-  font-size: 10.5px; padding: 2px 7px; border-radius: 5px; margin-left: auto;
-  background: color-mix(in srgb, var(--text-muted) 12%, white); color: var(--text-secondary); font-weight: 600;
+  margin-left: auto; font-size: 10.5px; font-weight: 500; flex: none;
+  color: var(--text-muted); background: var(--bg-color);
+  border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 6px;
 }
-
-/* 状态条件 */
-.pd-cond-list { display: grid; gap: 6px; }
-.pd-cond {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 7px; font-size: 12.5px;
-}
-.pd-bool { flex: none; font-size: 11px; font-weight: 750; padding: 2px 8px; border-radius: 5px; }
-.pd-bool.yes { color: #15803d; background: color-mix(in srgb, var(--success-color) 14%, white); }
-.pd-bool.no { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, white); }
-.pd-cond-type { font-weight: 650; color: var(--text-primary); }
-.pd-cond-reason { color: var(--text-muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 卷 */
-.pd-volume-list { display: grid; gap: 6px; }
-.pd-volume {
-  padding: 8px 12px; background: var(--surface-color); border: 1px solid var(--border-color);
-  border-radius: 7px; font-size: 12.5px;
-}
+.pd-volume-list { display: block; }
+.pd-volume { font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border-color); }
+.pd-volume:last-child { border-bottom: none; }
 
 /* 事件时间线 */
-.pd-timeline { position: relative; padding-left: 4px; }
-.pd-tl-item { position: relative; padding: 0 0 14px 22px; }
-.pd-tl-item:last-child { padding-bottom: 0; }
+.pd-timeline { position: relative; padding-left: 18px; }
+.pd-timeline::before {
+  content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px;
+  width: 1.5px; background: var(--border-color);
+}
+.pd-tl-item { position: relative; padding: 7px 0; }
 .pd-tl-item::before {
-  content: ""; position: absolute; left: 5px; top: 5px; width: 9px; height: 9px; border-radius: 50%;
-  background: var(--text-muted); border: 2px solid var(--bg-color); z-index: 1;
+  content: ""; position: absolute; left: -18px; top: 13px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--surface-color); border: 2px solid #b6b6c0;
 }
-.pd-tl-item.warn::before { background: var(--warning-color); }
-.pd-tl-item.normal::before { background: var(--success-color); }
-.pd-tl-item:not(:last-child)::after {
-  content: ""; position: absolute; left: 9px; top: 13px; bottom: 0; width: 2px; background: var(--border-color);
-}
-.pd-tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.pd-tl-top strong { font-size: 13px; }
+.pd-tl-item.warn::before { border-color: #d97706; background: rgba(245, 158, 11, 0.13); }
+.pd-tl-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.pd-tl-top strong { font-weight: 650; }
 .pd-tl-count {
-  font-size: 11px; color: var(--text-muted); background: var(--surface-color);
-  border: 1px solid var(--border-color); padding: 1px 6px; border-radius: 4px; font-weight: 600;
+  font-size: 10.5px; font-weight: 700; color: #d97706;
+  background: rgba(245, 158, 11, 0.13); border-radius: 999px; padding: 0 6px;
 }
-.pd-tl-time { font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
-.pd-tl-msg { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; word-break: break-word; }
+.pd-tl-time { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.pd-tl-msg { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.5; word-break: break-word; }
 
-/* 标签云 */
-.pd-label-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+/* 事件筛选 */
+.pd-ev-filter { display: flex; gap: 4px; margin-left: auto; }
+.pd-ev-filter button {
+  border: 1px solid var(--border-color); background: var(--surface-color); cursor: pointer;
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  border-radius: 999px; padding: 2px 10px; transition: all 0.12s;
+}
+.pd-ev-filter button.active {
+  border-color: var(--primary-color); color: var(--primary-color); background: var(--primary-bg);
+}
+.pd-ev-filter + .pd-caret { margin-left: 0; }
+
+/* 标签云（key/value 分色胶囊） */
+.pd-label-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
 .pd-label {
-  display: inline-flex; align-items: baseline; gap: 3px; padding: 4px 9px; border-radius: 6px;
-  background: var(--primary-bg); font-size: 11.5px; max-width: 100%;
+  display: inline-flex; max-width: 100%;
+  border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;
+  font-size: 11px; background: var(--surface-color);
 }
-.pd-label .pd-lk { color: var(--primary-color); font-weight: 700; }
-.pd-label .pd-lv { color: var(--text-secondary); word-break: break-all; }
+.pd-label .pd-lk { background: var(--bg-color); color: var(--text-muted); padding: 2px 7px; border-right: 1px solid var(--border-color); }
+.pd-label .pd-lv { color: var(--text-primary); padding: 2px 7px; word-break: break-all; }
 
-.pd-empty { color: var(--text-muted); font-size: 13px; padding: 6px 0; }
+.pd-empty { color: var(--text-muted); font-size: 12px; padding: 4px 0; }
 .is-danger { color: var(--danger-color) !important; }
+
 
 @media (max-width: 768px) {
   .pd-kv-grid,
   .pd-res-bars { grid-template-columns: 1fr; }
-  .pd-env-row { grid-template-columns: 1fr; gap: 3px; }
+  .pd-env-row { flex-wrap: wrap; gap: 2px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pd-caret,
