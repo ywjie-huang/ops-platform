@@ -15,11 +15,17 @@
     </div>
     <div class="header-right">
       <el-dropdown trigger="click">
-        <div class="user-avatar">{{ authStore.fullName?.[0] || 'U' }}</div>
+        <div class="user-avatar" :title="authStore.fullName || '用户'">
+          <span class="avatar-char">{{ authStore.fullName?.[0] || 'U' }}</span>
+        </div>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="pwdVisible = true">修改密码</el-dropdown-item>
-            <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
+            <div class="user-card">
+              <div class="user-card-name">{{ authStore.fullName || '未命名用户' }}</div>
+              <div class="user-card-sub">{{ authStore.username }}</div>
+            </div>
+            <el-dropdown-item divided @click="pwdVisible = true">修改密码</el-dropdown-item>
+            <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -197,16 +203,46 @@ async function handleChangePwd() {
 }
 
 .user-avatar {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: #5e6ad2;
+  background: linear-gradient(135deg, #5e6ad2 0%, #8b5cf6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
   cursor: pointer;
+  box-shadow: 0 0 0 2px var(--surface-color), 0 0 0 3.5px rgba(94, 106, 210, 0.25);
+  transition: box-shadow 0.15s ease-out;
+
+  &:hover {
+    box-shadow: 0 0 0 2px var(--surface-color), 0 0 0 3.5px rgba(94, 106, 210, 0.55);
+  }
+}
+
+.avatar-char {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transform: translateY(-0.5px);
+}
+
+.user-card {
+  padding: 10px 16px 8px;
+  min-width: 140px;
+  line-height: 1.3;
+}
+
+.user-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-card-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>

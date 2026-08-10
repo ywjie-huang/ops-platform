@@ -1,8 +1,13 @@
 <template>
   <div class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
     <div class="sidebar-logo">
-      <div class="logo-dot"></div>
-      <span v-show="!appStore.sidebarCollapsed">运维平台</span>
+      <span class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 17l6-5-6-5M12 19h8" /></svg>
+      </span>
+      <span class="logo-word" v-show="!appStore.sidebarCollapsed">
+        <span class="logo-name">运维平台</span>
+        <span class="logo-sub">Ops Platform</span>
+      </span>
     </div>
 
     <el-scrollbar wrap-style="overflow-x: hidden">
@@ -152,22 +157,54 @@ const processedRoutes = computed(() => {
   align-items: center;
   gap: 10px;
   height: 56px;
-  padding: 0 16px;
+  padding: 0 12px;
   flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
   overflow: hidden;
 }
 
-.logo-dot {
-  width: 8px;
-  height: 8px;
-  background: #5e6ad2;
-  border-radius: 2px;
+.logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #5e6ad2 0%, #8b5cf6 100%);
+  box-shadow: 0 2px 8px rgba(94, 106, 210, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+
+  svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+.logo-word {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.logo-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.logo-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
 }
 
 // ── Element Plus Menu 样式覆盖 ──
