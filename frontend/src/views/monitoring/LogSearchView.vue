@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -353,6 +353,19 @@ function highlight(message: string) {
 }
 
 // ── 路由联动（分享 / Pod 抽屉跳转） ──
+// 页面被 keep-alive 缓存，跳转时 onMounted 不会再次触发，
+// 必须 watch route.query；appliedQuery 快照防止 syncRoute 自触发死循环。
+
+function serializeQuery(q: Record<string, any>): string {
+  const out: Record<string, string> = {}
+  for (const k of Object.keys(q).sort()) {
+    const v = q[k]
+    if (typeof v === 'string') out[k] = v
+  }
+  return JSON.stringify(out)
+}
+
+const appliedQuery = ref('')
 
 function syncRoute() {
   const query: Record<string, string> = {}
@@ -364,14 +377,18 @@ function syncRoute() {
     query.start = timeRange.value[0].toISOString()
     query.end = timeRange.value[1].toISOString()
   }
+  const s = serializeQuery(query)
+  if (s === serializeQuery(route.query)) return
+  appliedQuery.value = s
   router.replace({ query })
 }
 
 function initFromRoute() {
   const q = route.query
+  // keep-alive 复用组件时需先整体重置，避免上次筛选残留
   for (const k of Object.keys(filters) as (keyof typeof filters)[]) {
     const v = q[k]
-    if (typeof v === 'string') filters[k] = v
+    filters[k] = typeof v === 'string' ? v : ''
   }
   const start = typeof q.start === 'string' ? new Date(q.start) : null
   const end = typeof q.end === 'string' ? new Date(q.end) : null
@@ -379,11 +396,23 @@ function initFromRoute() {
     timeRange.value = [start, end]
     quick.value = ''
   } else {
-    applyQuick(quick.value, false)
+    // 外部跳入（Pod/Docker 历史日志，无时间参数）恢复默认区间
+    applyQuick('24h', false)
   }
 }
 
+watch(() => route.query, (q) => {
+  // 离开本页后的全局 query 变化不响应，避免在后台页面发起无效查询
+  if (route.name !== 'LogSearch') return
+  const s = serializeQuery(q)
+  if (s === appliedQuery.value) return
+  appliedQuery.value = s
+  initFromRoute()
+  doSearch()
+})
+
 onMounted(() => {
+  appliedQuery.value = serializeQuery(route.query)
   initFromRoute()
   doSearch()
 })
