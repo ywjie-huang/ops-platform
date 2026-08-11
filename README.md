@@ -182,10 +182,11 @@ docker run -d \
 ### 9. 告警事件（Alertmanager Webhook）
 
 - Alertmanager 通过 **webhook** 推送告警事件到后端，自动存入数据库
-- 告警事件表格：ID、来源信息、告警名称、严重程度、状态、告警值、告警摘要、连续触发次数、触发时间、恢复时间
-- 支持关键词搜索 + 严重程度/状态筛选
-- 每行可展开查看原始 labels/annotations JSON
-- 告警值自动从 description 中提取百分比数值
+- **值班视角**：默认 firing 视图；概览统计卡（firing / critical firing / 已恢复 / 全部）点击即筛选，firing 呼吸红点强调
+- **表格瘦身**：告警名+摘要双行合并、来源智能化（pod > instance > job）、触发/持续单列（相对时间 + 持续时长）、连续触发 ≥3 次红色角标
+- **行展开排障面板**：labels chips（点击复制）、annotations（runbook_url 渲染为链接）、fingerprint、Prometheus 表达式直达
+- **面板直达操作**：关联日志（±15 分钟预填跳转日志检索）、转为工单（标题/描述/优先级按告警上下文预填）
+- 自动刷新（30s，keep-alive 感知，离开页面自动停表）；加载失败警告条 + 无 firing 安稳空状态
 
 ### 10. 告警管理
 
