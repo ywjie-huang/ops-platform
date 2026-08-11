@@ -17,9 +17,16 @@ export interface ProviderPreset {
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
+  // ─── 国际 ───
   { id: 'openai', name: 'OpenAI', icon: 'AI', hint: 'GPT-4o / o3', base_url: 'https://api.openai.com/v1', model: 'gpt-4o' },
-  { id: 'deepseek', name: 'DeepSeek', icon: 'DS', hint: 'DeepSeek Chat', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  { id: 'qwen', name: '通义千问', icon: 'QW', hint: 'Qwen Plus', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  // ─── 国内 ───
+  { id: 'zhipu', name: '智谱 GLM', icon: 'ZP', hint: 'GLM-4.7 / GLM-5', base_url: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4.7-flash' },
+  { id: 'moonshot', name: 'Kimi (月之暗面)', icon: 'KS', hint: 'Kimi K3', base_url: 'https://api.moonshot.cn/v1', model: 'kimi-k3' },
+  { id: 'deepseek', name: 'DeepSeek', icon: 'DS', hint: 'DeepSeek V4', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
+  { id: 'qwen', name: '通义千问', icon: 'QW', hint: 'Qwen3.7 (阿里云百炼)', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.7-plus' },
+  { id: 'doubao', name: '豆包 (火山方舟)', icon: 'DB', hint: 'Doubao Seed (字节跳动)', base_url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-1.6-250615' },
+  { id: 'wenxin', name: '文心一言 (百度千帆)', icon: 'WX', hint: 'ERNIE 4.0', base_url: 'https://qianfan.baidubce.com/v2', model: 'ernie-4.0-turbo' },
+  // ─── 本地 / 通用 ───
   { id: 'ollama', name: 'Ollama', icon: 'OL', hint: '本地部署', base_url: 'http://localhost:11434/v1', model: 'qwen2.5:7b' },
   { id: 'openai_compatible', name: 'OpenAI 兼容', icon: 'API', hint: '中转站 / 网关', base_url: 'https://your-gateway.example/v1', model: 'gpt-4o' },
   { id: 'custom', name: '自定义', icon: '⚡', hint: '手动填写全部字段', base_url: '', model: '' },

@@ -125,10 +125,18 @@ def guess_provider_from_url(url: str) -> str:
     u = (url or "").lower()
     if "openai" in u:
         return "openai"
+    if "bigmodel" in u:
+        return "zhipu"
+    if "moonshot" in u:
+        return "moonshot"
     if "deepseek" in u:
         return "deepseek"
     if "dashscope" in u or "aliyuncs" in u:
         return "qwen"
+    if "volces.com" in u or "/ark" in u:
+        return "doubao"
+    if "qianfan" in u or "baidubce" in u:
+        return "wenxin"
     if "11434" in u or "ollama" in u:
         return "ollama"
     return "custom"
@@ -162,8 +170,12 @@ def ensure_llm_profiles_migrated(db: Session) -> list[dict[str, Any]]:
         "provider": provider,
         "icon": {
             "openai": "AI",
+            "zhipu": "ZP",
+            "moonshot": "KS",
             "deepseek": "DS",
             "qwen": "QW",
+            "doubao": "DB",
+            "wenxin": "WX",
             "ollama": "OL",
         }.get(provider, "⚡"),
         "base_url": legacy["base_url"],

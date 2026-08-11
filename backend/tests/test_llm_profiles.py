@@ -282,3 +282,26 @@ def test_is_llm_configured_allows_local_without_key():
         "api_key": "sk-x",
         "model": "deepseek-chat",
     })
+
+
+def test_guess_provider_from_url_covers_all_presets():
+    """provider URL 推断覆盖所有内置预设的 base_url，与前端 PROVIDER_PRESETS 对齐。"""
+    from app.core.settings import guess_provider_from_url
+
+    cases = {
+        "https://api.openai.com/v1": "openai",
+        "https://open.bigmodel.cn/api/paas/v4/": "zhipu",
+        "https://api.moonshot.cn/v1": "moonshot",
+        "https://api.moonshot.ai/v1": "moonshot",
+        "https://api.deepseek.com/v1": "deepseek",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1": "qwen",
+        "https://ark.cn-beijing.volces.com/api/v3": "doubao",
+        "https://qianfan.baidubce.com/v2": "wenxin",
+        "http://localhost:11434/v1": "ollama",
+        "https://my-gateway.example/v1": "custom",
+        "": "custom",
+    }
+    for url, expected in cases.items():
+        assert guess_provider_from_url(url) == expected, (
+            f"{url!r} 应推断为 {expected!r}，实际得到 {guess_provider_from_url(url)!r}"
+        )
