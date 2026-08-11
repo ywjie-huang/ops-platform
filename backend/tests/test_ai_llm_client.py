@@ -188,6 +188,8 @@ def test_responses_mode_accumulates_function_call_arguments(monkeypatch):
 
 
 def test_responses_input_conversion_for_tool_messages():
+    """工具续接：assistant tool_call 携带的 response item 内联进 input，
+    不再用 item_reference（依赖服务端记忆，call_id 当 id 用会 502）。"""
     client = LLMClient("https://relay.example.com/v1", "sk-test", "o3", api_mode="responses")
 
     converted = client._build_responses_input(
@@ -222,14 +224,63 @@ def test_responses_input_conversion_for_tool_messages():
     assert converted == [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"},
-        {"type": "item_reference", "id": "rs_1"},
-        {"type": "item_reference", "id": "call_1"},
+        {"id": "rs_1", "type": "reasoning", "content": [], "summary": []},
+        {
+            "id": "fc_1",
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "query_assets",
+            "arguments": json.dumps({"keyword": "db"}),
+        },
         {
             "type": "function_call_output",
             "call_id": "call_1",
             "output": "done",
         },
     ]
+
+
+def test_responses_input_inlines_function_call_with_correct_id_not_call_id():
+    """回归：function_call item 的 item_reference 旧实现误用 call_id（call_xxx）
+    当 id，服务端找不到对应 item 返回 502。改为内联完整 item，id 用 fc_xxx。"""
+    client = LLMClient("https://relay.example.com/v1", "sk-test", "o3", api_mode="responses")
+
+    converted = client._build_responses_input(
+        [
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {"name": "query_logs", "arguments": "{}"},
+                        "response_item": {
+                            "id": "fc_xyz",
+                            "type": "function_call",
+                            "call_id": "call_abc",
+                            "name": "query_logs",
+                            "arguments": "{}",
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "content": "no logs", "tool_call_id": "call_abc"},
+        ]
+    )
+
+    # 不应出现任何 item_reference
+    assert not any(item.get("type") == "item_reference" for item in converted)
+    # function_call 应内联，且 id 是 fc_xyz（不是 call_abc）
+    fc_items = [item for item in converted if item.get("type") == "function_call"]
+    assert len(fc_items) == 1
+    assert fc_items[0]["id"] == "fc_xyz"
+    assert fc_items[0]["call_id"] == "call_abc"
+    # function_call_output 的 call_id 与 function_call 对应
+    fco_items = [item for item in converted if item.get("type") == "function_call_output"]
+    assert len(fco_items) == 1
+    assert fco_items[0]["call_id"] == "call_abc"
 
 
 def test_responses_mode_retries_tool_outputs_as_plain_context_after_502(monkeypatch):

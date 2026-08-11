@@ -403,6 +403,14 @@ class LLMClient:
         return finalized
 
     def _collect_response_items(self, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """收集 tool_call 携带的 response item，内联回 Responses input。
+
+        历史实现用 item_reference（只传 id 让服务端回忆），但 id 取的是
+        function_call 的 call_id（call_xxx）而非 item id（fc_xxx），导致 502；
+        即便修正 id，item_reference 也依赖服务端保留上下文，跨请求不稳定。
+        改为内联完整 item（function_call / reasoning / message），不再依赖
+        服务端记忆，工具调用续接稳定。
+        """
         items: list[dict[str, Any]] = []
         seen: set[tuple[str, str, str]] = set()
         for tool_call in tool_calls:
@@ -410,7 +418,7 @@ class LLMClient:
             if tool_call.get("response_item"):
                 raw_items.append(tool_call["response_item"])
             for raw_item in raw_items:
-                item = self._response_item_reference_for_input(raw_item)
+                item = self._response_item_for_input(raw_item)
                 marker = (
                     item.get("id", ""),
                     item.get("type", ""),
@@ -421,12 +429,6 @@ class LLMClient:
                 seen.add(marker)
                 items.append(item)
         return items
-
-    def _response_item_reference_for_input(self, item: dict[str, Any]) -> dict[str, Any]:
-        item_id = item.get("call_id") if item.get("type") == "function_call" else item.get("id")
-        if item_id:
-            return {"type": "item_reference", "id": item_id}
-        return self._response_item_for_input(item)
 
     def _response_item_for_input(self, item: dict[str, Any]) -> dict[str, Any]:
         item_type = item.get("type", "")
