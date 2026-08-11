@@ -201,6 +201,7 @@ docker run -d \
 - **日志量直方图**：粒度自适应时间范围，点击柱条缩放到该时间段
 - **Pod 联动**：Pod 日志抽屉与详情抽屉提供「历史日志」入口，按 namespace/pod 预填跳转，解决 K8s 实时日志随 Pod 重建丢失的问题
 - **Docker 联动**：Docker 容器日志/详情抽屉同样提供入口；K8s 托管容器从 Docker 名反解 namespace/pod/container 三维精确过滤，独立容器按主机维度兜底
+- **告警联动**：告警事件行提供「关联日志」入口，按触发时间 ±15 分钟预填时间窗；labels 含 namespace/pod/container 时精确过滤，否则按 node/instance 主机维度兜底
 - **映射自适应**：过滤与聚合自动适配 `.keyword` 子字段（Logstash 直写 text 映射）与原生 keyword 字段（Filebeat 模板），聚合字段经 `_field_caps` 探测缓存；ES 错误透出 root_cause 便于排障
 - **安全设计**：ES 查询全部在后端白名单构造（前端不接触原始 Query DSL），ES 不直接暴露前端；复用 `monitoring.view` 权限
 - 查询条件同步 URL query，可分享/收藏

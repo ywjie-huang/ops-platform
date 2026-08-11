@@ -77,6 +77,13 @@
             {{ row.ends_at ? formatTime(row.ends_at) : '-' }}
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-tooltip content="在日志检索中查看该告警时间窗 ±15 分钟的相关日志" placement="left">
+              <el-button size="small" text type="primary" @click="goRelatedLogs(row)">关联日志</el-button>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="原始数据" width="80">
           <template #default="{ row }">
             <el-popover trigger="click" width="400">
@@ -103,10 +110,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getAlertManagerEvents } from '@/api/alertmanager'
 
 const route = useRoute()
+const router = useRouter()
 
 interface AlertEvent {
   id: number
@@ -151,6 +159,36 @@ function formatTime(iso: string | null) {
 
 function formatJson(str: string) {
   try { return JSON.stringify(JSON.parse(str), null, 2) } catch { return str || '-' }
+}
+
+/** 告警事件 → 日志检索：按告警上下文预填筛选（时间窗 ±15 分钟） */
+function goRelatedLogs(row: AlertEvent) {
+  const query: Record<string, string> = {}
+
+  // 时间窗：触发时间 ±15 分钟（告警有采集/for 持续时间滞后，需覆盖触发前）
+  const start = row.starts_at ? new Date(row.starts_at) : null
+  if (start && !isNaN(start.getTime()) && start.getFullYear() >= 2000) {
+    query.start = new Date(start.getTime() - 15 * 60e3).toISOString()
+    query.end = new Date(start.getTime() + 15 * 60e3).toISOString()
+  }
+
+  // 维度：K8s 类告警 labels 自带 namespace/pod/container
+  let labels: Record<string, string> = {}
+  try { labels = JSON.parse(row.raw_labels || '{}') } catch { /* 忽略脏数据 */ }
+  const namespace = (labels.namespace || '').trim()
+  const pod = (labels.pod || labels.pod_name || '').trim()
+  const container = (labels.container || labels.container_name || '').trim()
+  if (namespace) query.namespace = namespace
+  if (pod) query.pod = pod
+  if (container) query.container = container
+
+  // 主机兜底：无 Pod 维度时用 node label 或 instance（去掉 :端口）
+  if (!pod && !namespace) {
+    const host = (labels.node || row.instance || labels.instance || '').trim()
+    if (host) query.host = host.replace(/:\d+$/, '')
+  }
+
+  router.push({ path: '/monitoring/logs', query })
 }
 
 async function fetchData() {
