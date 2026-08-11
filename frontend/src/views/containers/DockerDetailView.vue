@@ -261,6 +261,9 @@
           <div class="drawer-sub">{{ selectedContainer?.image || '-' }} · {{ selectedContainer ? containerStatusLabel(selectedContainer.status) : '' }}</div>
         </div>
         <div class="drawer-actions">
+          <el-tooltip content="在日志检索中查询该容器的历史日志（Elasticsearch）" placement="bottom">
+            <el-button size="small" type="primary" plain @click="goDockerLogHistory(selectedContainer)">历史日志</el-button>
+          </el-tooltip>
           <el-button size="small" :loading="logsLoading" @click="fetchSelectedContainerLogs">刷新</el-button>
           <el-button size="small" :disabled="!displayedContainerLogs" @click="copyLogs">复制</el-button>
           <el-button size="small" :disabled="!displayedContainerLogs" @click="downloadLogs">下载</el-button>
@@ -348,6 +351,9 @@
         </div>
         <div class="di-head-actions">
           <el-button size="small" type="primary" plain @click="openContainerLogs(inspectContainer)">日志</el-button>
+          <el-tooltip content="在日志检索中查询该容器的历史日志（Elasticsearch）" placement="bottom">
+            <el-button size="small" plain @click="goDockerLogHistory(inspectContainer)">历史日志</el-button>
+          </el-tooltip>
           <el-button size="small" :disabled="inspectContainer?.status !== 'running'" @click="openContainerExec(inspectContainer)">终端</el-button>
           <el-button size="small" :loading="inspectLoading" @click="fetchContainerInspect">
             <el-icon><Refresh /></el-icon>刷新
@@ -813,6 +819,24 @@ async function openContainerLogs(row: any) {
   logKeyword.value = ''
   logsDrawerVisible.value = true
   await fetchSelectedContainerLogs()
+}
+
+function goDockerLogHistory(container: any) {
+  // 跳转到日志检索页（Elasticsearch 数据源）。
+  // K8s 托管容器的 Docker 名格式为 k8s_<容器>_<Pod>_<命名空间>_<UID>_<序号>
+  // （k8s 资源名不允许下划线，按 _ 切分无歧义），可反解出三维精确过滤；
+  // 独立 Docker 容器按主机维度兜底。
+  if (!container?.name) return
+  const query: Record<string, string> = {}
+  const parts = String(container.name).split('_')
+  if (parts.length === 6 && parts[0] === 'k8s') {
+    query.namespace = parts[3]
+    query.pod = parts[2]
+    query.container = parts[1]
+  } else if (hostName.value) {
+    query.host = hostName.value
+  }
+  router.push({ path: '/monitoring/logs', query })
 }
 
 // ─── 容器 inspect 详情 ────────────────────────────────────
