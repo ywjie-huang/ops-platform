@@ -464,10 +464,16 @@ def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
         spec = item.get("spec", {})
         status = item.get("status", {})
 
-        # 计算重启次数
+        # 计算重启次数 + 最后一次重启时间（取所有容器里最近的一次）
+        # lastState.terminated.finishedAt 是上次容器终止（含重启）的时间戳，
+        # kubectl 显示的 "7 (93d ago)" 里的 "93d ago" 即由此算出。
         restarts = 0
+        last_restart_at = ""
         for cs in status.get("containerStatuses", []) or []:
             restarts += cs.get("restartCount", 0)
+            finished_at = ((cs.get("lastState") or {}).get("terminated") or {}).get("finishedAt", "")
+            if finished_at and finished_at > last_restart_at:
+                last_restart_at = finished_at
 
         # 提取镜像
         images = []
@@ -526,6 +532,7 @@ def get_pods(endpoint: str, token: str) -> list[dict[str, Any]]:
             "pod_ip": status.get("podIP", ""),
             "images": images,
             "restarts": restarts,
+            "last_restart_at": last_restart_at,
             "cpu_request": round(cpu_req, 3),
             "mem_request": round(mem_req, 1),
             "created_at": meta.get("creationTimestamp", ""),

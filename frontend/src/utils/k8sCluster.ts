@@ -16,6 +16,7 @@ export type PodLike = {
   reason?: string
   node?: string
   restarts?: number
+  last_restart_at?: string
   cpu_request?: number
   mem_request?: number
 }
@@ -115,7 +116,13 @@ export function matchPodQuickFilter(pod: PodLike, filter: PodQuickFilter) {
     case 'oom':
       return /oomkilled/i.test(status) || /oomkilled/i.test(reason)
     case 'restarts':
-      return (pod.restarts ?? 0) > 5
+      // 重启 > 5 次且最后一次重启在最近 24 小时内。
+      // restartCount 是累计值，93 天前的老重启不应永久计入过滤器。
+      if ((pod.restarts ?? 0) <= 5) return false
+      if (!pod.last_restart_at) return true
+      const ts = new Date(pod.last_restart_at).getTime()
+      if (isNaN(ts)) return true
+      return Date.now() - ts <= 24 * 3600 * 1000
     default:
       return true
   }

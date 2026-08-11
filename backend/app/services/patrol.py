@@ -168,6 +168,24 @@ async def _check_hosts(db: Session, thresholds: dict[str, float]) -> list[dict[s
 # ─── K8s 集群巡检 ───────────────────────────────────────────
 
 
+def _restarted_within(last_restart_at: str, now: datetime, hours: int) -> bool:
+    """判断 Pod 最后一次重启是否在最近 N 小时内。
+
+    last_restart_at 是 K8s 返回的 ISO8601 时间戳（如 2026-05-10T03:20:00Z）。
+    无法解析时保守返回 True（视为「近期重启」，避免漏报正在异常的 Pod）。
+    """
+    if not last_restart_at:
+        # 没有记录但 restarts > 0：无法判断时间，保守按近期处理
+        return True
+    try:
+        # Python 3.11+ 的 fromisoformat 支持 Z，这里兼容旧版本
+        ts = datetime.fromisoformat(last_restart_at.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return True
+    # now 是中国时区 aware，ts 是 UTC aware，相减得到正确 timedelta
+    return (now - ts).total_seconds() <= hours * 3600
+
+
 def _check_k8s_clusters(db: Session) -> list[dict[str, Any]]:
     """检查 K8s 集群状态。"""
     from app.models.container import ContainerCluster
@@ -215,7 +233,14 @@ def _check_k8s_clusters(db: Session) -> list[dict[str, Any]]:
         pods = info.get("pods", [])
         failed_pods = [p for p in pods if p.get("status") in ("Failed", "Unknown")]
         pending_pods = [p for p in pods if p.get("status") == "Pending"]
-        high_restart_pods = [p for p in pods if p.get("restarts", 0) > 5]
+        # 频繁重启：重启 > 5 次且最后一次重启在最近 24 小时内。
+        # restartCount 是 Pod 生命周期累计值、永不重置，若不看时间窗，
+        # 93 天前重启过 7 次但至今稳定的 Pod 会被永久标记为异常。
+        now = datetime.now(CHINA_TZ)
+        high_restart_pods = [
+            p for p in pods
+            if p.get("restarts", 0) > 5 and _restarted_within(p.get("last_restart_at", ""), now, hours=24)
+        ]
 
         if failed_pods:
             names = ", ".join(p["name"] for p in failed_pods[:5])
@@ -238,7 +263,7 @@ def _check_k8s_clusters(db: Session) -> list[dict[str, Any]]:
             items.append({
                 "category": "k8s", "target_name": cluster.name,
                 "check_name": "频繁重启 Pod", "status": "warning",
-                "value": f"{len(high_restart_pods)} 个 Pod 重启 > 5 次",
+                "value": f"{len(high_restart_pods)} 个 Pod 最近 24h 内重启 > 5 次",
                 "detail": f"Pod: {names}",
             })
 

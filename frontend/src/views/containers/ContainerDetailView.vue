@@ -199,7 +199,9 @@
                   </button>
                 </template>
                 <template #default="{ row }">
-                  <span :class="{ 'text-danger restarts-strong': (row.restarts ?? 0) > 5 }">{{ row.restarts }}</span>
+                  <span :class="{ 'text-danger restarts-strong': isRestartAlarming(row) }">
+                    {{ row.restarts ?? 0 }}<span v-if="row.last_restart_at" class="restarts-ago"> ({{ timeAgo(row.last_restart_at) }})</span>
+                  </span>
                 </template>
               </el-table-column>
               <el-table-column label="创建时间" width="150" align="center">
@@ -1173,6 +1175,7 @@ interface K8sPod {
   pod_ip?: string
   images?: string[]
   restarts?: number
+  last_restart_at?: string
   cpu_request?: number
   mem_request?: number
   created_at?: string
@@ -1500,7 +1503,7 @@ const podChips = computed(() => [
   { label: 'CrashLoopBackOff', value: 'crash' as PodQuickFilter, count: podFilterCounts.value.crash },
   { label: 'Pending', value: 'pending' as PodQuickFilter, count: podFilterCounts.value.pending },
   { label: 'OOMKilled', value: 'oom' as PodQuickFilter, count: podFilterCounts.value.oom },
-  { label: '重启 > 5 次', value: 'restarts' as PodQuickFilter, count: podFilterCounts.value.restarts },
+  { label: '24h 内重启 > 5 次', value: 'restarts' as PodQuickFilter, count: podFilterCounts.value.restarts },
 ])
 
 const warningEventCount = computed(() => clusterEvents.value.filter((e) => e.type === 'Warning').length)
@@ -1719,6 +1722,32 @@ function formatTime(value?: string) {
   } catch {
     return value
   }
+}
+
+/** 把 ISO 时间转成「x天前 / x小时前 / 刚刚」相对描述，用于重启次数旁的标注。 */
+function timeAgo(value?: string): string {
+  if (!value) return ''
+  const ts = new Date(value).getTime()
+  if (isNaN(ts)) return ''
+  const diffMs = Date.now() - ts
+  if (diffMs < 0) return '刚刚'
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时前`
+  const days = Math.floor(hours / 24)
+  return `${days}天前`
+}
+
+/** 重启是否值得告警：次数 > 5 且最后一次重启在最近 24 小时内。
+ *  restartCount 是 Pod 生命周期累计值，93 天前的老重启不应永久标红。 */
+function isRestartAlarming(row: { restarts?: number; last_restart_at?: string }): boolean {
+  if ((row.restarts ?? 0) <= 5) return false
+  if (!row.last_restart_at) return true // 有重启记录但无时间，保守视为告警
+  const ts = new Date(row.last_restart_at).getTime()
+  if (isNaN(ts)) return true
+  return Date.now() - ts <= 24 * 3600 * 1000
 }
 
 function openEditDialog() {
@@ -3032,6 +3061,11 @@ button.summary-card {
 
 .restarts-strong {
   font-weight: 700;
+}
+.restarts-ago {
+  color: var(--text-muted, #909399);
+  font-weight: 400;
+  font-size: 11px;
 }
 
 .alloc-cell {
