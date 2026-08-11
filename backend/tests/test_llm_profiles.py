@@ -202,6 +202,44 @@ def test_list_llm_models_allows_local_without_key(monkeypatch):
     assert result["data"]["items"][0]["id"] == "qwen2.5:7b"
 
 
+def test_list_llm_models_anthropic_returns_known_models_without_http():
+    """Anthropic 协议无 /models 端点：api_mode=anthropic 时直接返回预设模型清单，
+    不发起任何 HTTP 请求（provider 决定返回智谱还是 Claude 的清单）。"""
+    from app.api import settings as settings_api
+
+    # anthropic 分支不应发起任何 HTTP 请求（协议无 /models 端点）
+
+    body = settings_api.LLMModelsBody(
+        base_url="https://open.bigmodel.cn/api/anthropic",
+        api_key="sk-test",
+        provider="zhipu",
+        api_mode="anthropic",
+    )
+    result = settings_api.api_list_llm_models(body, db=object(), _=object())
+    assert result["data"]["ok"] is True
+    ids = [x["id"] for x in result["data"]["items"]]
+    # 智谱 anthropic 端点应返回 GLM 系列清单
+    assert "glm-4.6" in ids
+    assert all(x["owned_by"] == "zhipu" for x in result["data"]["items"])
+
+
+def test_list_llm_models_anthropic_claude_provider():
+    """provider=claude（Claude 官方）走 anthropic 协议时返回 Claude 模型清单。"""
+    from app.api import settings as settings_api
+
+    body = settings_api.LLMModelsBody(
+        base_url="https://api.anthropic.com",
+        api_key="sk-ant-test",
+        provider="claude",
+        api_mode="anthropic",
+    )
+    result = settings_api.api_list_llm_models(body, db=object(), _=object())
+    assert result["data"]["ok"] is True
+    ids = [x["id"] for x in result["data"]["items"]]
+    assert "claude-sonnet-4-5" in ids
+    assert all(x["owned_by"] == "claude" for x in result["data"]["items"])
+
+
 class _MemDb:
     """Minimal stand-in for settings helpers that only need get/set_config behavior."""
 

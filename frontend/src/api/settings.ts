@@ -93,6 +93,7 @@ export function listLLMModels(data: {
   base_url: string
   api_key?: string
   provider?: string
+  api_mode?: string
   profile_id?: string
 }) {
   return request.post('/settings/llm/models', data)

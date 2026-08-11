@@ -108,7 +108,33 @@ class LLMModelsBody(BaseModel):
     base_url: str
     api_key: str = ""
     provider: str = ""
+    api_mode: str = ""
     profile_id: str | None = None
+
+
+# Anthropic 协议无 /models 列表端点，模型名固定。按服务商给已知模型清单，
+# 让「刷新模型」在 Anthropic 模式下也能给出可选项（用户仍可手填覆盖）。
+_ANTHROPIC_KNOWN_MODELS: dict[str, list[str]] = {
+    "claude": [
+        "claude-sonnet-4-5",
+        "claude-opus-4-1",
+        "claude-haiku-4-5",
+        "claude-3-7-sonnet-latest",
+        "claude-3-5-haiku-latest",
+    ],
+    "zhipu": [
+        "glm-4.6",
+        "glm-4.5",
+        "glm-4.7-flash",
+        "glm-4-flash",
+    ],
+}
+
+
+def _anthropic_known_models(provider: str) -> list[dict[str, str]]:
+    """根据 provider 返回 Anthropic 协议下的已知模型列表。"""
+    ids = _ANTHROPIC_KNOWN_MODELS.get(provider) or _ANTHROPIC_KNOWN_MODELS["claude"]
+    return [{"id": mid, "owned_by": provider or "anthropic"} for mid in ids]
 
 
 class TestConnectionBody(BaseModel):
@@ -211,6 +237,7 @@ def api_list_llm_models(
 
     base_url = body.base_url.strip().rstrip("/")
     provider = (body.provider or "").strip()
+    api_mode = (body.api_mode or "").strip()
     api_key = resolve_profile_api_key(db, api_key=body.api_key, profile_id=body.profile_id)
 
     if not base_url:
@@ -224,6 +251,15 @@ def api_list_llm_models(
             "code": 0,
             "msg": "请填写 API Key",
             "data": {"items": [], "ok": False, "error_code": "validation"},
+        }
+
+    # Anthropic 协议无 /models 端点，直接返回已知模型清单
+    if (api_mode or "").strip() == "anthropic":
+        items = _anthropic_known_models(provider)
+        return {
+            "code": 0,
+            "msg": f"已列出 {len(items)} 个常用模型（Anthropic 协议不支持在线拉取，可手动输入其它型号）",
+            "data": {"items": items, "ok": True, "error_code": None},
         }
 
     headers = {"Content-Type": "application/json"}

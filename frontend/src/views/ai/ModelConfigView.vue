@@ -427,6 +427,7 @@ async function handleRefreshModels() {
       base_url: p.base_url.trim(),
       api_key: (p.api_key || '').trim(),
       provider: p.provider || '',
+      api_mode: p.api_mode || 'chat_completions',
       profile_id: p.id,
     })
     const items = res.data?.items || []
@@ -517,7 +518,14 @@ function handleApiModeChange() {
 // ── 保存按钮 ──
 async function handleSave() {
   if (!activeProfile.value) return
-  if (!validateForm()) return
+  if (!validateForm()) {
+    // 校验失败时给出明确提示，避免「点保存没反应」
+    const missing: string[] = []
+    if (formErrors.base_url) missing.push('API 地址')
+    if (formErrors.model) missing.push('模型名称')
+    ElMessage.warning(`请填写必填项：${missing.join('、')}`)
+    return
+  }
   // 自动更新名称
   if (activeProfile.value.name === '新模型' && activeProfile.value.model) {
     activeProfile.value.name = activeProfile.value.model
