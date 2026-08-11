@@ -112,31 +112,6 @@ class LLMModelsBody(BaseModel):
     profile_id: str | None = None
 
 
-# Anthropic 协议无 /models 列表端点，模型名固定。按服务商给已知模型清单，
-# 让「刷新模型」在 Anthropic 模式下也能给出可选项（用户仍可手填覆盖）。
-_ANTHROPIC_KNOWN_MODELS: dict[str, list[str]] = {
-    "claude": [
-        "claude-sonnet-4-5",
-        "claude-opus-4-1",
-        "claude-haiku-4-5",
-        "claude-3-7-sonnet-latest",
-        "claude-3-5-haiku-latest",
-    ],
-    "zhipu": [
-        "glm-4.6",
-        "glm-4.5",
-        "glm-4.7-flash",
-        "glm-4-flash",
-    ],
-}
-
-
-def _anthropic_known_models(provider: str) -> list[dict[str, str]]:
-    """根据 provider 返回 Anthropic 协议下的已知模型列表。"""
-    ids = _ANTHROPIC_KNOWN_MODELS.get(provider) or _ANTHROPIC_KNOWN_MODELS["claude"]
-    return [{"id": mid, "owned_by": provider or "anthropic"} for mid in ids]
-
-
 class TestConnectionBody(BaseModel):
     url: str
     username: str = ""
@@ -232,7 +207,7 @@ def api_list_llm_models(
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("settings.view")),
 ):
-    """代理查询 OpenAI 兼容 /models 列表；失败时返回空列表，不阻断配置。"""
+    """代理查询模型列表（OpenAI / Anthropic 协议均支持 /models）；失败返回空列表。"""
     import httpx
 
     base_url = body.base_url.strip().rstrip("/")
@@ -253,22 +228,23 @@ def api_list_llm_models(
             "data": {"items": [], "ok": False, "error_code": "validation"},
         }
 
-    # Anthropic 协议无 /models 端点，直接返回已知模型清单
-    if (api_mode or "").strip() == "anthropic":
-        items = _anthropic_known_models(provider)
-        return {
-            "code": 0,
-            "msg": f"已列出 {len(items)} 个常用模型（Anthropic 协议不支持在线拉取，可手动输入其它型号）",
-            "data": {"items": items, "ok": True, "error_code": None},
+    # Anthropic 协议：x-api-key 头 + /v1/models 路径（base_url 不含 /v1）
+    # OpenAI 协议：Bearer 头 + /models 路径（base_url 已含 /v1）
+    if api_mode == "anthropic":
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
         }
-
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        models_path = "/v1/models"
+    else:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        models_path = "/models"
 
     try:
         with httpx.Client(timeout=15, follow_redirects=True) as client:
-            resp = client.get(f"{base_url}/models", headers=headers)
+            resp = client.get(f"{base_url}{models_path}", headers=headers)
             if resp.status_code != 200:
                 detail = resp.text[:200]
                 return {

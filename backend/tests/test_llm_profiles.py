@@ -202,12 +202,40 @@ def test_list_llm_models_allows_local_without_key(monkeypatch):
     assert result["data"]["items"][0]["id"] == "qwen2.5:7b"
 
 
-def test_list_llm_models_anthropic_returns_known_models_without_http():
-    """Anthropic 协议无 /models 端点：api_mode=anthropic 时直接返回预设模型清单，
-    不发起任何 HTTP 请求（provider 决定返回智谱还是 Claude 的清单）。"""
+def test_list_llm_models_anthropic_uses_xapikey_and_v1_path(monkeypatch):
+    """Anthropic 协议：请求 /v1/models（base_url 不含 /v1），用 x-api-key 头而非 Bearer。
+    智谱/Claude 的 anthropic 兼容端点都提供 OpenAI 风格的 {data:[...]} 响应。"""
     from app.api import settings as settings_api
+    import httpx
 
-    # anthropic 分支不应发起任何 HTTP 请求（协议无 /models 端点）
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {"data": [
+                {"id": "glm-4.6", "display_name": "GLM-4.6"},
+                {"id": "glm-5.2", "display_name": "GLM-5.2"},
+            ]}
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, headers=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr(settings_api, "resolve_profile_api_key", lambda db, api_key="", profile_id=None: "sk-test")
 
     body = settings_api.LLMModelsBody(
         base_url="https://open.bigmodel.cn/api/anthropic",
@@ -216,28 +244,16 @@ def test_list_llm_models_anthropic_returns_known_models_without_http():
         api_mode="anthropic",
     )
     result = settings_api.api_list_llm_models(body, db=object(), _=object())
+
+    # 请求路径是 /v1/models（不是 /models），头是 x-api-key
+    assert captured["url"] == "https://open.bigmodel.cn/api/anthropic/v1/models"
+    assert captured["headers"]["x-api-key"] == "sk-test"
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    assert "Authorization" not in captured["headers"]
+
     assert result["data"]["ok"] is True
     ids = [x["id"] for x in result["data"]["items"]]
-    # 智谱 anthropic 端点应返回 GLM 系列清单
-    assert "glm-4.6" in ids
-    assert all(x["owned_by"] == "zhipu" for x in result["data"]["items"])
-
-
-def test_list_llm_models_anthropic_claude_provider():
-    """provider=claude（Claude 官方）走 anthropic 协议时返回 Claude 模型清单。"""
-    from app.api import settings as settings_api
-
-    body = settings_api.LLMModelsBody(
-        base_url="https://api.anthropic.com",
-        api_key="sk-ant-test",
-        provider="claude",
-        api_mode="anthropic",
-    )
-    result = settings_api.api_list_llm_models(body, db=object(), _=object())
-    assert result["data"]["ok"] is True
-    ids = [x["id"] for x in result["data"]["items"]]
-    assert "claude-sonnet-4-5" in ids
-    assert all(x["owned_by"] == "claude" for x in result["data"]["items"])
+    assert ids == ["glm-4.6", "glm-5.2"]
 
 
 class _MemDb:
