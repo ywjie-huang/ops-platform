@@ -29,8 +29,9 @@
           <select class="form-input" v-model="profile.api_mode" @change="$emit('api-mode-change')">
             <option value="chat_completions">Chat Completions</option>
             <option value="responses">Responses</option>
+            <option value="anthropic">Anthropic Messages</option>
           </select>
-          <span class="form-tip">中转站支持 Responses 时可切换到新接口</span>
+          <span class="form-tip">智谱 Coding Plan / Claude 官方选 Anthropic；中转站支持 Responses 时可切换</span>
         </div>
         <div class="form-group" v-if="profile.api_mode === 'responses'">
           <label class="form-label">推理强度</label>

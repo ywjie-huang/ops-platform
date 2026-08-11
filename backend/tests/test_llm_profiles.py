@@ -291,6 +291,8 @@ def test_guess_provider_from_url_covers_all_presets():
     cases = {
         "https://api.openai.com/v1": "openai",
         "https://open.bigmodel.cn/api/paas/v4/": "zhipu",
+        "https://open.bigmodel.cn/api/anthropic": "zhipu",
+        "https://api.anthropic.com": "claude",
         "https://api.moonshot.cn/v1": "moonshot",
         "https://api.moonshot.ai/v1": "moonshot",
         "https://api.deepseek.com/v1": "deepseek",

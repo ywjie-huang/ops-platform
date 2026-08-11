@@ -321,13 +321,23 @@ def api_test_llm_connection(
         return _llm_result(ok=False, msg="请填写 API Key", error_code="validation", model=model)
 
     headers = {"Content-Type": "application/json"}
-    if api_key:
+    if api_mode == "anthropic":
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     try:
         started = time.perf_counter()
         with httpx.Client(timeout=15, follow_redirects=True) as client:
-            if api_mode == "responses":
+            if api_mode == "anthropic":
+                test_url = f"{base_url}/v1/messages"
+                payload: dict = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 16,
+                }
+            elif api_mode == "responses":
                 test_url = f"{base_url}/responses"
                 payload: dict = {
                     "model": model,
@@ -399,7 +409,10 @@ def api_test_llm_chat(
         return _llm_result(ok=False, msg="请填写 API Key", error_code="validation", model=model)
 
     headers = {"Content-Type": "application/json"}
-    if api_key:
+    if api_mode == "anthropic":
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     system_prompt = (body.system_prompt or "").strip()
@@ -407,13 +420,24 @@ def api_test_llm_chat(
     try:
         started = time.perf_counter()
         with httpx.Client(timeout=30, follow_redirects=True) as client:
-            if api_mode == "responses":
+            if api_mode == "anthropic":
+                test_url = f"{base_url}/v1/messages"
+                payload: dict = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": message}],
+                    "max_tokens": max_tokens,
+                    "temperature": body.temperature,
+                    "top_p": body.top_p,
+                }
+                if system_prompt:
+                    payload["system"] = system_prompt
+            elif api_mode == "responses":
                 test_url = f"{base_url}/responses"
                 inputs: list[dict] = []
                 if system_prompt:
                     inputs.append({"role": "system", "content": system_prompt})
                 inputs.append({"role": "user", "content": message})
-                payload: dict = {
+                payload = {
                     "model": model,
                     "input": inputs,
                     "max_output_tokens": max_tokens,
@@ -450,7 +474,12 @@ def api_test_llm_chat(
 
             data = resp.json()
             content = ""
-            if api_mode == "responses":
+            if api_mode == "anthropic":
+                # Anthropic Messages: content[].text
+                for part in data.get("content") or []:
+                    if part.get("type") == "text" and part.get("text"):
+                        content += part["text"]
+            elif api_mode == "responses":
                 # Responses API: output[].content[].text
                 for item in data.get("output") or []:
                     for part in item.get("content") or []:

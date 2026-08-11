@@ -127,6 +127,8 @@ def guess_provider_from_url(url: str) -> str:
         return "openai"
     if "bigmodel" in u:
         return "zhipu"
+    if "anthropic.com" in u:
+        return "claude"
     if "moonshot" in u:
         return "moonshot"
     if "deepseek" in u:
@@ -171,6 +173,7 @@ def ensure_llm_profiles_migrated(db: Session) -> list[dict[str, Any]]:
         "icon": {
             "openai": "AI",
             "zhipu": "ZP",
+            "claude": "CL",
             "moonshot": "KS",
             "deepseek": "DS",
             "qwen": "QW",

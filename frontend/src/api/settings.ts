@@ -10,7 +10,7 @@ export interface LLMProfile {
   api_key_masked?: string
   has_api_key?: boolean
   model: string
-  api_mode?: 'chat_completions' | 'responses'
+  api_mode?: 'chat_completions' | 'responses' | 'anthropic'
   reasoning_effort?: '' | 'low' | 'medium' | 'high'
   temperature: number
   max_tokens: number
@@ -63,7 +63,7 @@ export function testLLMConnection(data: {
   base_url: string
   api_key?: string
   model: string
-  api_mode?: 'chat_completions' | 'responses'
+  api_mode?: 'chat_completions' | 'responses' | 'anthropic'
   reasoning_effort?: '' | 'low' | 'medium' | 'high'
   provider?: string
   profile_id?: string
@@ -75,7 +75,7 @@ export function testLLMChat(data: {
   base_url: string
   api_key?: string
   model: string
-  api_mode?: 'chat_completions' | 'responses'
+  api_mode?: 'chat_completions' | 'responses' | 'anthropic'
   reasoning_effort?: '' | 'low' | 'medium' | 'high'
   temperature?: number
   max_tokens?: number

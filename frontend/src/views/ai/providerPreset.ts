@@ -1,7 +1,9 @@
+export type ApiMode = 'chat_completions' | 'responses' | 'anthropic'
+
 export interface ProviderDraft {
   base_url: string
   model: string
-  api_mode: 'chat_completions' | 'responses'
+  api_mode: ApiMode
   reasoning_effort: '' | 'low' | 'medium' | 'high'
 }
 
@@ -12,15 +14,17 @@ export interface ProviderPreset {
   hint: string
   base_url: string
   model: string
-  api_mode?: 'chat_completions' | 'responses'
+  api_mode?: ApiMode
   reasoning_effort?: '' | 'low' | 'medium' | 'high'
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   // ─── 国际 ───
   { id: 'openai', name: 'OpenAI', icon: 'AI', hint: 'GPT-4o / o3', base_url: 'https://api.openai.com/v1', model: 'gpt-4o' },
+  { id: 'claude', name: 'Claude (Anthropic)', icon: 'CL', hint: 'Sonnet / Opus · Anthropic 协议', base_url: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', api_mode: 'anthropic' },
   // ─── 国内 ───
-  { id: 'zhipu', name: '智谱 GLM', icon: 'ZP', hint: 'GLM-4.7 / GLM-5', base_url: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4.7-flash' },
+  { id: 'zhipu', name: '智谱 GLM', icon: 'ZP', hint: 'GLM-4.7 / GLM-5 · OpenAI 协议', base_url: 'https://open.bigmodel.cn/api/paas/v4/', model: 'glm-4.7-flash' },
+  { id: 'zhipu_coding', name: '智谱 Coding', icon: 'ZP', hint: 'GLM Coding Plan · Anthropic 协议', base_url: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-4.6', api_mode: 'anthropic' },
   { id: 'moonshot', name: 'Kimi (月之暗面)', icon: 'KS', hint: 'Kimi K3', base_url: 'https://api.moonshot.cn/v1', model: 'kimi-k3' },
   { id: 'deepseek', name: 'DeepSeek', icon: 'DS', hint: 'DeepSeek V4', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
   { id: 'qwen', name: '通义千问', icon: 'QW', hint: 'Qwen3.7 (阿里云百炼)', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.7-plus' },

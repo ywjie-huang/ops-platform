@@ -391,3 +391,214 @@ def test_responses_mode_falls_back_to_plain_json_response(monkeypatch):
         {"type": "text", "content": "plain json reply"},
         {"type": "done"},
     ]
+
+
+# ─── Anthropic Messages 协议测试 ──────────────────────────
+
+
+def test_anthropic_mode_posts_messages_payload(monkeypatch):
+    """Anthropic 模式：POST 到 /v1/messages，headers 用 x-api-key + anthropic-version，
+    system 抽到顶层，tools 是 Anthropic 格式。"""
+    recorder = {}
+    response = _FakeStreamResponse(
+        200,
+        [
+            'event: message_start',
+            'data: {"type":"message_start","message":{"id":"msg_1"}}',
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+        ],
+    )
+
+    def fake_async_client(*args, **kwargs):
+        return _FakeAsyncClient(recorder, response)
+
+    monkeypatch.setattr("app.services.ai.llm_client.httpx.AsyncClient", fake_async_client)
+
+    client = LLMClient(
+        "https://api.anthropic.com",
+        "sk-ant-test",
+        "claude-sonnet-4-5",
+        api_mode="anthropic",
+        max_tokens=1024,
+    )
+
+    messages = [
+        {"role": "system", "content": "你是运维助手"},
+        {"role": "user", "content": "你好"},
+    ]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "query_logs",
+                "description": "查日志",
+                "parameters": {"type": "object", "properties": {"level": {"type": "string"}}},
+            },
+        }
+    ]
+
+    async def collect_events():
+        return [event async for event in client.chat_stream(messages, tools)]
+
+    events = asyncio.run(collect_events())
+
+    req = recorder["requests"][0]
+    assert req["url"] == "https://api.anthropic.com/v1/messages"
+    assert req["headers"]["x-api-key"] == "sk-ant-test"
+    assert req["headers"]["anthropic-version"] == "2023-06-01"
+    # system 抽到顶层
+    payload = req["json"]
+    assert payload["system"] == "你是运维助手"
+    assert payload["messages"] == [{"role": "user", "content": "你好"}]
+    assert payload["max_tokens"] == 1024
+    # tools 是 Anthropic 格式（name/description/input_schema）
+    assert payload["tools"] == [
+        {
+            "name": "query_logs",
+            "description": "查日志",
+            "input_schema": {"type": "object", "properties": {"level": {"type": "string"}}},
+        }
+    ]
+    assert events == [
+        {"type": "text", "content": "hi"},
+        {"type": "done"},
+    ]
+
+
+def test_anthropic_stream_parses_tool_use_with_split_input_json(monkeypatch):
+    """Anthropic 流式 tool_use：input_json 分多个 input_json_delta 发送，
+    content_block_stop 时拼完整解析成 dict。"""
+    recorder = {}
+    response = _FakeStreamResponse(
+        200,
+        [
+            'event: content_block_start',
+            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"query_logs"}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"level\\""}}',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":": \\"error\\"}"}}',
+            'event: content_block_stop',
+            'data: {"type":"content_block_stop","index":0}',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+        ],
+    )
+
+    def fake_async_client(*args, **kwargs):
+        return _FakeAsyncClient(recorder, response)
+
+    monkeypatch.setattr("app.services.ai.llm_client.httpx.AsyncClient", fake_async_client)
+
+    client = LLMClient("https://api.anthropic.com", "sk-test", "claude", api_mode="anthropic")
+
+    async def collect_events():
+        return [event async for event in client.chat_stream([{"role": "user", "content": "查日志"}])]
+
+    events = asyncio.run(collect_events())
+
+    # tool_call 事件：arguments 是拼好解析的 dict
+    assert events == [
+        {
+            "type": "tool_call",
+            "id": "toolu_1",
+            "name": "query_logs",
+            "arguments": {"level": "error"},
+        },
+        {"type": "done"},
+    ]
+
+
+def test_anthropic_messages_conversion_handles_tool_history():
+    """多轮工具对话：OpenAI tool_calls/tool 消息正确转成 Anthropic tool_use/tool_result。
+    这是工具续接的关键（避免 Responses 续接 502 的同类问题）。"""
+    client = LLMClient("https://api.anthropic.com", "sk-test", "claude", api_mode="anthropic")
+
+    messages = [
+        {"role": "user", "content": "查日志"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "query_logs",
+                        "arguments": json.dumps({"level": "error"}),
+                    },
+                }
+            ],
+        },
+        {"role": "tool", "content": "无匹配日志", "tool_call_id": "call_1"},
+    ]
+
+    system, conv = client._build_anthropic_messages(messages)
+
+    assert system == ""
+    assert conv == [
+        {"role": "user", "content": "查日志"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "call_1", "name": "query_logs", "input": {"level": "error"}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "call_1", "content": "无匹配日志"},
+            ],
+        },
+    ]
+
+
+def test_anthropic_system_prompt_extracted_and_merged():
+    """多条 system 消息合并为顶层 system 字段（用换行分隔），不进 messages 数组。"""
+    client = LLMClient("https://api.anthropic.com", "sk-test", "claude", api_mode="anthropic")
+
+    messages = [
+        {"role": "system", "content": "规则一"},
+        {"role": "system", "content": "规则二"},
+        {"role": "user", "content": "你好"},
+    ]
+
+    system, conv = client._build_anthropic_messages(messages)
+
+    assert "规则一" in system and "规则二" in system
+    assert all(m["role"] != "system" for m in conv)
+    assert conv == [{"role": "user", "content": "你好"}]
+
+
+def test_anthropic_mode_used_when_api_mode_is_anthropic(monkeypatch):
+    """api_mode='anthropic' 时走 _messages_stream，不会误进 chat_completions。"""
+    recorder = {}
+    response = _FakeStreamResponse(
+        200,
+        [
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+        ],
+    )
+
+    def fake_async_client(*args, **kwargs):
+        return _FakeAsyncClient(recorder, response)
+
+    monkeypatch.setattr("app.services.ai.llm_client.httpx.AsyncClient", fake_async_client)
+
+    client = LLMClient("https://api.anthropic.com", "sk-test", "claude", api_mode="anthropic")
+
+    async def collect_events():
+        return [event async for event in client.chat_stream([{"role": "user", "content": "hi"}])]
+
+    events = asyncio.run(collect_events())
+    # 命中的是 /v1/messages 而不是 /chat/completions
+    assert recorder["requests"][0]["url"] == "https://api.anthropic.com/v1/messages"
+    assert events[-1] == {"type": "done"}

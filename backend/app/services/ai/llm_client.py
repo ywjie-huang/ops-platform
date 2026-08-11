@@ -50,6 +50,11 @@ class LLMClient:
                 yield event
             return
 
+        if self.api_mode == "anthropic":
+            async for event in self._messages_stream(messages, tools):
+                yield event
+            return
+
         async for event in self._chat_completions_stream(messages, tools):
             yield event
 
@@ -137,6 +142,188 @@ class LLMClient:
                 for tc in pending_tool_calls.values():
                     yield self._finalize_tool_call(tc)
                 yield {"type": "done"}
+
+    # ─── Anthropic Messages 协议适配 ──────────────────────────
+    # 对外只发 text / tool_call / done 三种事件，与 OpenAI 协议保持一致，
+    # 上层对话循环（ai.py）和工具调度无需改动。
+
+    _ANTHROPIC_VERSION = "2023-06-01"
+
+    async def _messages_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Anthropic Messages 协议（/v1/messages）流式适配。"""
+        system, conv = self._build_anthropic_messages(messages)
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": conv,
+            "stream": True,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+        }
+        if system:
+            payload["system"] = system
+        if tools:
+            payload["tools"] = self._build_anthropic_tools(tools)
+            payload["tool_choice"] = {"type": "auto"}
+
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": self._ANTHROPIC_VERSION,
+            "content-type": "application/json",
+            "accept": "text/event-stream",
+        }
+
+        client = httpx.AsyncClient(timeout=120, follow_redirects=True)
+        response_cm = client.stream(
+            "POST",
+            f"{self.base_url}/v1/messages",
+            headers=headers,
+            json=payload,
+        )
+        stream = _ValidatedStream(client, response_cm)
+
+        # tool_use 块按 content_block index 累积 input_json 分片
+        # text 块直接在 delta 时 yield，无需累积
+        tool_blocks: dict[int, dict[str, Any]] = {}
+
+        async with stream as response:
+            current_event = ""
+            async for line in response.aiter_lines():
+                if not line:
+                    current_event = ""
+                    continue
+                if line.startswith("event: "):
+                    current_event = line[7:].strip()
+                    continue
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:].strip()
+                try:
+                    chunk = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+
+                evt_type = chunk.get("type") or current_event
+
+                if evt_type == "content_block_start":
+                    block = chunk.get("content_block") or {}
+                    index = chunk.get("index", 0)
+                    if block.get("type") == "tool_use":
+                        tool_blocks[index] = {
+                            "id": block.get("id", ""),
+                            "name": block.get("name", ""),
+                            "input_json": "",
+                        }
+
+                elif evt_type == "content_block_delta":
+                    delta = chunk.get("delta") or {}
+                    delta_type = delta.get("type")
+                    if delta_type == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            yield {"type": "text", "content": text}
+                    elif delta_type == "input_json_delta":
+                        index = chunk.get("index", 0)
+                        block = tool_blocks.get(index)
+                        if block is not None:
+                            block["input_json"] += delta.get("partial_json", "")
+
+                elif evt_type == "content_block_stop":
+                    index = chunk.get("index", 0)
+                    block = tool_blocks.pop(index, None)
+                    if block is not None:
+                        yield self._finalize_tool_call({
+                            "type": "tool_call",
+                            "id": block["id"],
+                            "name": block["name"],
+                            "arguments": block["input_json"],
+                        })
+
+                elif evt_type == "message_stop":
+                    yield {"type": "done"}
+                    return
+
+        # 流结束时若未收到 message_stop（连接中断等），补一个 done
+        yield {"type": "done"}
+
+    def _build_anthropic_messages(
+        self,
+        messages: list[dict[str, Any]],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """OpenAI 风格 messages → Anthropic 风格 (system, messages)。
+
+        - system 消息抽出合并为顶层 system 字符串
+        - assistant 带 tool_calls → content 数组含 tool_use 块
+        - role=tool 消息 → role=user 的 tool_result 块
+        其余消息 content 保持字符串。
+        """
+        system_parts: list[str] = []
+        conv: list[dict[str, Any]] = []
+
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+
+            if role == "system":
+                if isinstance(content, str):
+                    system_parts.append(content)
+                continue
+
+            if role == "tool":
+                # OpenAI tool result → Anthropic tool_result（role 必须是 user）
+                conv.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg.get("tool_call_id", ""),
+                        "content": content or "",
+                    }],
+                })
+                continue
+
+            if role == "assistant":
+                tool_calls = msg.get("tool_calls") or []
+                if tool_calls:
+                    blocks: list[dict[str, Any]] = []
+                    if isinstance(content, str) and content:
+                        blocks.append({"type": "text", "text": content})
+                    for tc in tool_calls:
+                        fn = tc.get("function", {})
+                        try:
+                            args = json.loads(fn.get("arguments") or "{}")
+                        except (json.JSONDecodeError, TypeError):
+                            args = {}
+                        blocks.append({
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": fn.get("name", ""),
+                            "input": args,
+                        })
+                    conv.append({"role": "assistant", "content": blocks})
+                    continue
+
+            # 普通 user / assistant 文本消息
+            conv.append({"role": role or "user", "content": content or ""})
+
+        return ("\n\n".join(system_parts) if system_parts else ""), conv
+
+    def _build_anthropic_tools(
+        self, tools: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """OpenAI function schema → Anthropic tool schema。"""
+        result = []
+        for tool in tools:
+            fn = tool.get("function", {})
+            result.append({
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+            })
+        return result
 
     async def _responses_stream(
         self,
