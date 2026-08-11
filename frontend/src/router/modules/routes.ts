@@ -109,6 +109,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '告警事件', icon: 'Bell', permission: 'monitoring.view' },
       },
       {
+        path: 'logs',
+        name: 'LogSearch',
+        component: () => import('@/views/monitoring/LogSearchView.vue'),
+        meta: { title: '日志检索', icon: 'Document', permission: 'monitoring.view' },
+      },
+      {
         path: 'hosts/:id/ssh',
         name: 'SSHTerminal',
         component: () => import('@/views/monitoring/SSHTerminalView.vue'),

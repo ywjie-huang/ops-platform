@@ -13,6 +13,7 @@ from app.api import (
     deploy,
     docker_mgmt,
     exec_terminal,
+    logs,
     monitoring,
     password,
     patrol,
@@ -45,6 +46,7 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
     api_router.include_router(tickets.router)
     api_router.include_router(containers.router)
     api_router.include_router(monitoring.router)
+    api_router.include_router(logs.router)
     api_router.include_router(audit.router)
     api_router.include_router(password.router)
     api_router.include_router(alertmanager.router)

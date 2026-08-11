@@ -36,6 +36,12 @@ _DEFAULTS: dict[str, str] = {
     "llm.top_p": "1.0",
     "llm.system_prompt": "",
     "llm.profiles": "[]",
+    # 日志服务（ELK）
+    "elasticsearch.url": "",
+    "elasticsearch.username": "",
+    "elasticsearch.password": "",
+    "elasticsearch.index": "filebeat-*",
+    "kibana.url": "",
 }
 
 
@@ -62,6 +68,27 @@ def get_prometheus_url(db: Session) -> str:
 
 def get_alertmanager_url(db: Session) -> str:
     return get_config(db, "alertmanager.url")
+
+
+def get_elasticsearch_url(db: Session) -> str:
+    return get_config(db, "elasticsearch.url").rstrip("/")
+
+
+def get_elasticsearch_username(db: Session) -> str:
+    return get_config(db, "elasticsearch.username")
+
+
+def get_elasticsearch_password(db: Session) -> str:
+    return get_config(db, "elasticsearch.password")
+
+
+def get_elasticsearch_index(db: Session) -> str:
+    """日志索引匹配模式，默认 filebeat-*。"""
+    return get_config(db, "elasticsearch.index") or "filebeat-*"
+
+
+def get_kibana_url(db: Session) -> str:
+    return get_config(db, "kibana.url").rstrip("/")
 
 
 def _legacy_llm_config(db: Session) -> dict[str, str]:

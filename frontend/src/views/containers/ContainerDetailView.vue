@@ -563,6 +563,9 @@
           <div class="drawer-sub">{{ selectedPod?.namespace || '-' }} · {{ selectedPod?.node || '-' }}</div>
         </div>
         <div v-if="drawerTab === 'logs'" class="drawer-actions">
+          <el-tooltip content="在日志检索中查询该 Pod 的历史日志（Elasticsearch）" placement="bottom">
+            <el-button size="small" type="primary" plain @click="goLogHistory(selectedPod)">历史日志</el-button>
+          </el-tooltip>
           <el-button size="small" :disabled="!displayedPodLogs" @click="copyLogs">复制</el-button>
           <el-button size="small" :disabled="!displayedPodLogs" @click="downloadLogs">下载</el-button>
         </div>
@@ -674,6 +677,9 @@
         </div>
         <div class="pd-head-actions">
           <el-button size="small" type="primary" plain @click="openDetailLogs">日志</el-button>
+          <el-tooltip content="在日志检索中查询该 Pod 的历史日志（Elasticsearch）" placement="bottom">
+            <el-button size="small" plain @click="goLogHistory(detailPod)">历史日志</el-button>
+          </el-tooltip>
           <el-button size="small" @click="openDetailExec">终端</el-button>
           <el-button size="small" :loading="podDetailLoading" @click="loadPodDetail">
             <el-icon><Refresh /></el-icon>刷新
@@ -2397,6 +2403,18 @@ async function openPodDetail(row: K8sPod) {
 
 function openDetailLogs() {
   if (detailPod.value) openPodDrawer(detailPod.value, 'logs')
+}
+
+function goLogHistory(pod: K8sPod | null) {
+  // 跳转到日志检索页，按 namespace/pod 预填筛选（数据源 Elasticsearch）
+  if (!pod?.name) return
+  router.push({
+    path: '/monitoring/logs',
+    query: {
+      ...(pod.namespace ? { namespace: pod.namespace } : {}),
+      pod: pod.name,
+    },
+  })
 }
 function openDetailExec() {
   if (detailPod.value) openPodExec(detailPod.value)

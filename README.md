@@ -1,6 +1,6 @@
 # ops-platform · 运维管理平台
 
-基于 **FastAPI + Vue 3 + Element Plus + MySQL + Redis** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Kubernetes + Docker Agent + Jenkins + LLM**，覆盖主机监控、告警管理、容器运维、巡检指挥、应用发布与 AI 智能助手。
+基于 **FastAPI + Vue 3 + Element Plus + MySQL + Redis** 的企业级运维管理平台，纯前后端分离架构，集成 **Prometheus + Alertmanager + Elasticsearch + Kubernetes + Docker Agent + Jenkins + LLM**，覆盖主机监控、告警管理、日志检索、容器运维、巡检指挥、应用发布与 AI 智能助手。
 
 ---
 
@@ -10,7 +10,7 @@
 |---------|---------|------|
 | **仪表盘** | 仪表盘 | 值班首页概览（事件指挥台 + 资源健康 + 7 日告警走势） |
 | **资产管理** | 主机管理 / 主机密钥 / K8s 集群 / Docker 监控 | 资产台账 + SSH 密钥 + K8s 自动发现 + Docker Agent 主机/容器运维 |
-| **监控告警** | 主机监控 / 告警规则 / 告警事件 | Prometheus 工作台 + 指标趋势 + Alertmanager 规则/事件 |
+| **监控告警** | 主机监控 / 告警规则 / 告警事件 / 日志检索 | Prometheus 工作台 + 指标趋势 + Alertmanager 规则/事件 + Elasticsearch 统一日志查询 |
 | **工单协作** | 工单协作 | 工单流转与资产关联 |
 | **应用发布** | 应用管理 / 部署记录 / 部署审批 | Jenkins 触发 / SSH 上传部署 / 审批流程 / 一键回滚 |
 | **用户管理** | 用户管理 / 角色权限 | RBAC 权限 + 菜单权限分配 |
@@ -193,6 +193,16 @@ docker run -d \
 - 告警状态：待确认 → 已确认 → 已解决 / 已忽略
 - 告警级别：低 / 中 / 高 / 严重
 
+### 10.5 日志检索（Elasticsearch）
+
+- **数据源**：Filebeat → Kafka → Logstash → ES 采集链路，平台只读查询；索引模式可配（如 `k8s-outlog-*`，支持逗号分隔多模式）
+- **集成中心配置**：ES 地址/用户名/密码/索引模式 + Kibana 地址，密码脱敏回传，测试连接显示 ES 版本（Kibana 401 视为可达）
+- **检索能力**：关键字短语匹配（结果高亮）+ 命名空间/Pod/容器/主机/级别五维筛选（选项由 ES 实时聚合）+ 快捷时间区间（15 分钟～7 天）与自定义范围
+- **日志量直方图**：粒度自适应时间范围，点击柱条缩放到该时间段
+- **Pod 联动**：Pod 日志抽屉与详情抽屉提供「历史日志」入口，按 namespace/pod 预填跳转，解决 K8s 实时日志随 Pod 重建丢失的问题
+- **安全设计**：ES 查询全部在后端白名单构造（前端不接触原始 Query DSL），ES 不直接暴露前端；复用 `monitoring.view` 权限
+- 查询条件同步 URL query，可分享/收藏
+
 ### 11. 工单协作
 
 - 工单新增、编辑、删除（弹窗表单）
@@ -372,8 +382,8 @@ docker run -d \
 
 ### 19. 配置中心
 
-- 通过 UI 管理 Prometheus / Alertmanager / Jenkins 服务地址，无需改代码重启
-- **连接测试**：一键测试 Prometheus / Alertmanager / LLM 是否可达
+- 通过 UI 管理 Prometheus / Alertmanager / Jenkins / Elasticsearch / Kibana 服务地址，无需改代码重启
+- **连接测试**：一键测试 Prometheus / Alertmanager / Elasticsearch / Kibana / LLM 是否可达（ES 显示版本号，表单未填密码自动用已存凭据测试）
 - DB 优先读取，fallback 到 `config.py` 常量，无缝升级
 - 配置变更自动写入审计日志
 

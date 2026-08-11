@@ -41,7 +41,15 @@ _CONFIG_SPECS: dict[str, str] = {
     "llm.top_p": "Top P 采样参数（0-1）",
     "llm.system_prompt": "自定义系统提示词",
     "llm.profiles": "LLM 模型配置列表（JSON）",
+    "elasticsearch.url": "Elasticsearch 服务地址（例：http://elasticsearch:9200）",
+    "elasticsearch.username": "Elasticsearch 用户名（可选，如 elastic）",
+    "elasticsearch.password": "Elasticsearch 密码（可选）",
+    "elasticsearch.index": "日志索引模式（例：filebeat-* 或 logs-*）",
+    "kibana.url": "Kibana 服务地址（可选，用于外部跳转深度分析）",
 }
+
+# 敏感配置：列表/详情接口只回传掩码
+_MASKED_KEYS = {"llm.api_key", "elasticsearch.password"}
 
 
 class ConfigUpdate(BaseModel):
@@ -490,9 +498,10 @@ def api_test_llm_chat(
 def api_test_connection(
     service: str,
     body: TestConnectionBody,
+    db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("settings.view")),
 ):
-    """测试 Prometheus / Alertmanager 连通性。"""
+    """测试 Prometheus / Alertmanager / Jenkins / Elasticsearch / Kibana 连通性。"""
     import httpx
     from urllib.parse import urlparse
 
@@ -510,18 +519,39 @@ def api_test_connection(
         test_url = f"{url.rstrip('/')}/api/v2/status"
     elif service == "jenkins":
         test_url = f"{url.rstrip('/')}/api/json"
+    elif service == "elasticsearch":
+        test_url = f"{url.rstrip('/')}/"
+    elif service == "kibana":
+        test_url = f"{url.rstrip('/')}/api/status"
     else:
         raise HTTPException(status_code=400, detail=f"不支持的服务: {service}")
 
     try:
         auth = None
-        if service == "jenkins" and body.username and body.token:
-            auth = httpx.BasicAuth(body.username, body.token)
+        if body.username and service in ("jenkins", "elasticsearch", "kibana"):
+            password = body.token
+            if not password and service == "elasticsearch":
+                # 表单未填密码时回退到已保存的凭据，避免误报认证失败
+                password = get_config(db, "elasticsearch.password")
+            if password:
+                auth = httpx.BasicAuth(body.username, password)
 
         with httpx.Client(timeout=5, follow_redirects=False, auth=auth) as client:
             resp = client.get(test_url)
             if resp.status_code == 200:
+                if service == "elasticsearch":
+                    try:
+                        version = (resp.json().get("version") or {}).get("number", "")
+                    except Exception:
+                        version = ""
+                    suffix = f"（版本 {version}）" if version else ""
+                    return {"code": 0, "msg": f"{service} 连接成功{suffix}", "data": {"url": url, "ok": True}}
                 return {"code": 0, "msg": f"{service} 连接成功", "data": {"url": url, "ok": True}}
+            # Kibana 开启安全认证时 /api/status 返回 401 属正常（浏览器访问时由用户登录）
+            if service == "kibana" and resp.status_code in (401, 403):
+                return {"code": 0, "msg": "Kibana 服务可达（需要登录认证，属正常）", "data": {"url": url, "ok": True}}
+            if resp.status_code in (401, 403):
+                return {"code": 1, "msg": f"{service} 认证失败（{resp.status_code}），请检查用户名/密码", "data": {"url": url, "ok": False}}
             return {"code": 1, "msg": f"{service} 返回状态码 {resp.status_code}", "data": {"url": url, "ok": False}}
     except httpx.TimeoutException:
         return {"code": 1, "msg": f"{service} 连接超时", "data": {"url": url, "ok": False}}
@@ -548,8 +578,8 @@ def api_list_configs(
         row = row_map.get(key)
         value = row.value if row else ""
         # 敏感配置不回传明文
-        if key in {"llm.api_key", "llm.profiles"}:
-            if key == "llm.api_key":
+        if key in _MASKED_KEYS or key == "llm.profiles":
+            if key in _MASKED_KEYS:
                 value = mask_api_key(value)
             else:
                 value = ""
@@ -593,7 +623,7 @@ def api_get_config(
         raise HTTPException(status_code=400, detail=f"不支持的配置项: {key}")
 
     value = get_config(db, key)
-    if key == "llm.api_key":
+    if key in _MASKED_KEYS:
         value = mask_api_key(value)
     elif key == "llm.profiles":
         value = ""
