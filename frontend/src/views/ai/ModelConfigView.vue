@@ -68,6 +68,7 @@
           :profile="activeProfile"
           :form-errors="formErrors"
           :api-key-placeholder="apiKeyPlaceholder"
+          :provider-changed="providerChanged"
           :loading-models="loadingModels"
           :model-options="modelOptions"
           :model-list-tip="modelListTip"
@@ -186,9 +187,24 @@ const providerDrafts = reactive<Record<string, ReturnType<typeof snapshotProvide
 const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value) || null)
 const isDirty = computed(() => serializeProfiles(profiles.value) !== savedSnapshot.value)
 
+// 记录每个 profile 上次保存/加载时的 provider，用于检测「服务商是否被改过」。
+// 切换服务商后旧 api_key 不再适用，UI 需提示用户重新填写。
+const savedProviderById = reactive<Record<string, string>>({})
+// 当前激活 profile 是否在加载/保存后又被改了服务商
+const providerChanged = computed(() => {
+  const p = activeProfile.value
+  if (!p) return false
+  const saved = savedProviderById[p.id]
+  // 新建的 profile 没记录过，不算变更
+  if (saved === undefined) return false
+  return saved !== p.provider
+})
+
 const apiKeyPlaceholder = computed(() => {
   const p = activeProfile.value
   if (!p) return 'sk-xxxxxxxxxxxxxxxx'
+  // 服务商变更后，旧 key 不再适用，提示重新填写
+  if (providerChanged.value) return '服务商已变更，请填写新服务商的 API Key'
   if (p.has_api_key) {
     return p.api_key_masked
       ? `已配置 ${p.api_key_masked}，留空表示不修改`
@@ -231,6 +247,10 @@ function generateId(): string {
 
 function markSaved() {
   savedSnapshot.value = serializeProfiles(profiles.value)
+  // 同步每个 profile 的 provider 快照，用于 providerChanged 判定
+  for (const p of profiles.value) {
+    savedProviderById[p.id] = p.provider
+  }
 }
 
 async function confirmDiscardIfDirty(actionLabel = '切换'): Promise<boolean> {
@@ -513,6 +533,10 @@ async function handleTest() {
     ElMessage.warning('请至少填写 API 地址和模型名称')
     return
   }
+  if (providerChanged.value && !(p.api_key || '').trim() && !isLocalProvider(p)) {
+    ElMessage.warning('服务商已变更，请填写新服务商的 API Key')
+    return
+  }
   if (!(p.api_key || '').trim() && !p.has_api_key && !isLocalProvider(p)) {
     ElMessage.warning('请填写 API Key')
     return
@@ -547,6 +571,10 @@ async function handleTestChat() {
   const p = activeProfile.value
   if (!p.base_url.trim() || !p.model.trim()) {
     ElMessage.warning('请至少填写 API 地址和模型名称')
+    return
+  }
+  if (providerChanged.value && !(p.api_key || '').trim() && !isLocalProvider(p)) {
+    ElMessage.warning('服务商已变更，请填写新服务商的 API Key')
     return
   }
   if (!(p.api_key || '').trim() && !p.has_api_key && !isLocalProvider(p)) {

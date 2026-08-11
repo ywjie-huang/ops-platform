@@ -37,8 +37,19 @@
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </span>
           </div>
-          <span class="form-tip">
-            {{ profile.has_api_key ? '已配置密钥，留空表示不修改' : '部分本地模型（如 Ollama）可留空' }}
+          <span class="form-tip" :class="{ 'form-tip-warn': providerChanged && profile.has_api_key }">
+            <template v-if="providerChanged && profile.has_api_key">
+              服务商已变更，当前密钥为原服务商所有，请填写新服务商的 API Key
+            </template>
+            <template v-else-if="providerChanged">
+              服务商已变更，请填写新服务商的 API Key
+            </template>
+            <template v-else-if="profile.has_api_key">
+              已配置密钥，留空表示不修改
+            </template>
+            <template v-else>
+              部分本地模型（如 Ollama）可留空
+            </template>
           </span>
         </div>
         <div class="form-group">
@@ -102,6 +113,7 @@ defineProps<{
   profile: LLMProfile
   formErrors: Record<string, string>
   apiKeyPlaceholder: string
+  providerChanged?: boolean
   loadingModels?: boolean
   modelOptions: Array<{ id: string; owned_by: string }>
   modelListTip?: string
@@ -265,6 +277,9 @@ const showPassword = ref(false)
   font-size: 12px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+.form-tip-warn {
+  color: var(--warning-color, #d97706);
 }
 .form-error {
   font-size: 12px;
