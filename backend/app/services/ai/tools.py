@@ -185,6 +185,55 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "query_logs",
+            "description": (
+                "检索 Elasticsearch 中的历史日志（K8s Pod / 容器 / 主机系统日志）。"
+                "用于故障诊断时获取日志证据：可按关键字、命名空间、Pod、容器、主机、级别过滤，"
+                "默认查最近 30 分钟。排查告警或容器异常时，建议先用 query_alerts/query_k8s "
+                "定位对象，再用本工具查其 error 日志。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {
+                        "type": "string",
+                        "description": "日志内容关键字（短语匹配），如 OutOfMemory、超时、订单号",
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "description": "K8s 命名空间（精确匹配）",
+                    },
+                    "pod": {
+                        "type": "string",
+                        "description": "Pod 名称（精确匹配，可含随机后缀）",
+                    },
+                    "container": {
+                        "type": "string",
+                        "description": "容器名称（精确匹配）。一个 Pod 多容器时按容器名定位",
+                    },
+                    "host": {
+                        "type": "string",
+                        "description": "主机名（精确匹配）",
+                    },
+                    "level": {
+                        "type": "string",
+                        "description": "日志级别，如 error、warn。诊断异常时建议传 error",
+                    },
+                    "minutes": {
+                        "type": "integer",
+                        "description": "向前回溯分钟数，默认 30，最大 1440。分析告警时传 60 覆盖告警滞后",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "返回条数，默认 10，最大 20",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "execute_command",
             "description": "在指定服务器上通过 SSH 执行 shell 命令。可用于部署服务、查看日志、管理容器等操作。这是一个写操作，需要用户确认。",
             "parameters": {
@@ -255,6 +304,7 @@ READONLY_TOOLS = {
     "query_k8s",
     "query_tickets",
     "get_patrol_reports",
+    "query_logs",
 }
 
 # 工具 → 所需权限码映射。AI 助手执行任何工具前都按此校验当前用户权限，
@@ -267,6 +317,7 @@ TOOL_PERMISSIONS: dict[str, str] = {
     "query_k8s": "containers.view",
     "query_tickets": "tickets.view",
     "get_patrol_reports": "patrol.view",
+    "query_logs": "monitoring.view",
     "execute_command": "batch_exec.execute",
     "run_patrol": "patrol.execute",
     "create_ticket": "tickets.create",
@@ -282,6 +333,7 @@ TOOL_HANDLERS: dict[str, str] = {
     "query_k8s": "app.services.ai.tools.handle_query_k8s",
     "query_tickets": "app.services.ai.tools.handle_query_tickets",
     "get_patrol_reports": "app.services.ai.tools.handle_get_patrol_reports",
+    "query_logs": "app.services.ai.tools.handle_query_logs",
     "execute_command": "app.services.ai.tools.handle_execute_command",
     "run_patrol": "app.services.ai.tools.handle_run_patrol",
     "create_ticket": "app.services.ai.tools.handle_create_ticket",
@@ -453,6 +505,154 @@ def handle_get_patrol_reports(db: Session, args: dict[str, Any]) -> str:
     for r in reports:
         time_str = r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "N/A"
         lines.append(f"{r.title}, 状态: {r.status}, 正常: {r.normal_count}, 警告: {r.warning_count}, 严重: {r.critical_count}, 时间: {time_str}")
+    return "\n".join(lines)
+
+
+# 单条日志消息最大字符数（保留 Java 堆栈关键信息：异常类 + 首个 at 行通常在前 200 字符内）
+_LOG_MESSAGE_TRUNCATE = 300
+# 工具层 limit 上限（控制 token 预算：20 条 × 300 字符 ≈ 6KB）
+_LOG_LIMIT_MAX = 20
+# 默认回溯分钟数
+_LOG_DEFAULT_MINUTES = 30
+# minutes 上限（24 小时）
+_LOG_MINUTES_MAX = 1440
+
+
+def _truncate(text: str, limit: int = _LOG_MESSAGE_TRUNCATE) -> str:
+    """按字符数截断，超出加省略号。"""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "..."
+
+
+def _format_log_timestamp(ts: str | None) -> str:
+    """把 ES 的 @timestamp（ISO）压成 `YYYY-MM-DD HH:MM:SS` 给模型看。"""
+    if not ts:
+        return "?"
+    # 兼容带时区/不带时区的 ISO 串；失败则原样返回
+    try:
+        from datetime import datetime
+        text = ts.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return ts
+
+
+async def handle_query_logs(db: Session, args: dict[str, Any]) -> str:
+    """检索 ES 历史日志（只读）。"""
+    from datetime import datetime, timedelta
+    from urllib.parse import urlencode
+
+    from app.core.config import CHINA_TZ
+    from app.services.elasticsearch import ElasticsearchError, search_logs
+
+    # 参数归一化
+    keyword = str(args.get("keyword", "") or "").strip()
+    namespace = str(args.get("namespace", "") or "").strip()
+    pod = str(args.get("pod", "") or "").strip()
+    container = str(args.get("container", "") or "").strip()
+    host = str(args.get("host", "") or "").strip()
+    level = str(args.get("level", "") or "").strip()
+
+    try:
+        minutes = int(args.get("minutes", _LOG_DEFAULT_MINUTES))
+    except (TypeError, ValueError):
+        minutes = _LOG_DEFAULT_MINUTES
+    minutes = max(1, min(minutes, _LOG_MINUTES_MAX))
+
+    try:
+        limit = int(args.get("limit", 10))
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, _LOG_LIMIT_MAX))
+
+    # 相对时间换算为 ISO（中国时区，与项目其它路径一致）
+    now = datetime.now(CHINA_TZ)
+    end_iso = now.isoformat()
+    start_iso = (now - timedelta(minutes=minutes)).isoformat()
+
+    try:
+        data = await search_logs(
+            db,
+            keyword=keyword,
+            namespace=namespace,
+            pod=pod,
+            container=container,
+            host=host,
+            level=level,
+            start=start_iso,
+            end=end_iso,
+            size=limit,
+            offset=0,
+        )
+    except ElasticsearchError as e:
+        # ES 未配置 / 传输错误 / 时间格式错误：直接转述中文友好提示
+        return e.detail
+
+    total = int(data.get("total", 0))
+    items = data.get("items") or []
+
+    if total == 0:
+        return (
+            f"最近 {minutes} 分钟内无匹配日志。"
+            "可尝试：扩大 minutes、去掉 level 过滤、检查 pod/container 名是否完整。"
+        )
+
+    # 构造过滤条件描述（用于首行和末尾 URL）
+    cond_parts = []
+    if level:
+        cond_parts.append(f"级别={level}")
+    if namespace:
+        cond_parts.append(f"命名空间={namespace}")
+    if pod:
+        cond_parts.append(f"pod={pod}")
+    if container:
+        cond_parts.append(f"容器={container}")
+    if host:
+        cond_parts.append(f"主机={host}")
+    if keyword:
+        cond_parts.append(f"关键字={keyword}")
+    cond_desc = f"（{', '.join(cond_parts)}）" if cond_parts else ""
+
+    lines = [f"最近 {minutes} 分钟内共 {total:,} 条匹配日志，以下是最近 {len(items)} 条{cond_desc}："]
+    for it in items:
+        ts = _format_log_timestamp(it.get("timestamp"))
+        lvl = (it.get("level") or "?").upper()
+        ns = it.get("namespace")
+        pod_name = it.get("pod")
+        ctr = it.get("container")
+        hostname = it.get("host")
+        # 来源：优先 namespace/pod/container（K8s），否则 host
+        if pod_name:
+            source = "/".join(p for p in [ns, pod_name, ctr] if p) or "?"
+        else:
+            source = hostname or "?"
+        msg = _truncate(str(it.get("message") or ""))
+        lines.append(f"[{ts}] {lvl} {source}\n{msg}")
+
+    # 末尾引导语 + 日志检索页 URL（query key 与 LogSearchView.initFromRoute 对齐）
+    if total > len(items):
+        lines.append(
+            f"仅显示最近 {len(items)} 条。可缩小时间窗或增加过滤条件，"
+            "或引导用户到「监控告警 → 日志检索」查看全文。"
+        )
+    # 拼 URL（页面只认 keyword/namespace/pod/container/host/level/start/end，无 minutes）
+    url_params = {"start": start_iso, "end": end_iso}
+    if keyword:
+        url_params["keyword"] = keyword
+    if namespace:
+        url_params["namespace"] = namespace
+    if pod:
+        url_params["pod"] = pod
+    if container:
+        url_params["container"] = container
+    if host:
+        url_params["host"] = host
+    if level:
+        url_params["level"] = level
+    lines.append(f"完整日志：/monitoring/logs?{urlencode(url_params)}")
+
     return "\n".join(lines)
 
 

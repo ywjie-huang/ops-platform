@@ -40,3 +40,22 @@ def test_dispatch_tool_maps_write_tool_to_execute_permission(monkeypatch):
     )
 
     assert asked["code"] == "batch_exec.execute"
+
+
+def test_dispatch_tool_maps_query_logs_to_monitoring_view(monkeypatch):
+    """query_logs 工具映射到 monitoring.view 权限码（与日志检索页/API 同源）。"""
+    asked = {}
+
+    def fake_has_permission(_user, code):
+        asked["code"] = code
+        return False
+
+    monkeypatch.setattr(dispatcher, "has_permission", fake_has_permission)
+
+    result = asyncio.run(
+        dispatcher.dispatch_tool(db=None, tool_name="query_logs", arguments={}, user=None)
+    )
+
+    assert asked["code"] == "monitoring.view"
+    assert result["ok"] is False
+    assert "monitoring.view" in result["error"]
