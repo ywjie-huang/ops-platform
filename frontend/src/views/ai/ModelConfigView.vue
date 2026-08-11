@@ -221,9 +221,9 @@ const formErrors = reactive<Record<string, string>>({
 
 function validateField(field: string) {
   if (field === 'base_url') {
-    formErrors.base_url = activeProfile.value?.base_url.trim() ? '' : '请输入 API 地址'
+    formErrors.base_url = (activeProfile.value?.base_url || '').trim() ? '' : '请输入 API 地址'
   } else if (field === 'model') {
-    formErrors.model = activeProfile.value?.model.trim() ? '' : '请输入模型名称'
+    formErrors.model = (activeProfile.value?.model || '').trim() ? '' : '请输入模型名称'
   }
 }
 
@@ -269,9 +269,9 @@ async function confirmDiscardIfDirty(actionLabel = '切换'): Promise<boolean> {
 
 function draftCredentialPayload(p: LLMProfile) {
   return {
-    base_url: p.base_url.trim(),
+    base_url: (p.base_url || '').trim(),
     api_key: (p.api_key || '').trim(),
-    model: p.model.trim(),
+    model: (p.model || '').trim(),
     api_mode: p.api_mode || 'chat_completions',
     reasoning_effort: (p.reasoning_effort || '') as '' | 'low' | 'medium' | 'high',
     provider: p.provider || '',
@@ -412,7 +412,7 @@ function applyPromptTemplate(content: string) {
 async function handleRefreshModels() {
   if (!activeProfile.value) return
   const p = activeProfile.value
-  if (!p.base_url.trim()) {
+  if (!(p.base_url || '').trim()) {
     ElMessage.warning('请先填写 API 地址')
     return
   }
@@ -424,7 +424,7 @@ async function handleRefreshModels() {
   modelListTip.value = ''
   try {
     const res: any = await listLLMModels({
-      base_url: p.base_url.trim(),
+      base_url: (p.base_url || '').trim(),
       api_key: (p.api_key || '').trim(),
       provider: p.provider || '',
       api_mode: p.api_mode || 'chat_completions',
@@ -537,7 +537,7 @@ async function handleSave() {
 async function handleTest() {
   if (!activeProfile.value) return
   const p = activeProfile.value
-  if (!p.base_url.trim() || !p.model.trim()) {
+  if (!(p.base_url || '').trim() || !(p.model || '').trim()) {
     ElMessage.warning('请至少填写 API 地址和模型名称')
     return
   }
@@ -577,7 +577,7 @@ async function handleTest() {
 async function handleTestChat() {
   if (!testInput.value.trim() || testSending.value || !activeProfile.value) return
   const p = activeProfile.value
-  if (!p.base_url.trim() || !p.model.trim()) {
+  if (!(p.base_url || '').trim() || !(p.model || '').trim()) {
     ElMessage.warning('请至少填写 API 地址和模型名称')
     return
   }
