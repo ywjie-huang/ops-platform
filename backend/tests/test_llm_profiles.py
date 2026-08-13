@@ -352,7 +352,7 @@ def test_guess_provider_from_url_covers_all_presets():
         "https://api.deepseek.com/v1": "deepseek",
         "https://dashscope.aliyuncs.com/compatible-mode/v1": "qwen",
         "https://ark.cn-beijing.volces.com/api/v3": "doubao",
-        "https://qianfan.baidubce.com/v2": "wenxin",
+        "https://qianfan.baidubce.com/v2": "custom",
         "http://localhost:11434/v1": "ollama",
         "https://my-gateway.example/v1": "custom",
         "": "custom",

@@ -137,8 +137,6 @@ def guess_provider_from_url(url: str) -> str:
         return "qwen"
     if "volces.com" in u or "/ark" in u:
         return "doubao"
-    if "qianfan" in u or "baidubce" in u:
-        return "wenxin"
     if "11434" in u or "ollama" in u:
         return "ollama"
     return "custom"
@@ -178,7 +176,6 @@ def ensure_llm_profiles_migrated(db: Session) -> list[dict[str, Any]]:
             "deepseek": "DS",
             "qwen": "QW",
             "doubao": "DB",
-            "wenxin": "WX",
             "ollama": "OL",
         }.get(provider, "⚡"),
         "base_url": legacy["base_url"],
