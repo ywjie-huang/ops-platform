@@ -1,181 +1,173 @@
 <template>
-  <div class="card">
-    <div class="section-title">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      快速选择服务商
-    </div>
-    <div class="card-content">
-      <div class="provider-presets">
-        <div
-          v-for="p in providers"
-          :key="p.id"
-          class="provider-card"
-          :class="{ selected: profile.provider === p.id }"
-          role="radio"
-          :aria-checked="profile.provider === p.id"
-          :aria-label="`${p.name}: ${p.hint}`"
-          tabindex="0"
-          @click="$emit('select', p)"
-          @keydown.enter.space.prevent="$emit('select', p)"
-        >
-          <div class="provider-logo">{{ p.icon }}</div>
-          <div class="provider-name">{{ p.name }}</div>
-          <div class="provider-desc">{{ p.hint }}</div>
-        </div>
+  <div class="card provider-card" :class="{ 'is-open': isOpen }">
+    <!-- 摘要行：收起态只留一行 -->
+    <div class="pv-summary">
+      <div class="pv-logo" :class="{ 'has-img': !!currentLogo }">
+        <img v-if="currentLogo" :src="currentLogo" :alt="presetName" />
+        <template v-else>{{ profile.icon }}</template>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">接口模式</label>
-          <select class="form-input" v-model="profile.api_mode" @change="$emit('api-mode-change')">
-            <option value="chat_completions">Chat Completions</option>
-            <option value="responses">Responses</option>
-            <option value="anthropic">Anthropic Messages</option>
-          </select>
-          <span class="form-tip">智谱 Coding Plan / Claude 官方选 Anthropic；中转站支持 Responses 时可切换</span>
+      <div class="pv-sum-text">
+        <div class="pv-name">{{ presetName }}</div>
+        <div class="pv-sub">{{ hostLabel }} · 默认模型 {{ profile.model || '—' }}</div>
+      </div>
+      <button class="btn btn-sm" type="button" @click="isOpen = !isOpen">
+        {{ isOpen ? '收起 ▴' : '更换服务商 ▾' }}
+      </button>
+    </div>
+
+    <!-- 展开网格：按 国际 / 国内 / 本地·通用 分组 -->
+    <div class="pv-grid">
+      <template v-for="g in groups" :key="g.id">
+        <div class="pv-group-cap">{{ g.label }}</div>
+        <div class="pv-tiles">
+          <button
+            v-for="p in g.items"
+            :key="p.id"
+            type="button"
+            class="pv-tile"
+            :class="{ selected: profile.provider === p.id }"
+            :aria-pressed="profile.provider === p.id"
+            @click="onSelect(p)"
+          >
+            <span class="pv-logo" :class="{ 'has-img': !!logoOf(p.id) }">
+              <img v-if="logoOf(p.id)" :src="logoOf(p.id)" :alt="p.name" />
+              <template v-else>{{ p.icon }}</template>
+            </span>
+            <span class="pv-t-text">
+              <span class="pv-t-name">{{ p.name }}</span>
+              <span class="pv-t-hint">{{ p.hint }}</span>
+            </span>
+          </button>
         </div>
-        <div class="form-group" v-if="profile.api_mode === 'responses'">
-          <label class="form-label">推理强度</label>
-          <select class="form-input" v-model="profile.reasoning_effort">
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-          <span class="form-tip">仅 Responses 模式生效</span>
-        </div>
+      </template>
+      <div class="pv-foot">
+        <button class="btn btn-sm" type="button" @click="isOpen = false">收起 ▴</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { LLMProfile } from '@/api/settings'
-import type { ProviderPreset } from '../../providerPreset'
+import { providerLogoOf } from '../../providerLogos'
+import type { ProviderPreset, ProviderGroup } from '../../providerPreset'
 
-defineProps<{
+const props = defineProps<{
   profile: LLMProfile
   providers: ProviderPreset[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'select', provider: ProviderPreset): void
-  (e: 'api-mode-change'): void
 }>()
+
+const logoOf = providerLogoOf
+
+const GROUP_LABELS: Record<ProviderGroup, string> = {
+  intl: '国际',
+  cn: '国内',
+  local: '本地 / 通用',
+}
+
+const groups = computed(() =>
+  (['intl', 'cn', 'local'] as ProviderGroup[])
+    .map((id) => ({ id, label: GROUP_LABELS[id], items: props.providers.filter((p) => p.group === id) }))
+    .filter((g) => g.items.length > 0),
+)
+
+// 新建（地址和模型都为空）时默认展开；切换配置时重算
+const isBlank = (p: LLMProfile) => !(p.base_url || '').trim() && !(p.model || '').trim()
+const isOpen = ref(isBlank(props.profile))
+watch(
+  () => props.profile.id,
+  () => { isOpen.value = isBlank(props.profile) },
+)
+
+const currentLogo = computed(() => providerLogoOf(props.profile.provider))
+const presetName = computed(
+  () => props.providers.find((p) => p.id === props.profile.provider)?.name || '自定义',
+)
+const hostLabel = computed(() => {
+  const u = (props.profile.base_url || '').trim()
+  if (!u) return '（手动填写）'
+  try {
+    return new URL(u).hostname
+  } catch {
+    return u
+  }
+})
+
+function onSelect(p: ProviderPreset) {
+  emit('select', p)
+  isOpen.value = false // 选中即自动折叠
+}
 </script>
 
 <style scoped>
 .card {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 20px;
+  border-radius: var(--radius, 10px);
+  padding: 16px 18px;
+  position: relative;
+  flex: none;
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.035);
 }
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+
+/* ── 摘要行 ── */
+.pv-summary { display: flex; align-items: center; gap: 12px; position: relative; }
+.pv-logo {
+  width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+  background: #f5f5f5; color: var(--text-secondary); font-weight: 800; font-size: 12px; flex: none;
 }
-.section-title svg { color: var(--text-secondary); }
-.card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 12px;
+.pv-logo:not(.has-img) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -8px 14px rgba(0, 0, 0, 0.1); }
+.pv-logo.has-img { background: #fff; border: 1px solid var(--border-strong, #e2e2e6); box-shadow: 0 1px 2px rgba(17, 17, 17, 0.06); }
+.pv-logo.has-img img { width: 62%; height: 62%; object-fit: contain; display: block; }
+.pv-sum-text { flex: 1; min-width: 0; }
+.pv-name { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.pv-sub {
+  font-size: 11.5px; color: var(--text-muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.provider-presets {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
+
+/* ── 展开网格 ── */
+.pv-grid { margin-top: 14px; display: none; flex-direction: column; gap: 10px; }
+.provider-card.is-open .pv-grid { display: flex; }
+.pv-group-cap { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.06em; }
+.pv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pv-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 10px 12px; border: 1px solid var(--border-color); border-radius: 10px;
+  cursor: pointer; background: var(--surface-color); transition: all 0.13s;
+  text-align: center; font-family: inherit;
 }
-.provider-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition: all 0.15s;
-  background: var(--surface-color);
+.pv-tile:hover { border-color: #c9c9cf; background: var(--surface-2, #f6f6f8); transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17, 17, 17, 0.06); }
+.pv-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.pv-tile.selected { border-color: var(--primary-color); background: var(--primary-bg); box-shadow: 0 0 0 1px var(--primary-color); }
+.pv-tile .pv-logo { width: 46px; height: 46px; border-radius: 12px; font-size: 13px; }
+.pv-tile.selected .pv-logo.has-img { border-color: var(--primary-color); box-shadow: 0 0 0 3px var(--primary-bg); }
+.pv-t-text { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pv-t-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.pv-t-hint { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
+.pv-foot { display: flex; justify-content: flex-end; }
+
+/* ── 展开动画 ── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(7px); } }
+.provider-card.is-open .pv-grid { animation: fadeUp 0.22s ease; }
+
+/* ── 按钮 ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-strong, #e2e2e6);
+  background: var(--surface-color); color: var(--text-primary); transition: all 0.15s; font-family: inherit;
 }
-.provider-card:hover {
-  border-color: #c0c4cc;
-  background: #fafafa;
-}
-.provider-card:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-.provider-card.selected {
-  border-color: var(--primary-color);
-  background: var(--primary-bg);
-  box-shadow: 0 0 0 1px var(--primary-color);
-}
-.provider-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f5f5;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-.provider-card.selected .provider-logo {
-  background: rgba(94, 106, 210, 0.12);
-  color: var(--primary-color);
-}
-.provider-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.provider-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-}
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.form-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.form-input {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-  background: var(--surface-color);
-  color: var(--text-primary);
-}
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.1);
-}
-.form-tip {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-@media (max-width: 900px) {
-  .provider-presets { grid-template-columns: repeat(2, 1fr); }
-  .form-row { grid-template-columns: 1fr; }
+.btn:hover { border-color: #c9c9cf; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17, 17, 17, 0.07); }
+.btn:active { transform: none; box-shadow: none; }
+.btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.btn-sm { padding: 5px 11px; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }
 </style>

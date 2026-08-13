@@ -1,68 +1,30 @@
 <template>
-  <div>
-    <!-- Page Header -->
-    <div class="page-header">
-      <div class="header-left">
-        <h2 class="page-title">模型配置</h2>
-        <span v-if="configured" class="status-tag success">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          已配置
-        </span>
-        <span v-else class="status-tag info">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          未配置
-        </span>
-        <span v-if="isDirty" class="status-tag info">未保存</span>
-      </div>
-      <div class="header-right">
-        <button class="btn" :class="{ 'is-loading': testing }" :disabled="testing" @click="handleTest">
-          <svg v-if="!testing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <div v-else class="spinner"></div>
-          测试连接
-        </button>
-        <button class="btn btn-primary" :class="{ 'is-loading': saving }" :disabled="saving" @click="handleSave">
-          <svg v-if="!saving" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          <div v-else class="spinner"></div>
-          保存配置
-        </button>
-      </div>
+  <div class="mc-root">
+    <!-- 页头：只留标题 + 脏状态 -->
+    <div class="mc-head">
+      <h1 class="mc-title">模型配置</h1>
+      <span v-if="isDirty" class="tag warn"><span class="dot"></span>未保存更改</span>
     </div>
 
-    <!-- 测试结果提示 -->
-    <div v-if="testResult !== null" class="alert" :class="testResult ? 'alert-success' : 'alert-error'" style="margin-bottom: 16px;">
-      <svg v-if="testResult" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-      <div>
-        <strong>{{ testResult ? '连接成功' : '连接失败' }}</strong>
-        <div v-if="testResultMsg">{{ testResultMsg }}</div>
-      </div>
-      <button class="btn-text" @click="testResult = null" style="margin-left: auto;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <!-- 主布局：左侧列表 + 右侧配置 -->
-    <div class="main-layout">
-
-      <!-- LEFT: 模型列表 -->
+    <div class="layout">
+      <!-- 左：配置列表 -->
       <ProfileList
         :profiles="profiles"
         :active-profile-id="activeProfileId"
+        :dirty-ids="dirtyIds"
         :loading="loadingProfiles"
-        :is-dirty="isDirty"
-        :has-active="!!activeProfile"
         @select="selectProfile"
         @add="handleAddProfile"
         @clone="handleCloneProfile"
+        @remove="handleDeleteProfile"
       />
 
-      <!-- RIGHT: 配置面板 -->
-      <div class="config-panel" v-if="activeProfile">
+      <!-- 中：配置列（独立滚动） -->
+      <div class="config-col" v-if="activeProfile">
         <ProviderPresetGrid
           :profile="activeProfile"
           :providers="providers"
           @select="applyProvider"
-          @api-mode-change="handleApiModeChange"
         />
         <ConnectionForm
           :profile="activeProfile"
@@ -72,8 +34,14 @@
           :loading-models="loadingModels"
           :model-options="modelOptions"
           :model-list-tip="modelListTip"
+          :testing="testing"
+          :test-result="testResult"
+          :test-result-msg="testResultMsg"
           @validate="validateField"
           @refresh-models="handleRefreshModels"
+          @api-mode-change="handleApiModeChange"
+          @test="handleTest"
+          @close-result="testResult = null"
         />
         <ModelParamsForm
           :profile="activeProfile"
@@ -81,57 +49,88 @@
           :prompt-templates="promptTemplates"
           @apply-prompt="applyPromptTemplate"
         />
-        <QuickTestPanel
-          v-model="testInput"
-          :messages="testMessages"
-          :sending="testSending"
-          :result="testChatResult"
-          @send="handleTestChat"
-        />
 
-        <!-- 操作栏 -->
+        <!-- 粘性操作底栏 -->
         <div class="action-bar">
-          <div class="action-bar-left">
-            <button class="btn" @click="handleCloneProfile">
-              复制此配置
-            </button>
-            <button
-              v-if="profiles.length > 1"
-              class="btn btn-danger"
-              @click="handleDeleteProfile"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <div class="ab-left">
+            <button v-if="profiles.length > 1" class="btn btn-danger" type="button" @click="handleDeleteProfile()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               删除此配置
             </button>
+            <button class="btn" type="button" @click="handleCloneProfile()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              复制
+            </button>
+            <span v-if="isDirty" class="ab-dirty"><span class="dot"></span>{{ dirtyIds.length }} 项未保存</span>
           </div>
-          <div class="action-bar-right">
-            <button
-              v-if="!activeProfile.is_active"
-              class="btn btn-success"
-              @click="handleSetActive"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="ab-right">
+            <button v-if="!activeProfile.is_active" class="btn btn-success" type="button" @click="handleSetActive">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               设为当前使用
             </button>
-            <span v-else class="tag tag-active">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span v-else class="using-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               当前使用中
             </span>
+            <button class="btn btn-primary" type="button" :disabled="saving" @click="handleSave">
+              <svg v-if="!saving" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span v-else class="spinner"></span>
+              保存配置 <span class="kbd">Ctrl S</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- 空状态 -->
-      <div v-else class="card empty-panel">
-        <svg class="empty-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <p>请从左侧选择或新增一个模型配置</p>
+      <!-- 空态向导 -->
+      <div class="config-col" v-else-if="!loadingProfiles">
+        <div class="card wiz-card">
+          <div class="wiz-hero">
+            <div class="wiz-title">从选择一个服务商开始</div>
+            <div class="wiz-sub">选择预设会自动填入推荐地址与模型，你只需粘贴 API Key</div>
+          </div>
+          <div class="wiz-steps">
+            <div class="step"><div class="n">1</div><b>选择服务商</b><span>预设覆盖国际 / 国内主流与本地部署</span></div>
+            <div class="step"><div class="n">2</div><b>填写密钥</b><span>粘贴 API Key；本地 Ollama 可留空</span></div>
+            <div class="step"><div class="n">3</div><b>测试并保存</b><span>一键测试连接，成功后保存并设为使用中</span></div>
+          </div>
+          <div class="pv-tiles">
+            <button
+              v-for="p in providers"
+              :key="p.id"
+              type="button"
+              class="pv-tile"
+              @click="handleWizardSelect(p)"
+            >
+              <span class="pv-logo" :class="{ 'has-img': !!logoOf(p.id) }">
+                <img v-if="logoOf(p.id)" :src="logoOf(p.id)" :alt="p.name" />
+                <template v-else>{{ p.icon }}</template>
+              </span>
+              <span class="pv-t-text">
+                <span class="pv-t-name">{{ p.name }}</span>
+                <span class="pv-t-hint">{{ p.hint }}</span>
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      <!-- 右：常驻快速测试栏 -->
+      <QuickTestPanel
+        v-if="activeProfile"
+        class="test-col"
+        v-model="testInput"
+        :messages="testMessages"
+        :sending="testSending"
+        :result="testChatResult"
+        :subtitle="activeProfile.name + ' · ' + (dirtyIds.includes(activeProfile.id) ? '草稿' : '已保存')"
+        @send="handleTestChat"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated, onDeactivated, onBeforeUnmount } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -151,6 +150,7 @@ import {
   resolveProviderDraft,
   snapshotProviderDraft,
 } from './providerPreset'
+import { providerLogoOf } from './providerLogos'
 import {
   serializeProfiles,
   normalizeLoadedProfiles,
@@ -166,13 +166,12 @@ import QuickTestPanel from './model-config/components/QuickTestPanel.vue'
 const providers = PROVIDER_PRESETS
 const promptTemplates = SYSTEM_PROMPT_TEMPLATES
 const temperaturePresets = TEMPERATURE_PRESETS
+const logoOf = providerLogoOf
 
 // ── 状态 ──
-const loading = ref(false)
 const loadingProfiles = ref(false)
 const saving = ref(false)
 const testing = ref(false)
-const configured = ref(false)
 const testResult = ref<boolean | null>(null)
 const testResultMsg = ref('')
 const savedSnapshot = ref('')
@@ -187,15 +186,21 @@ const providerDrafts = reactive<Record<string, ReturnType<typeof snapshotProvide
 const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value) || null)
 const isDirty = computed(() => serializeProfiles(profiles.value) !== savedSnapshot.value)
 
+// 逐项脏标记：每个 profile 与上次保存/加载时的序列化对比（新增未保存的也算脏）
+const savedSnapshotById = reactive<Record<string, string>>({})
+const dirtyIds = computed(() =>
+  profiles.value
+    .filter(p => savedSnapshotById[p.id] !== serializeProfiles([p]))
+    .map(p => p.id),
+)
+
 // 记录每个 profile 上次保存/加载时的 provider，用于检测「服务商是否被改过」。
 // 切换服务商后旧 api_key 不再适用，UI 需提示用户重新填写。
 const savedProviderById = reactive<Record<string, string>>({})
-// 当前激活 profile 是否在加载/保存后又被改了服务商
 const providerChanged = computed(() => {
   const p = activeProfile.value
   if (!p) return false
   const saved = savedProviderById[p.id]
-  // 新建的 profile 没记录过，不算变更
   if (saved === undefined) return false
   return saved !== p.provider
 })
@@ -203,7 +208,6 @@ const providerChanged = computed(() => {
 const apiKeyPlaceholder = computed(() => {
   const p = activeProfile.value
   if (!p) return 'sk-xxxxxxxxxxxxxxxx'
-  // 服务商变更后，旧 key 不再适用，提示重新填写
   if (providerChanged.value) return '服务商已变更，请填写新服务商的 API Key'
   if (p.has_api_key) {
     return p.api_key_masked
@@ -240,16 +244,22 @@ const testMessages = ref<Array<{ role: string; content: string }>>([])
 const testChatResult = ref<{ ok: boolean; msg: string } | null>(null)
 
 // ── 工具函数 ──
-
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
 function markSaved() {
   savedSnapshot.value = serializeProfiles(profiles.value)
-  // 同步每个 profile 的 provider 快照，用于 providerChanged 判定
   for (const p of profiles.value) {
+    savedSnapshotById[p.id] = serializeProfiles([p])
     savedProviderById[p.id] = p.provider
+  }
+  // 已删除的 id 不再保留快照
+  for (const id of Object.keys(savedSnapshotById)) {
+    if (!profiles.value.some(p => p.id === id)) delete savedSnapshotById[id]
+  }
+  for (const id of Object.keys(savedProviderById)) {
+    if (!profiles.value.some(p => p.id === id)) delete savedProviderById[id]
   }
 }
 
@@ -285,18 +295,14 @@ async function fetchProfiles() {
   try {
     const res: any = await getLLMProfiles()
     profiles.value = normalizeLoadedProfiles(res.data?.items || [])
-
     // 默认选中激活的（legacy 迁移由后端 ensure_llm_profiles_migrated 处理）
     const active = profiles.value.find(p => p.is_active)
     activeProfileId.value = active?.id || profiles.value[0]?.id || null
-    configured.value = !!active
     markSaved()
   } finally {
     loadingProfiles.value = false
   }
 }
-
-
 
 // ── 保存 profiles ──
 async function saveProfiles() {
@@ -321,7 +327,6 @@ async function saveProfiles() {
         copy_api_key_from: undefined,
       }))
     }
-    configured.value = profiles.value.some(p => p.is_active)
     markSaved()
     ElMessage.success('配置已保存')
   } finally {
@@ -351,7 +356,7 @@ async function selectProfile(p: LLMProfile) {
   modelListTip.value = ''
 }
 
-// ── 新增配置 ──
+// ── 新增配置（第一个配置自动设为使用中） ──
 function handleAddProfile() {
   const newProfile: LLMProfile = {
     id: generateId(),
@@ -366,7 +371,7 @@ function handleAddProfile() {
     max_tokens: 4096,
     top_p: 1.0,
     system_prompt: '',
-    is_active: false,
+    is_active: profiles.value.length === 0,
   }
   profiles.value.push(newProfile)
   activeProfileId.value = newProfile.id
@@ -377,10 +382,16 @@ function handleAddProfile() {
   testChatResult.value = null
 }
 
-// ── 复制配置 ──
-function handleCloneProfile() {
-  if (!activeProfile.value) return
-  const src = activeProfile.value
+// ── 空态向导：选服务商 = 新增 + 应用预设 ──
+function handleWizardSelect(preset: typeof providers[number]) {
+  handleAddProfile()
+  applyProvider(preset)
+}
+
+// ── 复制配置（可指定源，默认当前激活项） ──
+function handleCloneProfile(source?: LLMProfile) {
+  const src = source || activeProfile.value
+  if (!src) return
   const cloned: LLMProfile = {
     ...src,
     id: generateId(),
@@ -449,20 +460,24 @@ async function handleRefreshModels() {
   }
 }
 
-// ── 删除配置 ──
-async function handleDeleteProfile() {
-  if (!activeProfile.value) return
-  await ElMessageBox.confirm(`确定删除配置「${activeProfile.value.name}」？`, '确认删除', {
-    type: 'warning',
-  })
-  const deleting = activeProfile.value
-  const idx = profiles.value.findIndex(p => p.id === activeProfileId.value)
+// ── 删除配置（可指定目标，默认当前激活项；删除使用中配置时自动顺延） ──
+async function handleDeleteProfile(target?: LLMProfile) {
+  const victim = target || activeProfile.value
+  if (!victim || profiles.value.length <= 1) return
+  try {
+    await ElMessageBox.confirm(`确定删除配置「${victim.name}」？`, '确认删除', { type: 'warning' })
+  } catch {
+    return
+  }
+  const idx = profiles.value.findIndex(p => p.id === victim.id)
   profiles.value.splice(idx, 1)
   const next = profiles.value[Math.min(idx, profiles.value.length - 1)] || null
-  activeProfileId.value = next?.id || null
-  if (deleting.is_active && next && !next.is_active) {
+  if (victim.is_active && next) {
     profiles.value.forEach(p => { p.is_active = p.id === next.id })
     ElMessage.info(`已自动将「${next.name}」设为当前使用`)
+  }
+  if (activeProfileId.value === victim.id) {
+    activeProfileId.value = next?.id || null
   }
   await saveProfiles()
 }
@@ -470,13 +485,7 @@ async function handleDeleteProfile() {
 // ── 设为当前使用 ──
 async function handleSetActive() {
   if (!activeProfile.value) return
-  if (isDirty.value) {
-    // 激活前先保存当前草稿，避免激活的是旧值
-    if (!validateForm()) return
-    profiles.value.forEach(p => { p.is_active = p.id === activeProfileId.value })
-    await saveProfiles()
-    return
-  }
+  if (isDirty.value && !validateForm()) return
   profiles.value.forEach(p => { p.is_active = p.id === activeProfileId.value })
   await saveProfiles()
 }
@@ -517,9 +526,8 @@ function handleApiModeChange() {
 
 // ── 保存按钮 ──
 async function handleSave() {
-  if (!activeProfile.value) return
+  if (!activeProfile.value || saving.value) return
   if (!validateForm()) {
-    // 校验失败时给出明确提示，避免「点保存没反应」
     const missing: string[] = []
     if (formErrors.base_url) missing.push('API 地址')
     if (formErrors.model) missing.push('模型名称')
@@ -596,7 +604,6 @@ async function handleTestChat() {
   testSending.value = true
   testChatResult.value = null
 
-
   try {
     const res: any = await testLLMChat({
       ...draftCredentialPayload(p),
@@ -633,10 +640,19 @@ async function handleTestChat() {
     testChatResult.value = { ok: false, msg: e?.message || '请求失败' }
   } finally {
     testSending.value = false
-
   }
 }
 
+// ── Ctrl+S 快捷保存（keep-alive 下随激活状态挂载/卸载） ──
+function onKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    handleSave()
+  }
+}
+onActivated(() => window.addEventListener('keydown', onKeydown))
+onDeactivated(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 onBeforeRouteLeave(async (_to, _from, next) => {
   if (!isDirty.value) {
@@ -648,304 +664,163 @@ onBeforeRouteLeave(async (_to, _from, next) => {
 })
 
 onMounted(fetchProfiles)
-
 </script>
 
 <style scoped>
-/* ── SVG Icon System ── */
-.icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
+/* ── mockup 设计令牌（局部覆盖，不影响其他页面） ── */
+.mc-root {
+  --surface-2: #f6f6f8;
+  --border-strong: #e2e2e6;
+  --radius: 10px;
+  --success-bg: rgba(34, 197, 94, 0.11);
+  --warning-bg: rgba(245, 166, 35, 0.13);
+  --danger-bg: rgba(229, 72, 77, 0.1);
 
-/* ── Page Header ── */
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.header-right {
-  display: flex;
-  gap: 8px;
-}
-
-/* ── Status Tag ── */
-.status-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-.status-tag.success { background: var(--success-bg, #f0fdf4); color: var(--success-color, #16a34a); border: 1px solid var(--success-border, #bbf7d0); }
-.status-tag.info { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
-.status-tag.error { background: var(--error-bg, #fef2f2); color: var(--error-color, #dc2626); border: 1px solid var(--error-border, #fecaca); }
-
-/* ── Buttons ── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border-color);
-  background: var(--surface-color);
-  color: var(--text-primary);
-  transition: all 0.15s;
-}
-.btn:hover { border-color: #c0c4cc; }
-.btn:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-.btn-primary {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-danger {
-  background: var(--error-bg, #fef2f2);
-  color: var(--error-color, #dc2626);
-  border-color: var(--error-border, #fecaca);
-}
-.btn-danger:hover { background: #fee2e2; }
-.btn-success {
-  background: var(--success-bg, #f0fdf4);
-  color: var(--success-color, #16a34a);
-  border-color: var(--success-border, #bbf7d0);
-}
-.btn-success:hover { background: #dcfce7; }
-.btn-text { border: none; background: none; color: var(--primary-color); padding: 4px 8px; }
-.btn-text:hover { background: var(--primary-bg); }
-.btn-sm { padding: 4px 12px; font-size: 12px; }
-.btn:disabled, .btn.is-loading {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ── Cards ── */
-.card {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 20px;
-}
-
-/* ── Main Layout ── */
-.main-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
-/* ── Empty State ── */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-  text-align: center;
-  gap: 8px;
-}
-.empty-state-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--text-muted);
-  opacity: 0.5;
-}
-.empty-state-text {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.empty-panel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 300px;
-  gap: 12px;
-}
-.empty-panel-icon {
-  width: 48px;
-  height: 48px;
-  color: #d9d9d9;
-}
-.empty-panel p { font-size: 14px; color: var(--text-muted); }
-
-/* ── Config Panel ── */
-.config-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ── Section Title ── */
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.section-title svg { color: var(--text-secondary); }
-
-/* ── Card Content ── */
-.card-content {
+  height: calc(100vh - var(--header-height) - 40px);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-top: 12px;
 }
 
-/* ── Form Styles ── */
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.form-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.form-label .required { color: var(--error-color, #dc2626); }
-.form-input {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  background: var(--surface-color);
-  color: var(--text-primary);
-}
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.1);
-}
-.form-input:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 1px;
-}
-.form-input::placeholder { color: var(--text-muted); }
-.form-input.error {
-  border-color: var(--error-color, #dc2626);
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
-}
-.form-tip {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-.form-error {
-  font-size: 12px;
-  color: var(--error-color, #dc2626);
-  line-height: 1.4;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ── Inline Tag ── */
+/* ── 页头 ── */
+.mc-head { flex: none; display: flex; align-items: center; gap: 10px; }
+.mc-title { font-size: 17px; font-weight: 750; color: var(--text-primary); }
 .tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  height: 22px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px;
+  border-radius: 999px; font-size: 12px; font-weight: 600;
 }
-.tag-default { background: #f5f5f5; color: var(--text-secondary); }
-.tag-active { background: var(--primary-bg); color: var(--primary-color); }
+.tag.warn { color: #b45309; background: var(--warning-bg); border: 1px solid rgba(245, 166, 35, 0.32); }
+.tag .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-/* ── Alert Banner ── */
-.alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.4;
+/* ── 三栏布局 ── */
+.layout {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: 268px minmax(0, 1fr) 330px; gap: 16px;
+  width: 100%; max-width: 1760px; margin: 0 auto;
 }
-.alert svg { flex-shrink: 0; margin-top: 1px; }
-.alert-success { background: var(--success-bg, #f0fdf4); color: var(--success-color, #16a34a); border: 1px solid var(--success-border, #bbf7d0); }
-.alert-error { background: var(--error-bg, #fef2f2); color: var(--error-color, #dc2626); border: 1px solid var(--error-border, #fecaca); }
+.config-col {
+  min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 14px; padding: 2px 6px 2px 2px;
+}
 
-/* ── Loading Spinner ── */
+/* ── 粘性操作底栏 ── */
+.action-bar {
+  position: sticky; bottom: 10px; z-index: 15;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(8px);
+  border: 1px solid var(--border-strong); border-radius: 11px; padding: 10px 12px;
+  box-shadow: 0 10px 28px -14px rgba(17, 17, 17, 0.28); flex: none;
+}
+.ab-left, .ab-right { display: flex; align-items: center; gap: 8px; position: relative; }
+.using-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700;
+  color: #15803d; background: var(--success-bg); border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 6px 11px; border-radius: 7px;
+}
+.using-chip svg { width: 12px; height: 12px; }
+.ab-dirty {
+  font-size: 11.5px; color: #b45309; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 4px;
+}
+.ab-dirty .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.kbd {
+  font: 700 10px ui-monospace, Menlo, Consolas, monospace; padding: 2px 5px; border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.4); background: rgba(255, 255, 255, 0.16);
+  color: #fff; letter-spacing: 0.02em;
+}
+
+/* ── 按钮 ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-strong);
+  background: var(--surface-color); color: var(--text-primary); transition: all 0.15s; font-family: inherit;
+}
+.btn:hover { border-color: #c9c9cf; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17, 17, 17, 0.07); }
+.btn:active { transform: none; box-shadow: none; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.btn svg { width: 13px; height: 13px; }
+.btn-primary { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-danger { color: #b42318; background: var(--danger-bg); border-color: rgba(229, 72, 77, 0.25); }
+.btn-danger:hover { background: rgba(229, 72, 77, 0.16); border-color: rgba(229, 72, 77, 0.35); }
+.btn-success { color: #15803d; background: var(--success-bg); border-color: rgba(34, 197, 94, 0.3); }
+.btn-success:hover { background: rgba(34, 197, 94, 0.18); }
 .spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+  width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Action Bar ── */
-.action-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ── 空态向导 ── */
+.card {
+  background: var(--surface-color); border: 1px solid var(--border-color);
+  border-radius: var(--radius); padding: 16px 18px; position: relative; flex: none;
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.035);
 }
-.action-bar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.wiz-card { display: flex; flex-direction: column; gap: 16px; padding: 22px; }
+.wiz-hero { text-align: center; padding: 10px 0 2px; }
+.wiz-title { font-size: 17px; font-weight: 800; }
+.wiz-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 5px; }
+.wiz-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.step { border: 1px solid var(--border-color); border-radius: 9px; padding: 12px; background: var(--surface-2); }
+.step .n {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--primary-color); color: #fff;
+  font-size: 11px; font-weight: 800; display: grid; place-items: center; margin-bottom: 8px;
+}
+.step b { font-size: 12.5px; display: block; margin-bottom: 3px; }
+.step span { font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+
+/* ── 向导服务商瓷砖（与 ProviderPresetGrid 同款） ── */
+.pv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pv-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 10px 12px; border: 1px solid var(--border-color); border-radius: 10px;
+  cursor: pointer; background: var(--surface-color); transition: all 0.13s;
+  text-align: center; font-family: inherit;
+}
+.pv-tile:hover { border-color: #c9c9cf; background: var(--surface-2); transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17, 17, 17, 0.06); }
+.pv-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.pv-logo {
+  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+  background: #f5f5f5; color: var(--text-secondary); font-size: 13px; font-weight: 800; flex: none;
+}
+.pv-logo.has-img { background: #fff; border: 1px solid var(--border-strong); box-shadow: 0 1px 2px rgba(17, 17, 17, 0.06); }
+.pv-logo.has-img img { width: 62%; height: 62%; object-fit: contain; display: block; }
+.pv-t-text { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pv-t-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.pv-t-hint { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
+
+/* ── 入场动画（错落） ── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(7px); } }
+.config-col > * { animation: fadeUp 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.config-col > :nth-child(2) { animation-delay: 0.05s; }
+.config-col > :nth-child(3) { animation-delay: 0.1s; }
+.config-col > :nth-child(4) { animation-delay: 0.15s; }
+.config-col > :nth-child(5) { animation-delay: 0.2s; }
+
+/* ── 滚动条 ── */
+.config-col::-webkit-scrollbar { width: 8px; }
+.config-col::-webkit-scrollbar-thumb { background: #d8d8dd; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+
+/* ── 响应式：窄屏降为两栏 / 单栏，测试栏移到底部 ── */
+@media (max-width: 1500px) {
+  .layout { grid-template-columns: 250px minmax(0, 1fr) 300px; }
+}
+@media (max-width: 1280px) {
+  .layout { grid-template-columns: 240px minmax(0, 1fr); }
+  .layout > .test-col { grid-column: 1 / -1; height: 400px; }
+}
+@media (max-width: 860px) {
+  .mc-root { height: auto; }
+  .layout { grid-template-columns: 1fr; }
+  .layout > .plist { max-height: 320px; }
+  .config-col { overflow: visible; }
+  .layout > .test-col { height: 420px; }
+  .action-bar { position: static; }
 }
 
-
-.profile-list-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.action-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-/* ── Responsive ── */
-@media (max-width: 900px) {
-  .main-layout { grid-template-columns: 1fr; }
-  .form-row { grid-template-columns: 1fr; }
-}
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d9d9d9; border-radius: 3px; }
-
-/* ── Reduced Motion ── */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
+  * { animation: none !important; transition: none !important; }
 }
 </style>
