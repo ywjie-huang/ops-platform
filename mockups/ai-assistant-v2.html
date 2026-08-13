@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智能助手 UI 重设计 · 预览</title>
+<style>
+  :root {
+    --primary: #5e6ad2;
+    --primary-hover: #4f5bc4;
+    --success: #22c55e;
+    --warning: #f5a623;
+    --danger: #e5484d;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface-2: #f6f6f8;
+    --border: #ececef;
+    --border-strong: #e2e2e6;
+    --text-1: #111111;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --radius: 10px;
+    --primary-bg: rgba(94, 106, 210, 0.09);
+    --success-bg: rgba(34, 197, 94, 0.11);
+    --warning-bg: rgba(245, 166, 35, 0.13);
+    --danger-bg: rgba(229, 72, 77, 0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text-1);
+    -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  svg { display: block; }
+  button { font-family: inherit; }
+
+  /* ── 顶部工具条（原型专用，不属于产品 UI） ── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    height: 52px; display: flex; align-items: center; gap: 14px;
+    padding: 0 18px; background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-strong);
+  }
+  .topbar-title { font-size: 14px; font-weight: 700; }
+  .topbar-sub { font-size: 12px; color: var(--text-3); }
+  .topbar-spacer { flex: 1; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; cursor: pointer; padding: 6px 14px;
+    font-size: 13px; font-weight: 600; color: var(--text-2); border-radius: 6px; transition: all .15s ease-out;
+  }
+  .seg button.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .ghost-btn {
+    border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
+    padding: 6px 12px; font-size: 12.5px; color: var(--text-2); border-radius: 7px; font-weight: 600; transition: all .15s ease-out;
+  }
+  .ghost-btn:hover, .ghost-btn.on { border-color: var(--primary); color: var(--primary); background: var(--primary-bg); }
+
+  /* ── 应用外壳（模拟真实侧边栏 + 顶栏） ── */
+  .app { margin-top: 52px; height: calc(100vh - 52px); display: flex; }
+  .sidebar { width: 196px; flex: none; background: var(--surface); border-right: 1px solid var(--border); padding: 10px; overflow-y: auto; }
+  .side-logo { display: flex; align-items: center; gap: 8px; padding: 6px 8px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .side-logo svg { width: 19px; height: 19px; stroke: var(--primary); }
+  .side-logo b { font-size: 13.5px; }
+  .side-cap { font-size: 11px; color: var(--text-3); padding: 10px 8px 4px; letter-spacing: .04em; }
+  .side-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px; font-size: 13px; color: var(--text-2); }
+  .side-item svg { width: 15px; height: 15px; flex: none; }
+  .side-item.sub { padding-left: 31px; font-size: 12.5px; }
+  .side-item.active { background: var(--primary-bg); color: var(--primary); font-weight: 600; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .app-header {
+    height: 44px; flex: none; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; padding: 0 18px; font-size: 12.5px; color: var(--text-3);
+  }
+  .crumb b { color: var(--text-2); font-weight: 600; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+
+  /* ── 页面骨架：左对话列表 + 右聊天区 ── */
+  .ai-page { flex: 1; min-height: 0; display: flex; }
+
+  /* ── 左：对话列表 ── */
+  .ai-sidebar {
+    width: 240px; flex: none; background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .cs-head { padding: 12px 12px 8px; }
+  .new-btn {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px; border-radius: 8px; border: 1px solid var(--primary); cursor: pointer;
+    background: var(--primary); color: #fff; font-size: 12.5px; font-weight: 600; transition: all .15s;
+  }
+  .new-btn:hover { background: var(--primary-hover); }
+  .new-btn svg { width: 13px; height: 13px; }
+  .cs-search { padding: 0 12px 10px; position: relative; }
+  .cs-search input {
+    width: 100%; padding: 7px 10px 7px 30px; border: 1px solid var(--border-strong); border-radius: 7px;
+    font-size: 12.5px; background: var(--surface); color: var(--text-1); font-family: inherit;
+  }
+  .cs-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(94,106,210,.12); }
+  .cs-search svg { position: absolute; left: 21px; top: 9px; width: 14px; height: 14px; color: var(--text-3); }
+  .cs-list { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 10px; }
+  .cs-group { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: .05em; padding: 10px 8px 4px; }
+  .conv {
+    position: relative; padding: 8px 9px; border-radius: 8px; cursor: pointer;
+    border: 1px solid transparent; transition: background .12s;
+  }
+  .conv:hover { background: var(--surface-2); }
+  .conv.active { background: var(--primary-bg); border-color: rgba(94,106,210,.2); }
+  .conv.active::before { content:''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--primary); }
+  .conv-title { font-size: 12.5px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px; }
+  .conv-time { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+  .conv .more {
+    display: none; position: absolute; right: 7px; top: 8px; width: 20px; height: 20px;
+    border: 1px solid var(--border-strong); background: var(--surface); border-radius: 5px;
+    color: var(--text-2); cursor: pointer; font-size: 13px; line-height: 1; place-items: center; padding-bottom: 3px;
+  }
+  .conv:hover .more { display: grid; }
+  .conv-menu {
+    position: absolute; right: 6px; top: 32px; z-index: 30; min-width: 88px;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px;
+    box-shadow: 0 10px 26px -8px rgba(17,17,17,.22); padding: 4px; display: none; flex-direction: column;
+  }
+  .conv-menu.open { display: flex; }
+  .conv-menu button {
+    border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 5px;
+    font-size: 12.5px; color: var(--text-1); cursor: pointer;
+  }
+  .conv-menu button:hover { background: var(--surface-2); }
+  .conv-menu button.danger { color: #b42318; }
+  .conv-menu button.danger:hover { background: var(--danger-bg); }
+  .conv-rename {
+    width: calc(100% - 20px); padding: 3px 6px; border: 1px solid var(--primary); border-radius: 5px;
+    font-size: 12.5px; font-weight: 600; font-family: inherit; color: var(--text-1);
+  }
+  .conv-rename:focus { outline: none; box-shadow: 0 0 0 2px rgba(94,106,210,.12); }
+  .cs-empty { padding: 24px; text-align: center; font-size: 12px; color: var(--text-3); display: none; }
+
+  /* ── 右：聊天区 ── */
+  .chat { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  .chat-head {
+    flex: none; display: flex; align-items: center; gap: 9px; padding: 10px 20px;
+    background: var(--surface); border-bottom: 1px solid var(--border); position: relative;
+  }
+  .chat-title { font-size: 13.5px; font-weight: 700; }
+  .model-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; color: var(--text-2);
+    background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .model-chip img { width: 13px; height: 13px; object-fit: contain; }
+  .model-chip.warn { color: #b45309; background: var(--warning-bg); border-color: rgba(245,166,35,.32); }
+  .model-chip .lnk { color: var(--primary); cursor: pointer; font-weight: 700; }
+  .chat-head .spacer { flex: 1; }
+  .head-ghost { font-size: 12px; color: var(--text-3); }
+
+  /* ── 消息区：860px 阅读列宽 ── */
+  .chat-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 12px; }
+  .mcol { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .mrow { display: flex; gap: 9px; align-items: flex-start; }
+  .mrow.user { flex-direction: row-reverse; }
+  .m-av {
+    width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    background: #ececf1; color: var(--text-2);
+  }
+  .m-av svg { width: 13px; height: 13px; }
+  .mrow.user .m-av { background: var(--primary-bg); color: var(--primary); }
+  .mrow.ai .m-av { background: var(--success-bg); color: #15803d; }
+  .m-main { min-width: 0; max-width: 82%; display: flex; flex-direction: column; gap: 4px; }
+  .mrow.user .m-main { align-items: flex-end; }
+  .m-meta { display: flex; align-items: baseline; gap: 7px; }
+  .m-name { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+  .m-time { font-size: 10.5px; color: var(--text-3); }
+  .bubble {
+    padding: 9px 13px; border-radius: 10px; font-size: 13px; line-height: 1.65;
+    word-break: break-word; width: fit-content; max-width: 100%;
+  }
+  .mrow.user .bubble { background: var(--primary); color: #fff; border-bottom-right-radius: 3px; }
+  .mrow.ai .bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(17,17,17,.03); }
+
+  /* ── AI 消息 hover 操作条 ── */
+  .m-acts { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+  .mrow.ai:hover .m-acts { opacity: 1; }
+  .act-btn {
+    display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-strong);
+    background: var(--surface); color: var(--text-2); border-radius: 6px; padding: 3px 8px;
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all .13s;
+  }
+  .act-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-bg); }
+  .act-btn svg { width: 11px; height: 11px; }
+
+  /* ── 工具执行卡片（折叠 trace / 确认卡片 / 终态） ── */
+  .tool-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+    overflow: hidden; width: 100%; box-shadow: 0 1px 2px rgba(17,17,17,.03);
+  }
+  .tool-card details { display: block; }
+  .tool-card summary {
+    list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer; user-select: none;
+  }
+  .tool-card summary::-webkit-details-marker { display: none; }
+  .tool-card summary:hover { background: var(--surface-2); }
+  .tc-chev { width: 11px; height: 11px; color: var(--text-3); transition: transform .15s; flex: none; }
+  details[open] .tc-chev { transform: rotate(90deg); }
+  .tc-ic { width: 15px; height: 15px; display: grid; place-items: center; flex: none; color: var(--primary); }
+  .tc-ic svg { width: 13px; height: 13px; }
+  .tc-label { color: var(--text-1); }
+  .tc-summary { color: var(--text-3); font-weight: 500; font-size: 11px; }
+  .tc-elapsed { margin-left: auto; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .tc-steps { border-top: 1px solid var(--border); padding: 6px 12px 10px; display: flex; flex-direction: column; }
+  .tc-step { display: flex; gap: 8px; padding: 5px 0; font-size: 12px; align-items: flex-start; }
+  .tc-num {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
+    color: var(--text-2); font-size: 10px; font-weight: 700; display: grid; place-items: center; flex: none; margin-top: 1px;
+  }
+  .tc-step.done .tc-num { background: var(--success-bg); border-color: transparent; color: #15803d; }
+  .tc-step.running .tc-num { border-color: var(--primary); color: var(--primary); }
+  .tc-step-body { min-width: 0; }
+  .tc-step-name { font-weight: 600; color: var(--text-1); }
+  .tc-step-meta { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+  .tc-spin { width: 11px; height: 11px; border: 1.6px solid rgba(94,106,210,.25); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; flex: none; margin-top: 2px; }
+
+  /* ── 危险操作确认卡片 ── */
+  .confirm-card { border-color: rgba(245,166,35,.4); }
+  .cf-head {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    background: var(--warning-bg); border-bottom: 1px solid rgba(245,166,35,.25);
+    font-size: 12.5px; font-weight: 700; color: #92400e;
+  }
+  .cf-head svg { width: 14px; height: 14px; flex: none; }
+  .cf-body { padding: 10px 12px; font-size: 12.5px; line-height: 1.6; color: var(--text-1); }
+  .cf-body code {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 1px 6px; font-size: 11.5px; font-family: ui-monospace, Consolas, monospace;
+  }
+  .cf-cmd { margin-top: 7px; background: #1d1d22; color: #d6f5dd; border-radius: 7px; padding: 8px 11px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-x: auto; }
+  .cf-acts { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; padding: 6px 13px; font-size: 12.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-1); transition: all .14s; font-family: inherit; }
+  .btn:hover { border-color: #c9c9cf; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17,17,17,.07); }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  .btn-warn { background: var(--warning); border-color: var(--warning); color: #fff; }
+  .btn-warn:hover { background: #e0961a; border-color: #e0961a; }
+  .cf-terminal { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; font-weight: 600; border-top: 1px solid var(--border); }
+  .cf-terminal svg { width: 14px; height: 14px; }
+  .cf-terminal.ok { color: #15803d; background: var(--success-bg); }
+  .cf-terminal.no { color: #b42318; background: var(--danger-bg); }
+
+  /* ── 欢迎态 / 未配置引导 ── */
+  .welcome { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
+  .w-hero { max-width: 640px; width: 100%; text-align: center; animation: fadeUp .3s ease; }
+  .w-ic {
+    width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 14px;
+    background: linear-gradient(135deg, var(--primary), #8a6fd6); color: #fff;
+    display: grid; place-items: center; box-shadow: 0 8px 20px -6px rgba(94,106,210,.45);
+  }
+  .w-ic svg { width: 26px; height: 26px; }
+  .w-title { font-size: 19px; font-weight: 800; }
+  .w-sub { font-size: 12.5px; color: var(--text-2); margin-top: 6px; line-height: 1.7; }
+  .w-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+  .w-card {
+    text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 14px; cursor: pointer; transition: all .15s; font-family: inherit;
+  }
+  .w-card:hover { border-color: var(--primary); background: var(--primary-bg); transform: translateY(-2px); box-shadow: 0 6px 14px rgba(94,106,210,.12); }
+  .w-card .wc-t { font-size: 13px; font-weight: 700; color: var(--text-1); }
+  .w-card .wc-d { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+  .uc-card { max-width: 520px; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 26px 28px; text-align: center; animation: fadeUp .3s ease; }
+  .uc-ic { width: 46px; height: 46px; border-radius: 12px; background: var(--warning-bg); color: #b45309; display: grid; place-items: center; margin: 0 auto 12px; }
+  .uc-ic svg { width: 22px; height: 22px; }
+  .uc-t { font-size: 16px; font-weight: 800; }
+  .uc-d { font-size: 12.5px; color: var(--text-2); margin-top: 7px; line-height: 1.7; }
+  .uc-steps { text-align: left; margin: 14px 0 18px; display: flex; flex-direction: column; gap: 8px; }
+  .uc-step { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--text-1); background: var(--surface-2); border-radius: 8px; padding: 9px 12px; }
+  .uc-num { width: 17px; height: 17px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; flex: none; }
+
+  /* ── 输入区卡片 ── */
+  .chat-input { flex: none; padding: 12px 24px 16px; }
+  .ci-card { max-width: 860px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 2px 8px rgba(17,17,17,.05); transition: border-color .15s, box-shadow .15s; }
+  .ci-card:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(94,106,210,.12); }
+  .ci-card textarea {
+    width: 100%; border: 0; background: transparent; resize: none; outline: none;
+    padding: 12px 14px 4px; font-size: 13px; line-height: 1.6; font-family: inherit;
+    min-height: 46px; max-height: 160px; color: var(--text-1);
+  }
+  .ci-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px 9px; }
+  .ci-hint { font-size: 11px; color: var(--text-3); }
+  .ci-bar .spacer { flex: 1; }
+  .ci-send {
+    display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px;
+    background: var(--primary); color: #fff; font-size: 12.5px; font-weight: 700;
+    padding: 7px 14px; cursor: pointer; transition: background .14s; font-family: inherit;
+  }
+  .ci-send:hover { background: var(--primary-hover); }
+  .ci-send:disabled { opacity: .5; cursor: not-allowed; }
+  .ci-send svg { width: 13px; height: 13px; }
+  .ci-stop { background: var(--danger); }
+  .ci-stop:hover { background: #c93a3f; }
+  /* ── 回到底部浮动按钮 ── */
+  .newmsg-btn {
+    position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%);
+    display: none; align-items: center; gap: 5px; border: 1px solid var(--border-strong);
+    background: var(--surface); border-radius: 999px; padding: 6px 13px; font-size: 12px; font-weight: 600;
+    color: var(--text-1); cursor: pointer; box-shadow: 0 6px 16px rgba(17,17,17,.14); z-index: 5; font-family: inherit;
+  }
+  .newmsg-btn.show { display: inline-flex; animation: fadeUp .2s ease; }
+  /* ── toast / pin / legend ── */
+  .toast {
+    position: fixed; top: 66px; left: 50%; transform: translateX(-50%);
+    background: #1d1d22; color: #fff; font-size: 12.5px; font-weight: 600;
+    padding: 8px 16px; border-radius: 8px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  .pin { position: absolute; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px; font-weight: 800; display: none; place-items: center; z-index: 40; box-shadow: 0 0 0 3px #fff, 0 2px 6px rgba(17,17,17,.25); }
+  body.show-pins .pin { display: grid; }
+
+  /* ── 图例 ── */
+  .legend { position: fixed; right: 14px; bottom: 14px; z-index: 60; width: 310px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 10px 28px rgba(17,17,17,.16); display: none; max-height: 70vh; overflow: auto; }
+  body.show-pins .legend { display: block; }
+  .legend h4 { margin: 0; padding: 10px 13px; font-size: 12.5px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+  .legend ol { margin: 0; padding: 8px 13px 12px 32px; font-size: 11.8px; line-height: 1.55; color: var(--text-2); display: flex; flex-direction: column; gap: 7px; }
+  .legend li::marker { color: var(--primary); font-weight: 800; }
+  .legend b { color: var(--text-1); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(7px); } }
+  @keyframes blink { 0%,100% { opacity: .25; } 50% { opacity: 1; } }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; }
+  .typing i:nth-child(3) { animation-delay: .4s; }
+  /* 视图切换：chat 默认，welcome/unconf 各自独立 */
+  .view-pane { display: none; flex: 1; min-height: 0; }
+  body[data-view="chat"] .view-chat { display: flex; }
+  body[data-view="welcome"] .view-welcome { display: flex; flex-direction: column; }
+  body[data-view="unconf"] .view-unconf { display: flex; flex-direction: column; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body data-view="chat" class="">
+<!-- ══ 模拟平台外壳（与真实布局一致，仅供预览） ══ -->
+<div class="topbar">
+  <div class="tb-logo">Ops<span>·</span>运维平台</div>
+  <div class="seg" role="tablist">
+    <button class="seg-btn active" data-view="chat" role="tab">对话（含工具执行）</button>
+    <button class="seg-btn" data-view="welcome" role="tab">欢迎 / 新对话</button>
+    <button class="seg-btn" data-view="unconf" role="tab">未配置引导</button>
+  </div>
+  <button class="ghost-btn" id="pinToggle">📌 标注说明</button>
+</div>
+<div class="app">
+  <nav class="sidebar">
+    <div class="sb-item"><span class="sb-dot"></span>总览</div>
+    <div class="sb-item"><span class="sb-dot"></span>主机管理</div>
+    <div class="sb-item"><span class="sb-dot"></span>容器服务</div>
+    <div class="sb-item"><span class="sb-dot"></span>告警中心</div>
+    <div class="sb-item"><span class="sb-dot"></span>巡检报告</div>
+    <div class="sb-cap">智能中心</div>
+    <div class="sb-item active"><span class="sb-dot"></span>智能助手</div>
+    <div class="sb-item"><span class="sb-dot"></span>模型配置</div>
+    <div class="sb-item"><span class="sb-dot"></span>系统设置</div>
+  </nav>
+  <div class="main">
+    <div class="app-header">
+      <span class="crumb">智能中心</span><span class="crumb-sep">/</span><span class="crumb cur">智能助手</span>
+      <div class="spacer"></div>
+      <div class="avatar">运</div>
+    </div>
+    <!-- ══ 页面主体 ══ -->
+    <div class="ai-page">
+      <!-- 左：会话列表 -->
+      <aside class="ai-sidebar">
+        <div class="cs-head">
+          <button class="new-btn" id="newChat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            新对话
+          </button>
+          <div class="cs-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input placeholder="搜索会话" />
+          </div>
+        </div>
+        <div class="cs-list" id="csList">
+          <div class="cs-group">今天</div>
+          <div class="conv active" data-id="c1">
+            <div class="conv-text"><div class="conv-title">今天哪台服务器资源异常？</div><div class="conv-time">10:24</div></div>
+            <button class="more" title="更多">⋯</button>
+          </div>
+          <div class="conv" data-id="c2">
+            <div class="conv-text"><div class="conv-title">web-01 磁盘清理建议</div><div class="conv-time">09:12</div></div>
+            <button class="more" title="更多">⋯</button>
+          </div>
+          <div class="cs-group">昨天</div>
+          <div class="conv" data-id="c3">
+            <div class="conv-text"><div class="conv-title">帮我看下昨晚的告警风暴</div><div class="conv-time">昨天 18:40</div></div>
+            <button class="more" title="更多">⋯</button>
+          </div>
+          <div class="cs-group">7 天内</div>
+          <div class="conv" data-id="c4">
+            <div class="conv-text"><div class="conv-title">K8s Pod 频繁重启排查</div><div class="conv-time">周二</div></div>
+            <button class="more" title="更多">⋯</button>
+          </div>
+          <div class="conv" data-id="c5">
+            <div class="conv-text"><div class="conv-title">写一份 nginx 巡检报告</div><div class="conv-time">周一</div></div>
+            <button class="more" title="更多">⋯</button>
+          </div>
+        </div>
+        <div class="cs-empty" hidden>没有匹配的会话</div>
+      </aside>
+      <!-- 右：聊天 -->
+      <div class="chat">
+        <div class="chat-head">
+          <span class="chat-title" id="chatTitle">今天哪台服务器资源异常？</span>
+          <span class="model-chip">
+            <img src="../frontend/src/assets/provider-logos/deepseek.svg" alt="" />
+            DeepSeek · deepseek-chat
+          </span>
+          <div class="spacer"></div>
+          <span class="head-ghost">会话自动保存</span>
+        </div>
+
+        <!-- 视图 1：对话 -->
+        <div class="view-pane view-chat">
+          <div class="chat-body" id="chatBody">
+            <div class="mcol" id="mcol">
+              <!-- 用户提问 -->
+              <div class="mrow user">
+                <div class="m-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                <div class="m-main">
+                  <div class="m-meta"><span class="m-name">我</span><span class="m-time">10:24:02</span></div>
+                  <div class="bubble">今天哪台服务器资源异常？</div>
+                </div>
+              </div>
+              <!-- AI 工具 trace（已折叠） -->
+              <div class="mrow ai">
+                <div class="m-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg></div>
+                <div class="m-main" style="max-width:100%">
+                  <div class="m-meta"><span class="m-name">智能助手</span><span class="m-time">10:24:04</span></div>
+                  <div class="tool-card">
+                    <details>
+                      <summary>
+                        <svg class="tc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        <span class="tc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+                        <span class="tc-label">调用了 2 个工具</span>
+                        <span class="tc-summary">查询主机指标 · 查询告警</span>
+                        <span class="tc-elapsed">1.6s</span>
+                      </summary>
+                      <div class="tc-steps">
+                        <div class="tc-step done">
+                          <span class="tc-num">✓</span>
+                          <div class="tc-step-body">
+                            <div class="tc-step-name">查询主机指标</div>
+                            <div class="tc-step-meta">web-01 · web-02 · db-01 · 820ms · 有结果</div>
+                          </div>
+                        </div>
+                        <div class="tc-step done">
+                          <span class="tc-num">✓</span>
+                          <div class="tc-step-body">
+                            <div class="tc-step-name">查询告警</div>
+                            <div class="tc-step-meta">最近 24h · 780ms · 3 条告警</div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                  <div class="bubble" style="margin-top:6px">
+                    过去 24 小时有 <b>2 台</b>主机出现异常：<br><br>
+                    <b>web-01</b> — CPU 持续 95%+（已 3 小时），伴随 <b>2 条</b>告警；建议先检查 <code>top</code> 定位进程。<br>
+                    <b>db-01</b> — 内存使用率 88%，呈上升趋势，可能与慢查询堆积有关。<br><br>
+                    其余主机指标正常。需要我深入排查某一台吗？
+                  </div>
+                  <div class="m-acts">
+                    <button class="act-btn" data-act="copy">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      复制
+                    </button>
+                    <button class="act-btn" data-act="regen">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- 第二条：危险操作确认 -->
+              <div class="mrow user">
+                <div class="m-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                <div class="m-main">
+                  <div class="m-meta"><span class="m-name">我</span><span class="m-time">10:26:15</span></div>
+                  <div class="bubble">帮我把 web-01 的 nginx 重启一下</div>
+                </div>
+              </div>
+              <div class="mrow ai" id="confirmRow">
+                <div class="m-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg></div>
+                <div class="m-main" style="max-width:100%">
+                  <div class="m-meta"><span class="m-name">智能助手</span><span class="m-time">10:26:17</span></div>
+                  <div class="tool-card confirm-card">
+                    <div class="cf-head">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      需要确认 · 服务重启
+                    </div>
+                    <div class="cf-body">
+                      即将在主机 <code>web-01</code> 上执行重启操作，期间服务将短暂中断（约 2-5 秒）。
+                      <div class="cf-cmd">$ systemctl restart nginx</div>
+                    </div>
+                    <div class="cf-acts" id="cfActs">
+                      <button class="btn btn-warn" id="cfYes">确认执行</button>
+                      <button class="btn" id="cfNo">拒绝</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div><!-- /mcol -->
+          </div><!-- /chat-body -->
+          <button class="newmsg-btn" id="newMsgBtn">↓ 新消息</button>
+        </div><!-- /view-chat -->
+
+        <!-- 视图 2：欢迎 / 新对话 -->
+        <div class="view-pane view-welcome">
+          <div class="welcome">
+            <div class="w-hero">
+              <div class="w-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/></svg></div>
+              <div class="w-title">你好，我是运维智能助手</div>
+              <div class="w-sub">可以查询主机与告警状态、解读巡检报告、协助排查故障；<br>涉及重启、变更等危险操作会先请你确认。</div>
+              <div class="w-grid">
+                <button class="w-card"><div class="wc-t">📊 现在有哪些主机资源异常？</div><div class="wc-d">查询全量主机最新指标</div></button>
+                <button class="w-card"><div class="wc-t">🚨 最近 24 小时的告警摘要</div><div class="wc-d">按严重级别聚合展示</div></button>
+                <button class="w-card"><div class="wc-t">🔍 帮我排查 web-01 的 CPU 飙高</div><div class="wc-d">引导式故障定位</div></button>
+                <button class="w-card"><div class="wc-t">📝 把昨天巡检报告整理成交接摘要</div><div class="wc-d">提炼异常与待办</div></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- 视图 3：未配置引导 -->
+        <div class="view-pane view-unconf">
+          <div class="welcome">
+            <div class="uc-card">
+              <div class="uc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+              <div class="uc-t">还没有配置模型</div>
+              <div class="uc-d">智能助手依赖大模型工作。前往「模型配置」添加一个服务商，<br>几分钟即可开始使用。</div>
+              <div class="uc-steps">
+                <div class="uc-step"><span class="uc-num">1</span>选择服务商（OpenAI / DeepSeek / 智谱 等）</div>
+                <div class="uc-step"><span class="uc-num">2</span>填入 API Key，点「测试连接」验证</div>
+                <div class="uc-step"><span class="uc-num">3</span>保存并设为「当前使用」，回来即可对话</div>
+              </div>
+              <button class="btn btn-primary" style="padding:9px 22px;font-size:13px">前往模型配置 →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 输入区（三视图共用） -->
+        <div class="chat-input">
+          <div class="ci-card">
+            <textarea id="ciText" rows="2" placeholder="询问主机状态、告警、巡检报告… 也可以让我执行操作（危险操作会先确认）"></textarea>
+            <div class="ci-bar">
+              <span class="ci-hint">Enter 发送 · Shift+Enter 换行</span>
+              <div class="spacer"></div>
+              <button class="ci-send" id="sendBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                发送
+              </button>
+              <button class="ci-send ci-stop" id="stopBtn" hidden>
+                <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                停止
+              </button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /chat -->
+    </div><!-- /ai-page -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- 标注点（打开「标注说明」后显示） -->
+<span class="pin" style="top:118px;left:238px">1</span>
+<span class="pin" style="top:96px;left:196px">2</span>
+<span class="pin" style="top:150px;left:640px">3</span>
+<span class="pin" style="top:196px;left:1010px">4</span>
+<span class="pin" style="top:318px;left:1010px">5</span>
+<span class="pin" style="top:470px;left:1010px">6</span>
+<span class="pin" style="bottom:130px;left:calc(50% + 120px)">7</span>
+<span class="pin" style="bottom:130px;right:60px">8</span>
+
+<div class="legend">
+  <h4>本页改动点</h4>
+  <ol>
+    <li><b>会话列表升级</b>：时间分组（今天/昨天/7 天内）、搜索、hover 「⋯」支持<b>重命名 / 删除</b>，不再只能删。</li>
+    <li><b>新对话入口</b>：全宽主按钮置顶，一眼可见（原先只有小图标）。</li>
+    <li><b>消息气泡重构</b>：用户右对齐主色实心气泡；AI 左侧白卡片气泡 + 头像，时间戳齐全；阅读列宽限 860px 居中，长文不再顶满屏。</li>
+    <li><b>工具调用卡片</b>：统一白卡样式（弃用 EP 三色面板），trace 默认折叠为一行摘要，点开看分步耗时。</li>
+    <li><b>危险操作确认</b>：警示色卡片 + 命令预览；确认/拒绝后<b>保留终态条</b>（已执行 ✓ / 已拒绝 ✕），不再整块消失。</li>
+    <li><b>AI 消息操作条</b>：hover 出现「复制 / 重新生成」。</li>
+    <li><b>输入区卡片化</b>：聚焦高亮描边，Enter 提示；流式生成时「发送」变「<b>停止</b>」。</li>
+    <li><b>智能滚动</b>：生成中上翻不打断，回底部出现「↓ 新消息」浮钮。另有：高度按真实外壳修正（不再溢出）、未配置页带「前往模型配置」引导（切「未配置引导」视图查看）。</li>
+  </ol>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const toast = (msg) => {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 1800);
+};
+
+/* ── 视图切换 ── */
+$$('.seg-btn').forEach((b) =>
+  b.addEventListener('click', () => {
+    $$('.seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+    document.body.dataset.view = b.dataset.view;
+  })
+);
+$('#pinToggle').addEventListener('click', () => document.body.classList.toggle('show-pins'));
+
+/* ── 会话列表：选中 / ⋯菜单 / 重命名 / 删除 ── */
+const csList = $('#csList');
+let openMenu = null;
+function closeMenu() {
+  if (openMenu) { openMenu.remove(); openMenu = null; }
+}
+document.addEventListener('click', closeMenu);
+csList.addEventListener('click', (e) => {
+  const moreBtn = e.target.closest('.more');
+  const conv = e.target.closest('.conv');
+  if (moreBtn && conv) {
+    e.stopPropagation();
+    closeMenu();
+    const menu = document.createElement('div');
+    menu.className = 'conv-menu';
+    menu.innerHTML = '<button data-op="rename">重命名</button><button data-op="delete" class="danger">删除</button>';
+    conv.appendChild(menu);
+    openMenu = menu;
+    menu.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const op = ev.target.dataset.op;
+      if (op === 'rename') startRename(conv);
+      if (op === 'delete') { conv.remove(); toast('会话已删除（演示）'); }
+      closeMenu();
+    });
+    return;
+  }
+  if (conv && !conv.classList.contains('renaming')) {
+    $$('.conv', csList).forEach((c) => c.classList.toggle('active', c === conv));
+    $('#chatTitle').textContent = $('.conv-title', conv).textContent;
+  }
+});
+function startRename(conv) {
+  const titleEl = $('.conv-title', conv);
+  conv.classList.add('renaming');
+  const input = document.createElement('input');
+  input.className = 'conv-rename';
+  input.value = titleEl.textContent;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = (ok) => {
+    const t = document.createElement('div');
+    t.className = 'conv-title';
+    t.textContent = ok && input.value.trim() ? input.value.trim() : titleEl.textContent;
+    input.replaceWith(t);
+    conv.classList.remove('renaming');
+    if (ok && conv.classList.contains('active')) $('#chatTitle').textContent = t.textContent;
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') commit(true);
+    if (ev.key === 'Escape') commit(false);
+  });
+  input.addEventListener('blur', () => commit(true));
+  input.addEventListener('click', (ev) => ev.stopPropagation());
+}
+$('#newChat').addEventListener('click', () => {
+  $$('.seg-btn').forEach((x) => x.classList.toggle('active', x.dataset.view === 'welcome'));
+  document.body.dataset.view = 'welcome';
+});
+$$('.w-card').forEach((c) =>
+  c.addEventListener('click', () => {
+    $('#ciText').value = $('.wc-t', c).textContent.replace(/^[^ ]+ /, '');
+    $$('.seg-btn').forEach((x) => x.classList.toggle('active', x.dataset.view === 'chat'));
+    document.body.dataset.view = 'chat';
+    $('#ciText').focus();
+  })
+);
+/* ── 智能滚动 ── */
+const chatBody = $('#chatBody');
+const newMsgBtn = $('#newMsgBtn');
+let stickBottom = true;
+chatBody.addEventListener('scroll', () => {
+  const gap = chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight;
+  stickBottom = gap < 120;
+  if (stickBottom) newMsgBtn.classList.remove('show');
+});
+function maybeScroll() {
+  if (stickBottom) chatBody.scrollTop = chatBody.scrollHeight;
+  else newMsgBtn.classList.add('show');
+}
+newMsgBtn.addEventListener('click', () => {
+  chatBody.scrollTop = chatBody.scrollHeight;
+  newMsgBtn.classList.remove('show');
+  stickBottom = true;
+});
+/* ── 消息操作条 ── */
+$('#mcol').addEventListener('click', (e) => {
+  const btn = e.target.closest('.act-btn');
+  if (!btn) return;
+  if (btn.dataset.act === 'copy') {
+    const bubble = btn.closest('.m-main').querySelector('.bubble');
+    const text = bubble ? bubble.innerText : '';
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    toast('已复制到剪贴板');
+  } else {
+    toast('重新生成（演示）');
+  }
+});
+/* ── 发送 / 流式 / 停止 演示 ── */
+const ciText = $('#ciText');
+const sendBtn = $('#sendBtn');
+const stopBtn = $('#stopBtn');
+let streaming = false;
+let stopFlag = false;
+const AV_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+const AV_AI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>';
+function nowTime() {
+  const d = new Date();
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+}
+function addUserMsg(text) {
+  const row = document.createElement('div');
+  row.className = 'mrow user';
+  row.innerHTML = `<div class="m-av">${AV_USER}</div><div class="m-main"><div class="m-meta"><span class="m-name">我</span><span class="m-time">${nowTime()}</span></div><div class="bubble"></div></div>`;
+  $('.bubble', row).textContent = text;
+  $('#mcol').appendChild(row);
+  maybeScroll();
+}
+function addAiRow() {
+  const row = document.createElement('div');
+  row.className = 'mrow ai';
+  row.innerHTML = `<div class="m-av">${AV_AI}</div><div class="m-main" style="max-width:100%"><div class="m-meta"><span class="m-name">智能助手</span><span class="m-time">${nowTime()}</span></div></div>`;
+  $('#mcol').appendChild(row);
+  return row;
+}
+const REPLY = '已为你查询到 web-01 的当前状态：CPU 96%、内存 61%、负载 8.2。\n\n高 CPU 主要来自 nginx worker 进程（3 个进程各占 ~30%）。建议：\n1. 先确认当前连接数是否异常；\n2. 若是突发流量，可临时扩容或限流；\n3. 需要我直接重启 nginx 吗？（会先请你确认）';
+async function doSend() {
+  const text = ciText.value.trim();
+  if (!text || streaming) return;
+  ciText.value = '';
+  addUserMsg(text);
+  streaming = true;
+  stopFlag = false;
+  sendBtn.hidden = true;
+  stopBtn.hidden = false;
+
+  const row = addAiRow();
+  const main = $('.m-main', row);
+  // typing → 工具 trace running
+  const typing = document.createElement('div');
+  typing.className = 'bubble';
+  typing.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+  main.appendChild(typing);
+  maybeScroll();
+  await new Promise((r) => setTimeout(r, 700));
+  typing.remove();
+  if (stopFlag) return finishStream(main, true);
+
+  const card = document.createElement('div');
+  card.className = 'tool-card';
+  card.innerHTML = `<details open><summary><svg class="tc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg><span class="tc-spin"></span><span class="tc-label">正在调用工具…</span><span class="tc-elapsed"></span></summary><div class="tc-steps"><div class="tc-step running"><span class="tc-num">1</span><div class="tc-step-body"><div class="tc-step-name">查询主机指标</div><div class="tc-step-meta">web-01 · 执行中</div></div></div></div></details>`;
+  main.appendChild(card);
+  maybeScroll();
+  await new Promise((r) => setTimeout(r, 1100));
+  if (stopFlag) { card.remove(); return finishStream(main, true); }
+  card.querySelector('.tc-label').textContent = '调用了 1 个工具';
+  card.querySelector('.tc-spin').outerHTML = '<span class="tc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>';
+  card.querySelector('.tc-elapsed').textContent = '0.9s';
+  card.querySelector('.tc-step').className = 'tc-step done';
+  card.querySelector('.tc-num').textContent = '✓';
+  card.querySelector('.tc-step-meta').textContent = 'web-01 · 890ms · 有结果';
+  card.querySelector('details').open = false;
+  maybeScroll();
+  // 流式正文
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.style.marginTop = '6px';
+  main.appendChild(bubble);
+  for (let i = 0; i < REPLY.length; i += 3) {
+    if (stopFlag) return finishStream(main, true);
+    bubble.textContent = REPLY.slice(0, i + 3);
+    maybeScroll();
+    await new Promise((r) => setTimeout(r, 24));
+  }
+  finishStream(main, false);
+}
+function finishStream(main, stopped) {
+  if (stopped) {
+    const note = document.createElement('div');
+    note.className = 'tc-summary';
+    note.style.padding = '2px 0 0 2px';
+    note.textContent = '（已停止生成）';
+    main.appendChild(note);
+  }
+  const acts = document.createElement('div');
+  acts.className = 'm-acts';
+  acts.innerHTML = '<button class="act-btn" data-act="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制</button><button class="act-btn" data-act="regen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>重新生成</button>';
+  main.appendChild(acts);
+  streaming = false;
+  sendBtn.hidden = false;
+  stopBtn.hidden = true;
+  maybeScroll();
+}
+sendBtn.addEventListener('click', doSend);
+stopBtn.addEventListener('click', () => { stopFlag = true; });
+ciText.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+});
+/* ── 危险操作确认 → 终态 ── */
+function confirmFlow(ok) {
+  const acts = $('#cfActs');
+  if (!acts) return;
+  const row = $('#confirmRow');
+  const main = $('.m-main', row);
+  const term = document.createElement('div');
+  term.className = 'cf-terminal ' + (ok ? 'ok' : 'no');
+  term.innerHTML = ok
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>已确认执行'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>已拒绝，操作未执行';
+  acts.replaceWith(term);
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.style.marginTop = '6px';
+  bubble.textContent = ok
+    ? 'nginx 已在 web-01 上重启完成，耗时 2.3s，当前进程运行正常。'
+    : '好的，已取消该操作。如果只想先查看 nginx 状态或错误日志，随时告诉我。';
+  main.appendChild(bubble);
+  maybeScroll();
+  toast(ok ? '已确认并执行（演示）' : '已拒绝（演示）');
+}
+$('#cfYes').addEventListener('click', () => confirmFlow(true));
+$('#cfNo').addEventListener('click', () => confirmFlow(false));
+</script>
+</body>
+</html>

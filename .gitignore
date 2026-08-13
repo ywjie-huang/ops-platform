@@ -50,3 +50,6 @@ docs/design/*.html
 # Local repository instructions and one-off helper scripts
 AGENTS.md
 _mkdoc.py
+
+# Editor / local artifacts
+.zcode/
