@@ -20,6 +20,8 @@ export interface SSEEvent {
 export interface AiInfo {
   model: string
   configured: boolean
+  provider: string
+  profile_name: string
 }
 
 export interface Conversation {
@@ -75,6 +77,16 @@ export async function deleteConversation(conversationId: number): Promise<void> 
   })
 }
 
+export async function renameConversation(conversationId: number, title: string): Promise<void> {
+  const resp = await fetch(`${BASE}/ai/conversations/${conversationId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ title }),
+  })
+  const data = await resp.json()
+  if (data.code !== 0) throw new Error(data.msg || '重命名失败')
+}
+
 export async function* sendAiMessageStream(
   message: string,
   conversation_id?: number,
@@ -119,19 +131,24 @@ async function* _readSSEStream(resp: Response): AsyncGenerator<SSEEvent> {
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try { yield JSON.parse(line.slice(6)) as SSEEvent } catch { /* ignore */ }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { yield JSON.parse(line.slice(6)) as SSEEvent } catch { /* ignore */ }
+        }
       }
     }
-  }
-  if (buffer.startsWith('data: ')) {
-    try { yield JSON.parse(buffer.slice(6)) as SSEEvent } catch { /* ignore */ }
+    if (buffer.startsWith('data: ')) {
+      try { yield JSON.parse(buffer.slice(6)) as SSEEvent } catch { /* ignore */ }
+    }
+  } finally {
+    // 消费方 break / return（如「停止生成」）时触发，中断底层连接
+    try { await reader.cancel() } catch { /* ignore */ }
   }
 }

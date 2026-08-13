@@ -34,6 +34,8 @@ export interface DisplayMessage {
   result?: string
   description?: string
   pending_id?: string
+  /** 写操作确认的终态：undefined=等待确认，confirmed/rejected=已处理（保留终态展示） */
+  confirmState?: 'confirmed' | 'rejected'
   time?: string
   elapsed?: number
   steps?: ToolTraceStep[]

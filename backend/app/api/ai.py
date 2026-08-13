@@ -41,15 +41,24 @@ def api_ai_info(
     _: User = Depends(get_current_api_user),
 ):
     """获取 AI 模型配置信息。"""
-    from app.core.settings import get_llm_config, is_llm_configured
+    from app.core.settings import (
+        get_active_llm_profile,
+        get_llm_config,
+        guess_provider_from_url,
+        is_llm_configured,
+    )
 
     config = get_llm_config(db)
     configured = is_llm_configured(config)
+    profile = get_active_llm_profile(db) or {}
+    provider = str(profile.get("provider") or "") or guess_provider_from_url(config.get("base_url", ""))
     return {
         "code": 0,
         "data": {
             "model": config["model"],
             "configured": configured,
+            "provider": provider if configured else "",
+            "profile_name": str(profile.get("name") or "") if configured else "",
         },
     }
 
@@ -124,6 +133,33 @@ def api_delete_conversation(
     delete_conversation(db, conversation_id)
     db.commit()
     return {"code": 0, "msg": "已删除"}
+
+
+class RenameConversationRequest(BaseModel):
+    title: str
+
+
+@router.patch("/conversations/{conversation_id}")
+def api_rename_conversation(
+    conversation_id: int,
+    body: RenameConversationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_api_user),
+):
+    """重命名对话。"""
+    from app.services.ai.conversations import get_conversation
+
+    conv = get_conversation(db, conversation_id)
+    if conv is None or conv.user_id != current_user.id:
+        return {"code": 404, "msg": "对话不存在"}
+
+    title = body.title.strip()
+    if not title:
+        return {"code": 400, "msg": "标题不能为空"}
+
+    conv.title = title[:200]
+    db.commit()
+    return {"code": 0, "data": {"id": conversation_id, "title": conv.title}}
 
 
 class ChatRequest(BaseModel):
