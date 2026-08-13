@@ -41,7 +41,10 @@
         <div v-for="svc in servicesByGroup(group.key)" :key="svc.key"
              class="integration-card" :class="'card-' + svc.status">
           <div class="card-head">
-            <div class="service-icon" :class="'icon-' + svc.key" v-html="svc.svg"></div>
+            <div class="service-icon">
+              <img v-if="svc.logo" :src="svc.logo" :alt="svc.name" />
+              <template v-else>{{ svc.name.slice(0, 2) }}</template>
+            </div>
             <div class="card-title-block">
               <div class="service-name">{{ svc.name }}</div>
               <div class="service-tagline">{{ svc.tagline }}</div>
@@ -94,6 +97,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSettings, updateSetting, testConnection } from '@/api/settings'
+import { integrationLogoOf } from './integrationLogos'
 
 type ServiceStatus = 'ok' | 'fail' | 'none' | 'checking'
 
@@ -118,16 +122,11 @@ interface IntegrationService {
   expanded: boolean
   testing: boolean
   saving: boolean
-  svg: string
+  logo?: string
   fields: ConfigField[]
 }
 
-const svgPrometheus = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 2c.8 3.2-.6 4.6-2.1 6C8.2 9.5 7 11 7 13.5A5 5 0 0 0 12 18.5a5 5 0 0 0 5-5c0-1.5-.6-2.7-1.4-3.7-.4 1-1 1.6-1.9 2C14.2 9 15.5 5.5 12 2z" fill="currentColor"/><path d="M12 22a8.5 8.5 0 0 0 8.5-8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/></svg>'
-const svgAlertmanager = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 4-1.3 5.6-2.2 6.6-.4.5-.1 1.4.6 1.4h14.2c.7 0 1-.9.6-1.4-.9-1-2.2-2.6-2.2-6.6A5.5 5.5 0 0 0 12 3z" fill="currentColor"/><path d="M9.8 19a2.3 2.3 0 0 0 4.4 0" fill="currentColor" opacity=".7"/></svg>'
-const svgJenkins = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="9" r="5.2" fill="currentColor"/><path d="M7 21c.6-3 2.6-4.5 5-4.5s4.4 1.5 5 4.5" fill="currentColor" opacity=".75"/><circle cx="10.2" cy="8.4" r=".9" fill="#2c4250"/><circle cx="13.8" cy="8.4" r=".9" fill="#2c4250"/></svg>'
-const svgElasticsearch = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" fill="currentColor"/><path d="M5 6v6c0 1.66 3.13 3 7 3s7-1.34 7-3V6" stroke="currentColor" stroke-width="1.8" fill="none" opacity=".75"/><path d="M5 12v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6" stroke="currentColor" stroke-width="1.8" fill="none" opacity=".55"/></svg>'
-const svgKibana = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 20V10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M10 20V4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".8"/><path d="M16 20v-8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".6"/><path d="M22 20v-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".45"/></svg>'
-const linkSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>'
+const linkSvg ='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>'
 
 const groups = [
   { key: 'monitor', title: '监控与告警', sub: '数据源与告警事件接入' },
@@ -143,7 +142,7 @@ const services = reactive<IntegrationService[]>([
     key: 'prometheus', name: 'Prometheus', tagline: 'Metrics & TSDB', group: 'monitor',
     desc: '时序指标数据源，为主机监控图表与告警规则计算提供数据。',
     status: 'none', summary: '', lastCheck: '',
-    expanded: false, testing: false, saving: false, svg: svgPrometheus,
+    expanded: false, testing: false, saving: false, logo: integrationLogoOf('prometheus'),
     fields: [
       { key: 'url', label: '服务地址', value: '', tip: 'Prometheus HTTP API 地址，如 http://prometheus:9090', placeholder: 'http://prometheus:9090' },
     ],
@@ -152,7 +151,7 @@ const services = reactive<IntegrationService[]>([
     key: 'alertmanager', name: 'Alertmanager', tagline: 'Alert Routing', group: 'monitor',
     desc: '告警事件源，用于告警中心的事件拉取与状态同步。',
     status: 'none', summary: '', lastCheck: '',
-    expanded: false, testing: false, saving: false, svg: svgAlertmanager,
+    expanded: false, testing: false, saving: false, logo: integrationLogoOf('alertmanager'),
     fields: [
       { key: 'url', label: '服务地址', value: '', tip: 'Alertmanager HTTP API 地址，如 http://alertmanager:9093', placeholder: 'http://alertmanager:9093' },
     ],
@@ -161,7 +160,7 @@ const services = reactive<IntegrationService[]>([
     key: 'elasticsearch', name: 'Elasticsearch', tagline: 'Log Storage & Search', group: 'logs',
     desc: '日志存储与检索引擎，为日志检索、Pod 历史日志与 AI 诊断提供数据。',
     status: 'none', summary: '', lastCheck: '',
-    expanded: false, testing: false, saving: false, svg: svgElasticsearch,
+    expanded: false, testing: false, saving: false, logo: integrationLogoOf('elasticsearch'),
     fields: [
       { key: 'url', label: '服务地址', value: '', tip: 'Elasticsearch HTTP 地址，如 http://elasticsearch:9200', placeholder: 'http://elasticsearch:9200' },
       { key: 'username', label: '用户名', value: '', tip: '可选，开启安全认证时填写', placeholder: 'elastic' },
@@ -173,7 +172,7 @@ const services = reactive<IntegrationService[]>([
     key: 'kibana', name: 'Kibana', tagline: 'Log Visualization', group: 'logs',
     desc: '日志可视化分析入口，从平台一键跳转 Kibana 进行深度日志探索。',
     status: 'none', summary: '', lastCheck: '',
-    expanded: false, testing: false, saving: false, svg: svgKibana,
+    expanded: false, testing: false, saving: false, logo: integrationLogoOf('kibana'),
     fields: [
       { key: 'url', label: '服务地址', value: '', tip: 'Kibana 地址（浏览器可访问），如 http://kibana:5601', placeholder: 'http://kibana:5601' },
     ],
@@ -182,7 +181,7 @@ const services = reactive<IntegrationService[]>([
     key: 'jenkins', name: 'Jenkins', tagline: 'Build & CI', group: 'build',
     desc: '构建引擎，用于发布部署模块触发流水线构建。',
     status: 'none', summary: '', lastCheck: '',
-    expanded: false, testing: false, saving: false, svg: svgJenkins,
+    expanded: false, testing: false, saving: false, logo: integrationLogoOf('jenkins'),
     fields: [
       { key: 'url', label: 'Jenkins URL', value: '', tip: 'Jenkins 服务器地址', placeholder: 'http://jenkins.example.com' },
       { key: 'username', label: '用户名', value: '', tip: 'Jenkins API 用户名', placeholder: 'admin' },
@@ -403,14 +402,11 @@ onMounted(fetchConfigs)
 .service-icon {
   width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; box-shadow: 0 4px 10px -2px var(--icon-shadow);
-  background: linear-gradient(135deg, var(--icon-from), var(--icon-to));
+  background: #fff; border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, .06);
+  color: var(--text-secondary); font-size: 14px; font-weight: 800;
 }
-.icon-prometheus   { --icon-from: #f47c48; --icon-to: #d9431b; --icon-shadow: rgba(230, 82, 44, .4); }
-.icon-alertmanager { --icon-from: #ffc65c; --icon-to: #f09000; --icon-shadow: rgba(245, 166, 35, .4); }
-.icon-jenkins      { --icon-from: #4b7385; --icon-to: #2c4250; --icon-shadow: rgba(51, 80, 97, .4); }
-.icon-elasticsearch { --icon-from: #f5b83d; --icon-to: #d97706; --icon-shadow: rgba(217, 119, 6, .4); }
-.icon-kibana       { --icon-from: #f472b6; --icon-to: #d63384; --icon-shadow: rgba(214, 51, 132, .4); }
+.service-icon img { width: 64%; height: 64%; object-fit: contain; display: block; }
 
 .card-title-block { flex: 1; min-width: 0; }
 .service-name { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
