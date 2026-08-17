@@ -16,6 +16,7 @@ from app.services.roles import (
     get_role,
     get_role_by_code,
     get_role_by_name,
+    get_role_stats,
     list_permissions,
     list_roles,
     update_role,
@@ -56,24 +57,33 @@ def _role_dict(r) -> dict:
 @router.get("/")
 def api_list_roles(
     keyword: str = "",
-    system_only: bool = False,
+    type: str = "",
+    no_perm: bool = False,
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("roles.view")),
 ):
-    items = list_roles(db, keyword=keyword, system_only=system_only)
-    total = len(items)
-    start = (max(page, 1) - 1) * page_size
+    items, total = list_roles(db, keyword=keyword, type=type, no_perm=no_perm, page=page, page_size=page_size)
     return {
         "code": 0,
         "data": {
-            "items": [_role_dict(r) for r in items[start:start + page_size]],
+            "items": [_role_dict(r) for r in items],
             "total": total,
             "page": page,
             "page_size": page_size,
         },
     }
+
+
+# 注意：/stats 必须注册在 /{role_id} 之前，否则 "stats" 会被当作 role_id 匹配
+@router.get("/stats")
+def api_role_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("roles.view")),
+):
+    """角色权限页概览统计。"""
+    return {"code": 0, "data": get_role_stats(db)}
 
 
 @router.post("/")

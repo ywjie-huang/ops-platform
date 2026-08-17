@@ -26,7 +26,7 @@ from app.services.assets import (
     list_assets,
     list_recent_assets,
 )
-from app.services.roles import count_users_by_role, list_roles
+from app.services.roles import count_roles, count_users_by_role
 from app.services.tickets import count_open_tickets, list_tickets
 from app.services.users import count_new_users_since, count_users, list_recent_users
 
@@ -214,7 +214,6 @@ def build_host_resource_health(hosts: list[dict[str, Any]]) -> dict[str, Any]:
 
 def build_dashboard_stats(db: Session) -> DashboardStats:
     assets = list_assets(db)
-    roles = list_roles(db)
     status_counts = count_assets_by_status(db)
     return DashboardStats(
         asset_total=len(assets),
@@ -222,7 +221,7 @@ def build_dashboard_stats(db: Session) -> DashboardStats:
         open_alerts=_count_open_alert_events(db),
         pending_tickets=count_open_tickets(db),
         user_total=count_users(db),
-        role_total=len(roles),
+        role_total=count_roles(db),
         offline_assets=status_counts.get("已删除", 0),
         maintenance_assets=status_counts.get("已关机", 0),
         user_growth_7d=count_new_users_since(db, 7),

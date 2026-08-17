@@ -38,25 +38,73 @@ DEFAULT_ROLE_PERMISSION_CODES = {
 }
 
 
+def count_roles(db: Session) -> int:
+    return db.scalar(select(func.count(Role.id))) or 0
+
+
 def list_roles(
     db: Session,
     *,
     keyword: str = "",
-    system_only: bool = False,
-) -> list[Role]:
-    stmt = select(Role).options(selectinload(Role.permissions), selectinload(Role.users))
-    keyword = keyword.strip()
+    type: str = "",
+    no_perm: bool = False,
+    page: int | None = None,
+    page_size: int = 20,
+) -> tuple[list[Role], int]:
+    """角色列表，返回 ( items, 总数 )。page=None 时返回全部（给表单下拉用）。
 
+    type: system（系统内置）/ custom（自定义）；no_perm: 仅未配置权限点的角色。
+    """
+    conds = []
+    keyword = keyword.strip()
     if keyword:
         like_value = f"%{keyword}%"
-        stmt = stmt.where(
+        conds.append(
             or_(Role.name.ilike(like_value), Role.code.ilike(like_value), Role.description.ilike(like_value))
         )
-    if system_only:
-        stmt = stmt.where(Role.is_system.is_(True))
+    if type == "system":
+        conds.append(Role.is_system.is_(True))
+    elif type == "custom":
+        conds.append(Role.is_system.is_(False))
+    if no_perm:
+        conds.append(~Role.permissions.any())
 
-    stmt = stmt.order_by(Role.id.desc())
-    return list(db.scalars(stmt).unique().all())
+    total = db.scalar(select(func.count(Role.id)).where(*conds)) or 0
+    stmt = (
+        select(Role)
+        .options(selectinload(Role.permissions), selectinload(Role.users))
+        .where(*conds)
+        .order_by(Role.id.desc())
+    )
+    if page is not None:
+        page = max(page, 1)
+        page_size = max(1, min(page_size, 100))
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    return list(db.scalars(stmt).unique().all()), total
+
+
+def get_role_stats(db: Session) -> dict:
+    """角色权限页概览：角色规模 + 账号覆盖 + 权限点规模 + 配置遗漏。"""
+    from app.models.rbac import user_roles
+
+    total_roles = count_roles(db)
+    system_roles = db.scalar(select(func.count(Role.id)).where(Role.is_system.is_(True))) or 0
+    assigned_users = db.scalar(select(func.count(func.distinct(user_roles.c.user_id)))) or 0
+    perm_total = db.scalar(select(func.count(Permission.id))) or 0
+    perm_modules = db.scalar(select(func.count(func.distinct(Permission.module)))) or 0
+    no_perm_roles = db.scalar(select(func.count(Role.id)).where(~Role.permissions.any())) or 0
+
+    from app.services.users import count_users
+    return {
+        "total_roles": total_roles,
+        "system_roles": system_roles,
+        "custom_roles": total_roles - system_roles,
+        "assigned_users": assigned_users,
+        "total_users": count_users(db),
+        "perm_total": perm_total,
+        "perm_modules": perm_modules,
+        "no_perm_roles": no_perm_roles,
+    }
 
 
 def count_users_by_role(db: Session) -> list[tuple[Role, int]]:
@@ -177,6 +225,8 @@ PERMISSION_LABELS = {
     "audit": "审计日志",
     "settings": "配置中心",
     "batch_exec": "批量执行",
+    "ssh_terminal": "SSH 终端",
+    "deploy": "应用发布",
     "patrol": "巡检中心",
 }
 
@@ -196,8 +246,10 @@ def build_permission_tree(permissions):
         "settings": ("系统管理", 6),
         "batch_exec": ("批量执行", 7),
         "patrol": ("巡检中心", 8),
+        "ssh_terminal": ("资产管理", 2),
+        "deploy": ("应用发布", 9),
     }
-    PARENT_ORDER = {"仪表盘": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "用户管理": 5, "系统管理": 6, "批量执行": 7, "巡检中心": 8}
+    PARENT_ORDER = {"仪表盘": 1, "资产管理": 2, "监控告警": 3, "工单协作": 4, "用户管理": 5, "系统管理": 6, "批量执行": 7, "巡检中心": 8, "应用发布": 9}
 
     children: dict[str, dict[str, list]] = {}
     child_order: dict[str, list[str]] = {}

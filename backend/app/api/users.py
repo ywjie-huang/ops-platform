@@ -113,7 +113,7 @@ def api_user_roles(
     _: User = Depends(api_permission_required("users.view")),
 ):
     """获取角色列表（给用户表单用）。"""
-    roles = list_roles(db)
+    roles, _ = list_roles(db)
     return {
         "code": 0,
         "data": [{"id": r.id, "name": r.name, "code": r.code, "description": r.description} for r in roles],
