@@ -46,11 +46,12 @@
           <el-icon><Refresh /></el-icon>
           立即刷新
         </el-button>
+        <span class="header-divider" aria-hidden="true"></span>
         <el-button type="danger" plain size="small" :aria-label="`删除主机 ${host.name}`" @click="handleDelete">删除主机</el-button>
       </div>
     </div>
 
-    <div class="sync-notice" :class="syncNoticeClass">
+    <div v-if="syncState !== 'fresh'" class="sync-notice" :class="syncNoticeClass">
       <span class="status-dot" :class="syncDotClass" aria-hidden="true"></span>
       <span>{{ syncNoticeText }}</span>
     </div>
@@ -67,6 +68,7 @@
           :color="progressColor(item.percent)"
           class="stat-progress"
         />
+        <div v-else class="stat-progress-placeholder" aria-hidden="true"></div>
         <div class="metric-foot">{{ item.foot }}</div>
       </div>
     </div>
@@ -132,7 +134,7 @@
                     :color="progressColor(row.memory_percent || 0)"
                     class="memory-progress"
                   />
-                  <span class="mono memory-text">{{ formatBytes(row.memory_usage) }}</span>
+                  <span class="mono memory-text">{{ formatBytes(row.memory_usage) }} · {{ Number(row.memory_percent || 0).toFixed(0) }}%</span>
                 </div>
               </template>
             </el-table-column>
@@ -144,65 +146,68 @@
                 <span :class="{ 'text-warning': row.restart_count > 3, 'text-danger': row.restart_count > 10 }">{{ row.restart_count }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="更新时间" width="150">
-              <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
+            <el-table-column label="更新时间" width="110">
+              <template #default="{ row }">{{ formatRelativeTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="340" fixed="right" align="right">
+            <el-table-column label="操作" width="176" fixed="right" align="center">
               <template #default="{ row }">
                 <div class="action-cell">
                   <el-button
                     size="small"
-                    type="info"
+                    type="primary"
                     link
                     :aria-label="`查看容器 ${row.name} 详情`"
                     @click.stop="openContainerInspect(row)"
                   >详情</el-button>
                   <el-button
                     size="small"
-                    type="info"
+                    type="primary"
                     link
                     :aria-label="`查看容器 ${row.name} 日志`"
                     @click.stop="openContainerLogs(row)"
                   >日志</el-button>
-                  <el-button
-                    v-if="row.status === 'running'"
-                    size="small"
-                    type="primary"
-                    link
-                    :aria-label="`进入容器 ${row.name} 终端`"
-                    @click.stop="openContainerExec(row)"
-                  >终端</el-button>
-                  <el-button
-                    v-if="row.status !== 'running'"
-                    size="small"
-                    type="success"
-                    link
-                    :aria-label="`启动容器 ${row.name}`"
-                    @click.stop="handleContainerAction(row, 'start')"
-                  >启动</el-button>
-                  <el-button
-                    v-if="row.status === 'running'"
-                    size="small"
-                    type="primary"
-                    link
-                    :aria-label="`重启容器 ${row.name}`"
-                    @click.stop="handleContainerAction(row, 'restart')"
-                  >重启</el-button>
-                  <el-button
-                    v-if="row.status === 'running'"
-                    size="small"
-                    type="warning"
-                    link
-                    :aria-label="`停止容器 ${row.name}`"
-                    @click.stop="handleContainerAction(row, 'stop')"
-                  >停止</el-button>
-                  <el-button
-                    size="small"
-                    type="danger"
-                    link
-                    :aria-label="`删除容器 ${row.name}`"
-                    @click.stop="handleContainerAction(row, 'delete')"
-                  >删除</el-button>
+                  <el-tooltip
+                    :disabled="row.status === 'running'"
+                    content="仅运行中的容器可用"
+                    placement="top"
+                  >
+                    <span class="action-slot">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        link
+                        :disabled="row.status !== 'running'"
+                        :aria-label="`进入容器 ${row.name} 终端`"
+                        @click.stop="openContainerExec(row)"
+                      >终端</el-button>
+                    </span>
+                  </el-tooltip>
+                  <el-dropdown
+                    trigger="click"
+                    placement="bottom-end"
+                    :aria-label="`容器 ${row.name} 更多操作`"
+                    @command="(cmd: 'start' | 'stop' | 'restart' | 'delete') => handleContainerAction(row, cmd)"
+                  >
+                    <el-button size="small" type="primary" link class="action-more">
+                      更多<el-icon class="action-more-icon"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item v-if="row.status !== 'running'" command="start">
+                          <el-icon class="dropdown-item-icon"><VideoPlay /></el-icon>启动
+                        </el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'running'" command="restart">
+                          <el-icon class="dropdown-item-icon"><RefreshRight /></el-icon>重启
+                        </el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'running'" command="stop">
+                          <el-icon class="dropdown-item-icon"><VideoPause /></el-icon>停止
+                        </el-dropdown-item>
+                        <el-dropdown-item command="delete" divided>
+                          <el-icon class="dropdown-item-icon text-danger"><Delete /></el-icon><span class="text-danger">删除</span>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
               </template>
             </el-table-column>
@@ -225,17 +230,6 @@
         <div class="panel-head compact">
           <h3 class="panel-title">主机健康</h3>
           <el-tag :type="healthTagType" size="small">{{ healthLabel }}</el-tag>
-        </div>
-        <div class="health-list">
-          <div v-for="item in healthItems" :key="item.label" class="health-item">
-            <div class="health-row">
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-            </div>
-            <div class="health-bar" aria-hidden="true">
-              <span :class="item.barClass" :style="{ width: item.percent + '%' }"></span>
-            </div>
-          </div>
         </div>
         <div class="event-list">
           <div class="event-item">
@@ -558,7 +552,7 @@
 import { ref, reactive, computed, watch, nextTick, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowDown, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, Refresh, Search, VideoPlay, VideoPause, RefreshRight, Delete } from '@element-plus/icons-vue'
 import LogHighlightedText from '@/components/LogHighlightedText'
 import MetricTrendChart from '@/components/MetricTrendChart.vue'
 import ExecPane from '@/components/ExecPane.vue'
@@ -700,17 +694,11 @@ const overviewCards = computed(() => {
   ]
 })
 
-const healthItems = computed(() => {
+const healthTagType = computed(() => {
   const m = host.value.metrics || {}
-  const diskPercent = m.disk_usage?.percent ?? 0
-  return [
-    { label: 'CPU', value: m.cpu_percent != null ? m.cpu_percent.toFixed(1) + '%' : '-', percent: Math.min(m.cpu_percent ?? 0, 100), barClass: healthBarClass(m.cpu_percent ?? 0) },
-    { label: '内存', value: m.memory_percent != null ? m.memory_percent.toFixed(1) + '%' : '-', percent: Math.min(m.memory_percent ?? 0, 100), barClass: healthBarClass(m.memory_percent ?? 0) },
-    { label: '磁盘', value: diskPercent ? diskPercent.toFixed(1) + '%' : '-', percent: Math.min(diskPercent, 100), barClass: healthBarClass(diskPercent) },
-  ]
+  const percents = [m.cpu_percent ?? 0, m.memory_percent ?? 0, m.disk_usage?.percent ?? 0]
+  return containerSummary.value.abnormal > 0 || percents.some((p) => p > THRESHOLD_WARN) ? 'warning' : 'success'
 })
-
-const healthTagType = computed(() => containerSummary.value.abnormal > 0 || healthItems.value.some((item) => item.percent > THRESHOLD_WARN) ? 'warning' : 'success')
 const healthLabel = computed(() => healthTagType.value === 'warning' ? '关注' : '正常')
 const actionSuggestion = computed(() => {
   if (containerSummary.value.abnormal > 0) return '优先查看异常容器日志，再执行重启或停止。'
@@ -734,12 +722,6 @@ function metricValueClass(percent?: number | null) {
   return ''
 }
 
-function healthBarClass(percent: number) {
-  if (percent > THRESHOLD_DANGER) return 'danger'
-  if (percent > THRESHOLD_WARN) return 'warning'
-  return ''
-}
-
 function endpointHost(endpoint = '') {
   const value = endpoint.replace(/^https?:\/\//, '')
   return value.split(':')[0]
@@ -754,11 +736,6 @@ function formatRelativeTime(ts?: string | null) {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours} 小时前`
   return `${Math.floor(hours / 24)} 天前`
-}
-
-function formatTime(ts: string) {
-  if (!ts) return '-'
-  try { return new Date(ts).toLocaleString('zh-CN') } catch { return ts }
 }
 
 function formatBytes(bytes: number): string {
@@ -1131,7 +1108,7 @@ async function openContainerInspect(row: any) {
   inspectData.value = null
   inspectTrendData.value = null
   revealedEnvKeys.value = new Set()
-  Object.assign(sectionCollapse, { env: true, network: false, mounts: true, health: false, resources: false, labels: true, runconfig: true })
+  Object.assign(sectionCollapse, { trend: true, network: false, health: false, resources: false, config: true })
   inspectDrawerVisible.value = true
   await fetchContainerInspect()
   loadInspectTrends()
@@ -1311,6 +1288,13 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 8px;
 }
+.header-divider {
+  width: 1px;
+  height: 20px;
+  margin-top: 2px;
+  background: var(--border-color);
+  flex: none;
+}
 .sync-notice {
   display: flex;
   align-items: center;
@@ -1376,6 +1360,10 @@ onUnmounted(() => {
 }
 .stat-progress {
   margin-top: 6px;
+}
+.stat-progress-placeholder {
+  margin-top: 6px;
+  height: 4px;
 }
 .detail-grid {
   display: grid;
@@ -1468,8 +1456,28 @@ onUnmounted(() => {
 .action-cell {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
+}
+.action-cell .el-button + .el-button,
+.action-cell .el-button + .el-dropdown,
+.action-cell .el-button + .action-slot,
+.action-cell .action-slot + .el-dropdown {
+  margin-left: 0;
+}
+.action-slot {
+  display: inline-flex;
+  align-items: center;
+}
+.action-more {
+  outline: none;
+}
+.action-more-icon {
+  margin-left: 2px;
+  font-size: 10px;
+}
+.dropdown-item-icon {
+  margin-right: 6px;
 }
 .pagination-wrap {
   display: flex;
@@ -1477,51 +1485,17 @@ onUnmounted(() => {
   padding: 11px 12px;
   border-top: 1px solid var(--border-color);
 }
-.health-list {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-}
-.health-item {
-  display: grid;
-  gap: 6px;
-}
-.health-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.health-row strong {
-  color: var(--text-primary);
-}
-.health-bar {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #eef0f4;
-}
-.health-bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--primary-color);
-}
-.health-bar span.warning {
-  background: var(--warning-color);
-}
-.health-bar span.danger {
-  background: var(--danger-color);
-}
 .event-list {
-  padding: 0 12px 12px;
+  padding: 4px 12px 12px;
 }
 .event-item {
   display: grid;
   gap: 3px;
   padding: 10px 0;
   border-top: 1px solid var(--border-color);
+}
+.event-item:first-child {
+  border-top: none;
 }
 .event-item strong {
   font-size: 13px;
