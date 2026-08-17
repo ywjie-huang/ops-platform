@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>审计日志优化 v1 · 预览</title>
+<style>
+  :root {
+    --primary: #5e6ad2;
+    --primary-bg: rgba(94,106,210,.08);
+    --success: #16a34a;
+    --success-bg: rgba(34,197,94,.11);
+    --warning: #d97706;
+    --warning-bg: rgba(245,158,11,.13);
+    --danger: #dc2626;
+    --danger-bg: rgba(239,68,68,.09);
+    --info-bg: rgba(140,140,140,.12);
+    --bg: #f2f3f5;
+    --surface: #fff;
+    --surface-2: #f7f7f9;
+    --border: #ececf0;
+    --border-strong: #e2e2e6;
+    --text-1: #141414;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text-1); font-size: 13px; line-height: 1.5;
+  }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .stage { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+  .mock-label {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px;
+    color: var(--primary); background: var(--primary-bg); border-radius: 4px;
+    padding: 2px 8px; margin-bottom: 10px;
+  }
+  .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .page-header h2 { font-size: 18px; font-weight: 700; }
+  .page-subtitle { margin-top: 3px; font-size: 12px; color: var(--text-2); }
+  .header-actions { display: flex; gap: 8px; }
+  .btn {
+    height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-1); cursor: pointer;
+  }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  }
+  .stat:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(94,106,210,.10); }
+  .stat .lbl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+  .stat .num { margin-top: 3px; font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .stat .num.danger { color: var(--danger); }
+  .stat .foot { margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.p { background: var(--primary); } .dot.s { background: var(--success); }
+  .dot.w { background: var(--warning); } .dot.d { background: var(--danger); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .toolbar input[type=text], .toolbar select {
+    height: 30px; border: 1px solid var(--border-strong); border-radius: 7px; padding: 0 10px;
+    font-size: 12.5px; color: var(--text-1); background: var(--surface); outline: none;
+  }
+  .toolbar input[type=text] { width: 260px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .meta { font-size: 12px; color: var(--text-3); }
+  .link-btn { border: none; background: none; color: var(--primary); font-size: 12.5px; cursor: pointer; padding: 0 4px; }
+  .link-btn:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 12px; font-weight: 600; color: var(--text-2);
+    background: var(--surface-2); padding: 9px 12px; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: middle; }
+  tbody tr { cursor: pointer; transition: background .12s; }
+  tbody tr:hover { background: var(--primary-bg); }
+  tbody tr.alert-row { background: rgba(239,68,68,.045); }
+  tbody tr.alert-row:hover { background: rgba(239,68,68,.09); }
+  .user-cell { display: flex; align-items: center; gap: 8px; }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .obj-cell strong { display: block; font-weight: 650; }
+  .obj-cell span { font-size: 11.5px; color: var(--text-3); }
+  .detail-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+  .time-cell { white-space: nowrap; color: var(--text-2); }
+  .time-cell span { display: block; font-size: 11px; color: var(--text-3); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .tag.ok { color: var(--success); background: var(--success-bg); }
+  .tag.primary { color: var(--primary); background: var(--primary-bg); }
+  .tag.warn { color: var(--warning); background: var(--warning-bg); }
+  .tag.danger { color: var(--danger); background: var(--danger-bg); }
+  .tag.info { color: var(--text-2); background: var(--info-bg); }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 11px 12px; font-size: 12px; color: var(--text-2); }
+  .pager .pg { min-width: 26px; height: 26px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); cursor: pointer; font-size: 12px; }
+  .pager .pg.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .drawer-sec { margin-top: 44px; }
+  .drawer {
+    width: 720px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(20,20,30,.10); overflow: hidden;
+  }
+  .d-head { padding: 16px 20px 14px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg,#fbfbfc 0%,var(--surface) 100%); display: flex; justify-content: space-between; gap: 12px; }
+  .d-hero { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; flex-wrap: wrap; }
+  .d-title { font-size: 16px; font-weight: 700; }
+  .d-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .d-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-2);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+  }
+  .d-chip .k { color: var(--text-3); }
+  .d-close { border: none; cursor: pointer; width: 28px; height: 28px; border-radius: 7px; background: var(--bg); color: var(--text-2); font-size: 14px; flex: none; }
+  .d-close:hover { background: var(--danger-bg); color: var(--danger); }
+  .d-body { padding: 16px 20px 22px; }
+  .d-sec-k { font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: .4px; margin: 14px 0 8px; }
+  .d-sec-k:first-child { margin-top: 0; }
+  .kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kv { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; min-width: 0; }
+  .kv dt { flex: none; width: 64px; color: var(--text-3); }
+  .kv dd { margin: 0; flex: 1; min-width: 0; word-break: break-all; }
+  .d-detail {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; font-size: 12.5px; color: var(--text-1); line-height: 1.7; word-break: break-all;
+  }
+  .d-raw { background: #1c1c22; color: #d5d5de; border-radius: 10px; padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 44px; }
+  .note { background: var(--surface); border: 1px dashed #d8d8d8; border-radius: 8px; padding: 12px 16px; }
+  .note h4 { font-size: 12px; color: var(--primary); margin-bottom: 6px; }
+  .note p { font-size: 12px; color: var(--text-2); line-height: 1.7; }
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .kv-grid { grid-template-columns: 1fr; }
+    .drawer { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <span class="mock-label">主页面</span>
+
+  <div class="page-header">
+    <div>
+      <h2>审计日志</h2>
+      <p class="page-subtitle">平台关键操作留痕，点击任意一行查看完整记录。</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn">↻ 刷新</button>
+      <button class="btn">⭳ 导出 CSV</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl"><span class="dot p"></span>今日事件</div>
+      <div class="num">128</div>
+      <div class="foot">昨日同期 96 · ↑ 33%</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot s"></span>今日登录</div>
+      <div class="num">23</div>
+      <div class="foot">失败 2 次</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot d"></span>删除操作</div>
+      <div class="num danger">5</div>
+      <div class="foot">近 7 天 · 点击筛选</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot w"></span>活跃操作人</div>
+      <div class="num">8</div>
+      <div class="foot">近 7 天有操作记录的用户</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" placeholder="🔍 搜索操作人 / 对象名称 / 详情…" />
+      <select><option>操作类型：全部</option><option>登录</option><option>登出</option><option>新增</option><option>编辑</option><option>删除</option></select>
+      <select><option>对象类型：全部</option><option>资产</option><option>用户</option><option>角色</option><option>工单</option><option>告警</option><option>认证</option><option>配置</option></select>
+      <select><option>时间：近 7 天</option><option>今天</option><option>近 30 天</option><option>全部</option></select>
+      <button class="link-btn">重置</button>
+      <span class="spacer"></span>
+      <span class="meta">共 1,286 条</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:130px">操作人</th>
+          <th style="width:96px">操作</th>
+          <th style="width:210px">对象</th>
+          <th>详情</th>
+          <th style="width:130px">IP</th>
+          <th style="width:130px">时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#5e6ad2">A</span>admin</div></td>
+          <td><span class="tag ok">登录</span></td>
+          <td><div class="obj-cell"><strong>平台登录</strong><span>认证</span></div></td>
+          <td><div class="detail-cell">密码登录成功</div></td>
+          <td class="mono">10.0.8.2</td>
+          <td class="time-cell">2 分钟前<span>14:32:08</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#0e9f6e">张</span>zhangsan</div></td>
+          <td><span class="tag primary">新增</span></td>
+          <td><div class="obj-cell"><strong>web-server-03</strong><span>资产 · #218</span></div></td>
+          <td><div class="detail-cell">新增主机资产 web-server-03（10.0.8.15），归属生产环境分组</div></td>
+          <td class="mono">10.0.8.45</td>
+          <td class="time-cell">18 分钟前<span>14:16:22</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#5e6ad2">A</span>admin</div></td>
+          <td><span class="tag danger">删除</span></td>
+          <td><div class="obj-cell"><strong>CPU 使用率过高</strong><span>告警 · #56</span></div></td>
+          <td><div class="detail-cell">删除告警规则「CPU 使用率过高」（critical，cpu_percent &gt; 90 持续 5m）</div></td>
+          <td class="mono">10.0.8.2</td>
+          <td class="time-cell">1 小时前<span>13:28:41</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#b7791f">李</span>lisi</div></td>
+          <td><span class="tag warn">编辑</span></td>
+          <td><div class="obj-cell"><strong>工单 #1024</strong><span>工单</span></div></td>
+          <td><div class="detail-cell">状态变更：处理中 → 已完成；备注：磁盘已扩容至 500G</div></td>
+          <td class="mono">10.0.9.11</td>
+          <td class="time-cell">2 小时前<span>12:40:03</span></td>
+        </tr>
+        <tr class="alert-row">
+          <td><div class="user-cell"><span class="avatar" style="background:#718096">王</span>wangwu</div></td>
+          <td><span class="tag danger">登录失败</span></td>
+          <td><div class="obj-cell"><strong>平台登录</strong><span>认证</span></div></td>
+          <td><div class="detail-cell">密码错误（30 分钟内第 3 次），账号已临时锁定 10 分钟</div></td>
+          <td class="mono">183.14.29.7</td>
+          <td class="time-cell">3 小时前<span>11:52:19</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#5e6ad2">A</span>admin</div></td>
+          <td><span class="tag warn">编辑</span></td>
+          <td><div class="obj-cell"><strong>SMTP 邮件通知</strong><span>配置</span></div></td>
+          <td><div class="detail-cell">更新 SMTP 服务器 smtp.exmail.qq.com:465，开启 SSL</div></td>
+          <td class="mono">10.0.8.2</td>
+          <td class="time-cell">昨天 17:22<span>08-16 17:22:54</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#0e9f6e">张</span>zhangsan</div></td>
+          <td><span class="tag info">登出</span></td>
+          <td><div class="obj-cell"><strong>平台登出</strong><span>认证</span></div></td>
+          <td><div class="detail-cell">用户主动登出</div></td>
+          <td class="mono">10.0.8.45</td>
+          <td class="time-cell">昨天 16:03<span>08-16 16:03:31</span></td>
+        </tr>
+        <tr>
+          <td><div class="user-cell"><span class="avatar" style="background:#5e6ad2">A</span>admin</div></td>
+          <td><span class="tag primary">新增</span></td>
+          <td><div class="obj-cell"><strong>只读运维</strong><span>角色 · #7</span></div></td>
+          <td><div class="detail-cell">新增角色「只读运维」，权限：asset.view / monitor.view / audit.view</div></td>
+          <td class="mono">10.0.8.2</td>
+          <td class="time-cell">2 天前<span>08-15 10:12:47</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="pager">
+      <span>共 1,286 条</span>
+      <button class="pg">‹</button>
+      <button class="pg on">1</button>
+      <button class="pg">2</button>
+      <button class="pg">3</button>
+      <span>…</span>
+      <button class="pg">65</button>
+      <button class="pg">›</button>
+    </div>
+  </div>
+  <div class="drawer-sec">
+    <span class="mock-label">点击行 → 详情抽屉</span>
+    <div class="drawer">
+      <div class="d-head">
+        <div>
+          <div class="d-hero">
+            <span class="tag danger">删除</span>
+            <span class="tag info">告警</span>
+          </div>
+          <div class="d-title">CPU 使用率过高</div>
+          <div class="d-chips">
+            <span class="d-chip"><span class="k">操作人</span>admin</span>
+            <span class="d-chip"><span class="k">IP</span><span class="mono">10.0.8.2</span></span>
+            <span class="d-chip"><span class="k">时间</span>2026-08-17 13:28:41</span>
+          </div>
+        </div>
+        <button class="d-close">✕</button>
+      </div>
+      <div class="d-body">
+        <div class="d-sec-k">基本信息</div>
+        <dl class="kv-grid">
+          <div class="kv"><dt>操作人</dt><dd>admin</dd></div>
+          <div class="kv"><dt>操作</dt><dd>删除（delete）</dd></div>
+          <div class="kv"><dt>对象类型</dt><dd>告警（alert）</dd></div>
+          <div class="kv"><dt>对象 ID</dt><dd class="mono">#56</dd></div>
+          <div class="kv"><dt>来源 IP</dt><dd class="mono">10.0.8.2</dd></div>
+          <div class="kv"><dt>发生时间</dt><dd>2026-08-17 13:28:41</dd></div>
+        </dl>
+        <div class="d-sec-k">操作详情</div>
+        <div class="d-detail">删除告警规则「CPU 使用率过高」（critical，cpu_percent &gt; 90 持续 5m），该规则绑定通知渠道：邮件、企业微信。</div>
+        <div class="d-sec-k">原始记录</div>
+        <div class="d-raw">{ "id": 10241, "user": "admin", "action": "delete",
+  "target_type": "alert", "target_id": 56,
+  "target_name": "CPU 使用率过高",
+  "ip_address": "10.0.8.2",
+  "created_at": "2026-08-17T13:28:41+08:00" }</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h4>① 操作类型色彩语义（P0）</h4>
+      <p>登录绿 / 新增蓝 / 编辑橙 / 删除红 / 登出灰，一眼区分风险。文案改中文，选项由后端 /audit/meta/actions、/audit/meta/target-types 下发（接口已存在，前端目前硬编码英文）。</p>
+    </div>
+    <div class="note">
+      <h4>② 表格减负（P0）</h4>
+      <p>去掉 ID 列；对象类型+名称合并一格（名称为主、类型为辅）；详情超长截断；时间主显相对时间、副显绝对时间；点击行打开右侧抽屉看完整记录与原始 JSON。</p>
+    </div>
+    <div class="note">
+      <h4>③ 登录失败高亮（P1 后端配合）</h4>
+      <p>红色行为示意。当前 action 只有 login，建议后端登录失败单独记 login_failed（ACTION_LABELS 加一项），前端据此染红整行并纳入统计卡。</p>
+    </div>
+    <div class="note">
+      <h4>④ 统计卡 + 导出（P1 后端配合）</h4>
+      <p>4 张卡需新增 /audit/stats 聚合接口；「删除操作」卡点击即筛选。「导出 CSV」按当前筛选条件由后端流式输出。另建议把分页改为 SQL 级 count + limit（目前全表进内存切片，数据量大后会慢）。</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
