@@ -112,6 +112,59 @@ def _open_exec_stream(core_v1, namespace: str, pod_name: str, container: str, co
     )
 
 
+def _explain_k8s_exec_error(exc: Exception) -> str:
+    """把 exec 建流异常转成可操作的中文提示。
+
+    kubernetes>=36 的已知缺陷：WebSocket 握手被 API Server 拒绝（403/404 等）时，
+    ApiException.body 为 None，api_client 在异常处理分支里对 body .decode() 会再抛
+    AttributeError（'NoneType' object has no attribute 'decode'），真实原因藏在
+    异常链 __context__ 的 ApiException 中。这里沿链挖出原始 ApiException，
+    还原状态码与 K8s Status message。
+    """
+    cur: BaseException | None = exc
+    for _ in range(5):
+        if cur is None:
+            break
+        if cur.__class__.__name__ == "ApiException":
+            status = getattr(cur, "status", 0) or 0
+            text = str(cur)
+            # ApiException.reason 形如 "Handshake status 403 Forbidden -+- {headers} -+- b'{...}'"
+            # 真实 HTTP 状态嵌在 reason 里（握手层 status=0）；K8s 的 message 在尾段 JSON 中
+            handshake = None
+            for part in text.replace("Handshake status ", "|Handshake status ").split("|"):
+                if "Handshake status" in part:
+                    digits = "".join(ch for ch in part if ch.isdigit())[:3]
+                    if digits.isdigit():
+                        handshake = int(digits)
+                    break
+            real_status = handshake or status
+            message = ""
+            try:
+                start = text.find('{"kind"')
+                if start == -1:
+                    start = text.find('{"')
+                end = text.rfind("}")
+                if start != -1 and end > start:
+                    payload = json.loads(text[start:end + 1])
+                    message = str(payload.get("message") or "")
+            except (ValueError, TypeError):
+                message = ""
+            if real_status == 403:
+                hint = (
+                    "集群拒绝了 exec 请求（403）：当前接入 Token 的 ServiceAccount 缺少 "
+                    "pods/exec 权限。请在集群侧为其授予（ClusterRole 规则："
+                    'resources: ["pods/exec"], verbs: ["create"]）。'
+                )
+                if message:
+                    hint += f" K8s 原始信息：{message}"
+                return hint
+            if real_status == 404:
+                return f"Pod 或容器不存在（404）：{message or text[:200]}"
+            return f"K8s exec 建立失败（HTTP {real_status}）：{message or text[:300]}"
+        cur = cur.__context__
+    return str(exc)
+
+
 def _poll_exec(ws_client) -> tuple[str, str, bool]:
     """处理一帧 K8s exec 输出（阻塞最长约 1s），返回 (stdout, stderr, closed)。"""
     if not ws_client.is_open():
@@ -174,7 +227,7 @@ async def ws_k8s_exec(
         ws_client = _open_exec_stream(core_v1, namespace, pod_name, container, command_argv)
     except Exception as e:
         logger.warning("K8s exec 建立失败 [%s/%s]: %s", namespace, pod_name, e)
-        await _send_error_and_close(websocket, f"无法进入容器：{e}")
+        await _send_error_and_close(websocket, f"无法进入容器：{_explain_k8s_exec_error(e)}")
         return
 
     # 审计
