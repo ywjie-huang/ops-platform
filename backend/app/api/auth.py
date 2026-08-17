@@ -67,7 +67,14 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
     user = authenticate_user(db, body.username, body.password)
     if not user:
-        record_failure(body.username, client_ip)
+        fails = record_failure(body.username, client_ip)
+        write_log(
+            db, user=None, username=body.username, action="login_failed", target_type="auth",
+            target_name=body.username,
+            detail=f"账号或密码错误（连续第 {fails} 次失败）",
+            ip_address=client_ip,
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="账号或密码不正确",
@@ -76,6 +83,7 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     write_log(
         db, user=user, action="login", target_type="auth",
         target_name=user.username,
+        detail="密码登录成功",
         ip_address=client_ip,
     )
     db.commit()
@@ -118,6 +126,7 @@ def logout(request: Request, current_user: User = Depends(get_current_api_user),
     write_log(
         db, user=current_user, action="logout", target_type="auth",
         target_name=current_user.username,
+        detail="用户主动登出",
         ip_address=get_client_ip(request),
     )
     db.commit()
