@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>任务调度中心 v1 · 预览</title>
+<style>
+  :root {
+    --primary: #5e6ad2;
+    --primary-bg: rgba(94,106,210,.08);
+    --success: #16a34a;
+    --success-bg: rgba(34,197,94,.11);
+    --warning: #d97706;
+    --warning-bg: rgba(245,158,11,.13);
+    --danger: #dc2626;
+    --danger-bg: rgba(239,68,68,.09);
+    --info-bg: rgba(140,140,140,.12);
+    --bg: #f2f3f5;
+    --surface: #fff;
+    --surface-2: #f7f7f9;
+    --border: #ececf0;
+    --border-strong: #e2e2e6;
+    --text-1: #141414;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text-1); font-size: 13px; line-height: 1.5;
+  }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .stage { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+  .mock-label {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px;
+    color: var(--primary); background: var(--primary-bg); border-radius: 4px;
+    padding: 2px 8px; margin-bottom: 10px;
+  }
+  .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .page-header h2 { font-size: 18px; font-weight: 700; }
+  .page-subtitle { margin-top: 3px; font-size: 12px; color: var(--text-2); }
+  .btn {
+    height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-1); cursor: pointer;
+  }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { opacity: .92; color: #fff; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .stat .lbl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+  .stat .num { margin-top: 3px; font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .stat .num.danger { color: var(--danger); }
+  .stat .foot { margin-top: 4px; font-size: 11.5px; color: var(--text-3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.p { background: var(--primary); } .dot.s { background: var(--success); }
+  .dot.w { background: var(--warning); } .dot.d { background: var(--danger); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .toolbar input[type=text], .toolbar select {
+    height: 30px; border: 1px solid var(--border-strong); border-radius: 7px; padding: 0 10px;
+    font-size: 12.5px; color: var(--text-1); background: var(--surface); outline: none;
+  }
+  .toolbar input[type=text] { width: 220px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .meta { font-size: 12px; color: var(--text-3); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 12px; font-weight: 600; color: var(--text-2);
+    background: var(--surface-2); padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody td { padding: 11px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: middle; }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: var(--primary-bg); }
+  tbody tr.disabled-row .task-name strong, tbody tr.disabled-row .cron-cell strong { color: var(--text-3); font-weight: 500; }
+  .task-name strong { display: block; font-weight: 650; }
+  .task-name span { font-size: 11.5px; color: var(--text-3); }
+  .cron-cell strong { display: block; font-weight: 650; }
+  .cron-cell .mono { color: var(--text-3); font-size: 11px; }
+  .run-cell { white-space: nowrap; }
+  .run-cell .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 1px; }
+  .next-cell { white-space: nowrap; }
+  .next-cell .cd { display: block; font-size: 11px; color: var(--primary); margin-top: 1px; font-weight: 600; }
+  .next-cell .none { color: var(--text-3); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .tag.ok { color: var(--success); background: var(--success-bg); }
+  .tag.primary { color: var(--primary); background: var(--primary-bg); }
+  .tag.warn { color: var(--warning); background: var(--warning-bg); }
+  .tag.danger { color: var(--danger); background: var(--danger-bg); }
+  .tag.info { color: var(--text-2); background: var(--info-bg); }
+  .switch { position: relative; width: 32px; height: 18px; border-radius: 999px; background: var(--primary); cursor: pointer; border: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+  .switch.off { background: #d4d4d8; }
+  .switch.off::after { right: auto; left: 2px; }
+  .act { border: none; background: none; color: var(--primary); font-size: 12.5px; cursor: pointer; padding: 0 5px; }
+  .act:hover { text-decoration: underline; }
+  .act.gray { color: var(--text-3); }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 11px 12px; font-size: 12px; color: var(--text-2); }
+  .pager .pg { min-width: 26px; height: 26px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); cursor: pointer; font-size: 12px; }
+  .pager .pg.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .sec { margin-top: 44px; }
+  .dialog {
+    width: 560px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(20,20,30,.10); overflow: hidden;
+  }
+  .dlg-head { padding: 14px 20px; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+  .dlg-body { padding: 16px 20px; }
+  .fld { margin-bottom: 14px; }
+  .fld-k { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+  .fld-k em { color: var(--danger); font-style: normal; }
+  .fld input[type=text] {
+    width: 100%; height: 32px; border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 0 10px; font-size: 12.5px; outline: none;
+  }
+  .fld input:focus { border-color: var(--primary); }
+  .freq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .freq {
+    border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 10px; cursor: pointer;
+    transition: all .12s;
+  }
+  .freq:hover { border-color: var(--primary); }
+  .freq.on { border-color: var(--primary); background: var(--primary-bg); }
+  .freq strong { display: block; font-size: 12.5px; }
+  .freq span { font-size: 11px; color: var(--text-3); }
+  .freq-sub { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .freq-sub select, .freq-sub input {
+    height: 30px; border: 1px solid var(--border-strong); border-radius: 7px; padding: 0 10px; font-size: 12.5px; outline: none; background: var(--surface);
+  }
+  .cron-preview {
+    margin-top: 10px; display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: 7px; padding: 7px 10px;
+    font-size: 12px; color: var(--text-2);
+  }
+  .cron-preview .mono { color: var(--primary); font-weight: 700; }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); }
+  .drawer {
+    width: 620px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(20,20,30,.10); overflow: hidden;
+  }
+  .d-head { padding: 15px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg,#fbfbfc 0%,var(--surface) 100%); display: flex; justify-content: space-between; gap: 12px; }
+  .d-title { font-size: 15px; font-weight: 700; }
+  .d-sub { margin-top: 3px; font-size: 12px; color: var(--text-3); }
+  .d-close { border: none; cursor: pointer; width: 28px; height: 28px; border-radius: 7px; background: var(--bg); color: var(--text-2); font-size: 14px; flex: none; }
+  .d-close:hover { background: var(--danger-bg); color: var(--danger); }
+  .d-summary { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border); }
+  .d-summary > div { padding: 10px 14px; border-right: 1px solid var(--border); }
+  .d-summary > div:last-child { border-right: none; }
+  .d-summary .k { font-size: 11px; color: var(--text-3); }
+  .d-summary .v { margin-top: 2px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .timeline { padding: 16px 20px 20px; }
+  .tl-item { position: relative; padding: 0 0 16px 22px; }
+  .tl-item::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: -2px; width: 1px; background: var(--border-strong); }
+  .tl-item:last-child::before { display: none; }
+  .tl-dot { position: absolute; left: 0; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border-strong); }
+  .tl-dot.ok { background: var(--success); box-shadow: 0 0 0 1px rgba(34,197,94,.4); }
+  .tl-dot.bad { background: var(--danger); box-shadow: 0 0 0 1px rgba(239,68,68,.4); }
+  .tl-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tl-time { font-size: 12.5px; font-weight: 650; }
+  .tl-dur { font-size: 11px; color: var(--text-3); }
+  .tl-tag { margin-left: auto; }
+  .tl-result { margin-top: 3px; font-size: 12px; color: var(--text-2); }
+  .tl-err {
+    margin-top: 5px; font-size: 11.5px; color: var(--danger); background: var(--danger-bg);
+    border-radius: 6px; padding: 6px 9px; font-family: var(--mono); line-height: 1.6; word-break: break-all;
+  }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 44px; }
+  .note { background: var(--surface); border: 1px dashed #d8d8d8; border-radius: 8px; padding: 12px 16px; }
+  .note h4 { font-size: 12px; color: var(--primary); margin-bottom: 6px; }
+  .note p { font-size: 12px; color: var(--text-2); line-height: 1.7; }
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .dialog, .drawer { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <span class="mock-label">主页面</span>
+
+  <div class="page-header">
+    <div>
+      <h2>任务调度中心</h2>
+      <p class="page-subtitle">平台周期性任务的统一调度与执行观测。</p>
+    </div>
+    <button class="btn primary">＋ 新建任务</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl"><span class="dot p"></span>任务总数</div>
+      <div class="num">4</div>
+      <div class="foot">启用中 3 · 已禁用 1</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot s"></span>今日执行</div>
+      <div class="num">6</div>
+      <div class="foot">累计耗时 14m 32s</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot w"></span>今日成功率</div>
+      <div class="num">83%</div>
+      <div class="foot">失败 1 次 · 工作时间快速巡检</div>
+    </div>
+    <div class="stat">
+      <div class="lbl"><span class="dot d"></span>最近失败</div>
+      <div class="num danger">1</div>
+      <div class="foot">14:00 · Agent 连接超时</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" placeholder="🔍 搜索任务名称…" />
+      <select><option>类型：全部</option><option>定时巡检</option></select>
+      <select><option>状态：全部</option><option>启用中</option><option>已禁用</option><option>执行中</option><option>上次失败</option></select>
+      <span class="spacer"></span>
+      <span class="meta">共 4 个任务</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:220px">任务</th>
+          <th style="width:96px">类型</th>
+          <th style="width:170px">执行周期</th>
+          <th style="width:60px">启用</th>
+          <th style="width:170px">上次执行</th>
+          <th style="width:150px">下次执行</th>
+          <th style="width:190px; text-align:center">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="task-name"><strong>每日凌晨全量巡检</strong><span>全量采集所有主机指标并生成健康报告</span></div></td>
+          <td><span class="tag primary">定时巡检</span></td>
+          <td><div class="cron-cell"><strong>每天 02:00</strong><span class="mono">0 2 * * *</span></div></td>
+          <td><button class="switch" aria-label="禁用任务"></button></td>
+          <td><div class="run-cell"><span class="tag ok">成功</span> <span class="sub">今天 02:00 · 耗时 3m12s</span></div></td>
+          <td><div class="next-cell">今晚 02:00<span class="cd">11 小时后</span></div></td>
+          <td style="text-align:center"><button class="act">立即执行</button><button class="act">日志</button><button class="act">编辑</button><button class="act gray">更多▾</button></td>
+        </tr>
+        <tr>
+          <td><div class="task-name"><strong>工作时间快速巡检</strong><span>仅采集关键指标，轻量快速</span></div></td>
+          <td><span class="tag primary">定时巡检</span></td>
+          <td><div class="cron-cell"><strong>工作日每 2 小时</strong><span class="mono">0 9-18/2 * * 1-5</span></div></td>
+          <td><button class="switch" aria-label="禁用任务"></button></td>
+          <td><div class="run-cell"><span class="tag danger">失败</span> <span class="sub">今天 14:00 · 耗时 48s</span></div></td>
+          <td><div class="next-cell">今天 16:00<span class="cd">1 小时 24 分后</span></div></td>
+          <td style="text-align:center"><button class="act">立即执行</button><button class="act">日志</button><button class="act">编辑</button><button class="act gray">更多▾</button></td>
+        </tr>
+        <tr>
+          <td><div class="task-name"><strong>每月基线巡检</strong><span>月初生成容量基线数据</span></div></td>
+          <td><span class="tag primary">定时巡检</span></td>
+          <td><div class="cron-cell"><strong>每月 1 日 04:00</strong><span class="mono">0 4 1 * *</span></div></td>
+          <td><button class="switch" aria-label="禁用任务"></button></td>
+          <td><div class="run-cell"><span class="tag ok">成功</span> <span class="sub">08-01 04:00 · 耗时 5m03s</span></div></td>
+          <td><div class="next-cell">09-01 04:00<span class="cd">15 天后</span></div></td>
+          <td style="text-align:center"><button class="act">立即执行</button><button class="act">日志</button><button class="act">编辑</button><button class="act gray">更多▾</button></td>
+        </tr>
+        <tr class="disabled-row">
+          <td><div class="task-name"><strong>周末深度巡检</strong><span>含磁盘 SMART 与慢查询检查</span></div></td>
+          <td><span class="tag info">定时巡检</span></td>
+          <td><div class="cron-cell"><strong>每周六 03:30</strong><span class="mono">30 3 * * 6</span></div></td>
+          <td><button class="switch off" aria-label="启用任务"></button></td>
+          <td><div class="run-cell"><span class="tag ok">成功</span> <span class="sub">上周六 03:30 · 耗时 8m41s</span></div></td>
+          <td><div class="next-cell"><span class="none">已禁用</span></div></td>
+          <td style="text-align:center"><button class="act">立即执行</button><button class="act">日志</button><button class="act">编辑</button><button class="act gray">更多▾</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="pager">
+      <span>共 4 条</span>
+      <button class="pg">‹</button>
+      <button class="pg on">1</button>
+      <button class="pg">›</button>
+    </div>
+  </div>
+  <div class="sec">
+    <span class="mock-label">新建任务弹窗（周期模板选择器）</span>
+    <div class="dialog">
+      <div class="dlg-head">新建任务<button class="d-close">✕</button></div>
+      <div class="dlg-body">
+        <div class="fld">
+          <div class="fld-k"><em>*</em> 任务名称</div>
+          <input type="text" value="每日凌晨全量巡检" />
+        </div>
+        <div class="fld">
+          <div class="fld-k"><em>*</em> 任务类型</div>
+          <div class="freq-grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="freq on"><strong>定时巡检</strong><span>按周期执行主机巡检</span></div>
+            <div class="freq" style="opacity:.45; cursor:not-allowed;"><strong>定时备份（规划中）</strong><span>数据库与配置备份</span></div>
+          </div>
+        </div>
+        <div class="fld">
+          <div class="fld-k"><em>*</em> 执行周期</div>
+          <div class="freq-grid">
+            <div class="freq"><strong>每小时</strong><span>整点执行</span></div>
+            <div class="freq on"><strong>每天</strong><span>指定时间执行</span></div>
+            <div class="freq"><strong>每周</strong><span>指定星期与时间</span></div>
+            <div class="freq"><strong>每月</strong><span>指定日期与时间</span></div>
+            <div class="freq"><strong>间隔</strong><span>每 N 分钟/小时</span></div>
+            <div class="freq"><strong>自定义</strong><span>手写 cron 表达式</span></div>
+          </div>
+          <div class="freq-sub">
+            <span style="font-size:12px; color:var(--text-2);">每天</span>
+            <input type="text" value="02:00" style="width:90px" />
+            <span style="font-size:12px; color:var(--text-3);">执行</span>
+          </div>
+          <div class="cron-preview">生成表达式 <span class="mono">0 2 * * *</span> · 下次执行：今晚 02:00</div>
+        </div>
+        <div class="fld">
+          <div class="fld-k">备注</div>
+          <input type="text" placeholder="可选" />
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button class="btn">取消</button>
+        <button class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <span class="mock-label">执行日志抽屉（时间线）</span>
+    <div class="drawer">
+      <div class="d-head">
+        <div>
+          <div class="d-title">工作时间快速巡检</div>
+          <div class="d-sub">工作日每 2 小时 · <span class="mono">0 9-18/2 * * 1-5</span></div>
+        </div>
+        <button class="d-close">✕</button>
+      </div>
+      <div class="d-summary">
+        <div><div class="k">近 7 天执行</div><div class="v">42 次</div></div>
+        <div><div class="k">成功率</div><div class="v">95.2%</div></div>
+        <div><div class="k">平均耗时</div><div class="v">51s</div></div>
+      </div>
+      <div class="timeline">
+        <div class="tl-item">
+          <span class="tl-dot bad"></span>
+          <div class="tl-head">
+            <span class="tl-time">今天 14:00</span>
+            <span class="tl-dur">耗时 48s</span>
+            <span class="tag danger tl-tag">失败</span>
+          </div>
+          <div class="tl-result">巡检中断：10.0.8.15 采集失败</div>
+          <div class="tl-err">AgentError: GET http://10.0.8.15:9100/metrics 连接超时（5s），已跳过该主机</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-dot ok"></span>
+          <div class="tl-head">
+            <span class="tl-time">今天 12:00</span>
+            <span class="tl-dur">耗时 52s</span>
+            <span class="tag ok tl-tag">成功</span>
+          </div>
+          <div class="tl-result">巡检 12 台主机 · 全部正常</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-dot ok"></span>
+          <div class="tl-head">
+            <span class="tl-time">今天 10:00</span>
+            <span class="tl-dur">耗时 47s</span>
+            <span class="tag ok tl-tag">成功</span>
+          </div>
+          <div class="tl-result">巡检 12 台主机 · 发现 1 项异常（db-01 磁盘 86%）</div>
+        </div>
+        <div class="tl-item">
+          <span class="tl-dot ok"></span>
+          <div class="tl-head">
+            <span class="tl-time">今天 08:00</span>
+            <span class="tl-dur">耗时 55s</span>
+            <span class="tag ok tl-tag">成功</span>
+          </div>
+          <div class="tl-result">巡检 12 台主机 · 全部正常</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="note">
+      <h4>定位：为什么保留独立页面</h4>
+      <p>后端调度架构是通用的（patrol / report / backup，backup 已注释预留）。本页按「任务调度中心」设计，新任务类型接入时零改动。若确认长期只有巡检一种任务，可退化为巡检指挥台内的设置抽屉，本页下线。</p>
+    </div>
+    <div class="note">
+      <h4>① cron 翻译 + 下次执行（P1 后端）</h4>
+      <p>执行周期主显中文（"工作日每 2 小时"），cron 降为等宽次要文字。「下次执行」列需任务接口返回 next_run_at（croniter 计算，APScheduler 已有依赖）；禁用任务显示"已禁用"并整行降饱和。</p>
+    </div>
+    <div class="note">
+      <h4>② 周期模板选择器（P0 纯前端）</h4>
+      <p>新建/编辑弹窗用 6 种模板（每小时/每天/每周/每月/间隔/自定义）替代裸填 cron，选择后实时生成表达式并预览下次执行时间；保留"自定义"出口不丢灵活性。任务类型卡里"定时备份（规划中）"置灰，明示扩展方向。</p>
+    </div>
+    <div class="note">
+      <h4>③ 统计卡 + 执行观测（P1 后端）</h4>
+      <p>4 张卡需 /scheduler/stats 聚合接口（任务数/今日执行/成功率/最近失败）。日志抽屉改为时间线：状态圆点串联、耗时、结果一句话摘要，失败条目展开错误详情；抽屉顶部带该任务近 7 天执行摘要（次数/成功率/平均耗时）。</p>
+    </div>
+    <div class="note">
+      <h4>④ 操作列收敛（P0）</h4>
+      <p>沿用 Docker 详情页的列范式：立即执行 / 日志 / 编辑 + 更多▾（删除放更多里，红色），整列居中。状态筛选（启用中/执行中/上次失败）需在列表接口加 status 参数，或 P0 阶段先前端过滤。</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
