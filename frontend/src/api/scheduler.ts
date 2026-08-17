@@ -10,6 +10,8 @@ export interface ScheduledTask {
   description: string
   last_run_at: string | null
   last_status: string
+  last_duration_sec: number | null
+  next_run_at: string | null
   created_at: string | null
 }
 
@@ -23,8 +25,12 @@ export interface TaskExecutionLog {
   error: string
 }
 
-export function getSchedulerTasks(params?: { page?: number; page_size?: number }) {
+export function getSchedulerTasks(params?: { page?: number; page_size?: number; keyword?: string; status?: string; task_type?: string }) {
   return request.get('/scheduler/tasks', { params })
+}
+
+export function getSchedulerStats() {
+  return request.get('/scheduler/stats')
 }
 
 export function getTaskTypes() {

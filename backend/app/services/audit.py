@@ -145,4 +145,5 @@ TARGET_LABELS = {
     "alert": "告警",
     "auth": "认证",
     "settings": "配置",
+    "scheduler": "定时任务",
 }

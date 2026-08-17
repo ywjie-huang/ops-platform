@@ -23,10 +23,43 @@ def register_task_type(task_type: str, func_path: str) -> None:
     TASK_REGISTRY[task_type] = func_path
 
 
+def _std_weekday_to_apsched(field: str) -> str:
+    """标准 cron 星期字段（周日=0/7，周一=1）转换为 APScheduler 语义（周一=0）。
+
+    数字/区间/列表/步长结构保留，名称（mon-sun）与通配符原样透传。
+    跨界区间（如标准 0-2 = 周日~周二）转换后拆分为两段（6,0-1）。
+    """
+    def conv(token: str) -> int | None:
+        if token.isdigit() and 0 <= int(token) <= 7:
+            return (int(token) + 6) % 7
+        return None
+
+    out = []
+    for part in field.split(","):
+        base, _, step = part.partition("/")
+        suffix = f"/{step}" if step else ""
+        if "-" in base:
+            a, b = base.split("-", 1)
+            a2, b2 = conv(a), conv(b)
+            if a2 is not None and b2 is not None:
+                if a2 <= b2:
+                    out.append(f"{a2}-{b2}{suffix}")
+                else:
+                    seg1 = str(a2) if a2 == 6 else f"{a2}-6"
+                    seg2 = str(b2) if b2 == 0 else f"0-{b2}"
+                    out.append(f"{seg1},{seg2}{suffix}")
+            else:
+                out.append(part)
+        else:
+            v = conv(base)
+            out.append(f"{v}{suffix}" if v is not None else part)
+    return ",".join(out)
+
+
 def parse_cron(expr: str) -> CronTrigger:
     """解析 5 字段 cron 表达式为 CronTrigger。
 
-    格式: minute hour day month day_of_week
+    格式: minute hour day month day_of_week（标准 cron 语义：周日=0/7，周一=1）
     示例: "0 2 * * *" = 每天凌晨 2 点
     """
     parts = expr.strip().split()
@@ -37,7 +70,7 @@ def parse_cron(expr: str) -> CronTrigger:
         hour=parts[1],
         day=parts[2],
         month=parts[3],
-        day_of_week=parts[4],
+        day_of_week=_std_weekday_to_apsched(parts[4]),
     )
 
 

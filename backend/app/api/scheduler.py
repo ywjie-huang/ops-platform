@@ -13,9 +13,13 @@ from app.models.scheduled_task import ScheduledTask
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.scheduler import (
+    compute_next_run,
     execute_task,
+    get_last_logs_map,
     get_supported_task_types,
     get_task,
+    get_task_log_summary,
+    get_task_stats,
     list_task_logs,
     list_tasks,
 )
@@ -51,11 +55,22 @@ class TaskUpdate(BaseModel):
 def api_list_tasks(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    keyword: str = "",
+    status: str = "",
+    task_type: str = "",
     db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("patrol.view")),
 ):
     """查询定时任务列表。"""
-    items, total = list_tasks(db, page=page, page_size=page_size)
+    items, total = list_tasks(db, page=page, page_size=page_size, keyword=keyword, status=status, task_type=task_type)
+    last_logs = get_last_logs_map(db, [t.id for t in items])
+
+    def last_duration(task_id: int) -> int | None:
+        log = last_logs.get(task_id)
+        if log and log.started_at and log.finished_at:
+            return round((log.finished_at - log.started_at).total_seconds())
+        return None
+
     return {
         "code": 0,
         "data": {
@@ -70,6 +85,8 @@ def api_list_tasks(
                     "description": t.description,
                     "last_run_at": t.last_run_at.isoformat() if t.last_run_at else None,
                     "last_status": t.last_status,
+                    "last_duration_sec": last_duration(t.id),
+                    "next_run_at": (n.isoformat() if (n := compute_next_run(t.cron_expr, t.enabled)) else None),
                     "created_at": t.created_at.isoformat() if t.created_at else None,
                 }
                 for t in items
@@ -79,6 +96,15 @@ def api_list_tasks(
             "page_size": page_size,
         },
     }
+
+
+@router.get("/stats")
+def api_scheduler_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(api_permission_required("patrol.view")),
+):
+    """调度中心概览统计。"""
+    return {"code": 0, "data": get_task_stats(db)}
 
 
 @router.get("/task-types")
@@ -287,5 +313,6 @@ def api_task_logs(
             "total": total,
             "page": page,
             "page_size": page_size,
+            "summary": get_task_log_summary(db, task_id),
         },
     }
