@@ -4,9 +4,13 @@
 「平台触发 → Jenkins 执行 → 回调 → 平台状态更新」整条链路。
 
 端点：
-- GET  /deploy/jenkins/demo/config   拿回调 token + callback 地址（配到 Jenkins 凭据）
+- GET  /deploy/jenkins/demo/config   拿 callback 地址（配到 Jenkinsfile）
 - POST /deploy/jenkins/demo/trigger  触发 demo job，建 triggering 记录
-- POST /deploy/jenkins/callback      Jenkins post 阶段回调（无 JWT，token 认证 + 幂等）
+- POST /deploy/jenkins/callback      Jenkins post 阶段回调（无 JWT，一次性 token 认证 + 幂等）
+
+认证机制（一次性 token）：平台每次触发时生成只绑定本次记录的随机 token，
+随构建参数 CALLBACK_TOKEN 下发给 Jenkins，post 回调时带回。Jenkins 侧
+无需配置任何凭据；token 用后即焚（记录终态后永久失效），泄露无影响。
 
 正式落地模式 B 时，callback 端点直接复用；demo 两端点可下线。
 完整设计见 docs/design/deploy-reliability-hardening.md §7 与
@@ -25,7 +29,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import api_permission_required
 from app.core.config import CHINA_TZ
-from app.core.settings import get_config, set_config
 from app.db.database import get_db
 from app.models.deploy import DeployApplication, DeployEnvironment, DeployRecord
 from app.models.user import User
@@ -33,21 +36,9 @@ from app.services.audit import write_log
 
 router = APIRouter(prefix="/deploy/jenkins", tags=["应用发布-Jenkins模式B"])
 
-CALLBACK_TOKEN_KEY = "deploy.jenkins_callback_token"
 DEMO_APP_NAME = "jenkins-modeb-demo"
 DEMO_JOB_DEFAULT = "ops-modeb-demo"
 _JENKINS_TIMEOUT = 15
-
-
-def _get_or_create_callback_token(db: Session) -> str:
-    """回调 token：全局一个，存 system_config，首次访问自动生成。"""
-    token = get_config(db, CALLBACK_TOKEN_KEY)
-    if token:
-        return token
-    token = secrets.token_urlsafe(32)
-    set_config(db, CALLBACK_TOKEN_KEY, token, "Jenkins 模式B回调 token（demo）")
-    db.commit()
-    return token
 
 
 def _ensure_demo_app(db: Session) -> DeployApplication:
@@ -78,22 +69,19 @@ def _resolve_env(db: Session, env_name: str) -> DeployEnvironment | None:
 @router.get("/demo/config")
 def demo_config(
     request: Request,
-    db: Session = Depends(get_db),
     _: User = Depends(api_permission_required("deploy.execute")),
 ):
-    """拿 demo 配置：回调地址 + token（配到 Jenkins 凭据 ops-modeb-demo-token）。"""
-    token = _get_or_create_callback_token(db)
+    """拿 callback 地址（Jenkinsfile 里配置用）。一次性 token 模式无需配 Jenkins 凭据。"""
     base = str(request.base_url).rstrip("/")
     return {
         "code": 0,
         "data": {
             "callback_url": f"{base}/api/v1/deploy/jenkins/callback",
-            "callback_token": token,
             "demo_job_default": DEMO_JOB_DEFAULT,
             "note": (
-                "callback_url 是按当前请求推断的，Jenkins 侧请按网络拓扑改写"
-                "（如 http://backend.ops-platform.svc:8000/api/v1/deploy/jenkins/callback）。"
-                "token 配到 Jenkins Secret text 凭据 ops-modeb-demo-token。"
+                "一次性 token 模式：无需在 Jenkins 配置任何凭据。callback_url 按"
+                "当前请求推断，Jenkins 侧请按网络拓扑改写（如 "
+                "http://backend.ops-platform.svc:8000/api/v1/deploy/jenkins/callback）。"
             ),
         },
     }
@@ -133,6 +121,8 @@ def demo_trigger(
     app = _ensure_demo_app(db)
     env = _resolve_env(db, env_name)
 
+    # 一次性回调 token：只绑定本记录，随构建参数下发，用后即焚
+    callback_token = secrets.token_urlsafe(24)
     snapshot = {
         "mode": "jenkins-modeb-demo",
         "jenkins_job": job_name,
@@ -141,6 +131,7 @@ def demo_trigger(
         "operator": current_user.username,
         "simulate": simulate,
         "release_mode": release_mode,
+        "callback_token": callback_token,
     }
     record = DeployRecord(
         app_id=app.id,
@@ -170,6 +161,7 @@ def demo_trigger(
         "RELEASE_MODE": release_mode,
         "ROLLBACK_FROM": "",
         "SIMULATE_RESULT": simulate,
+        "CALLBACK_TOKEN": callback_token,
     }
     queue_url = ""
     try:
@@ -245,14 +237,12 @@ def jenkins_callback(
     x_deploy_token: str = Header(default="", alias="X-Deploy-Token"),
     db: Session = Depends(get_db),
 ):
-    """Jenkins post 阶段回调。token 认证 + 幂等（仅 triggering 状态接受变更）。
+    """Jenkins post 阶段回调。一次性 token 认证 + 幂等（仅 triggering 状态接受变更）。
 
+    认证：token 是触发时生成、绑定该记录的一次性值（存 deploy_config 快照），
+    随构建参数 CALLBACK_TOKEN 下发。记录进入终态后即失效。
     body: {"record_id": int, "status": "success"|"failed", "build_url": str, "message": str}
     """
-    expected = get_config(db, CALLBACK_TOKEN_KEY)
-    if not expected or not secrets.compare_digest(x_deploy_token, expected):
-        return {"code": 1, "msg": "回调 token 无效"}
-
     record_id = body.get("record_id")
     status = body.get("status")
     if not isinstance(record_id, int) or status not in ("success", "failed"):
@@ -261,6 +251,15 @@ def jenkins_callback(
     record = db.get(DeployRecord, record_id)
     if record is None:
         return {"code": 1, "msg": f"记录 {record_id} 不存在"}
+
+    # 一次性 token 校验：与该记录快照里的 token 严格比对
+    try:
+        snapshot = json.loads(record.deploy_config or "{}")
+    except (ValueError, TypeError):
+        snapshot = {}
+    expected_token = str(snapshot.get("callback_token") or "")
+    if not expected_token or not secrets.compare_digest(x_deploy_token, expected_token):
+        return {"code": 1, "msg": "回调 token 无效"}
 
     # 幂等：只有 triggering 状态接受回调；重复/迟到回调直接 no-op
     if record.status != "triggering":
@@ -284,13 +283,10 @@ def jenkins_callback(
     if message:
         record.log += f" message={message}"
 
-    # 合并 build_url 进快照
-    try:
-        snapshot = json.loads(record.deploy_config or "{}")
-    except (ValueError, TypeError):
-        snapshot = {}
+    # 合并 build_url 进快照；一次性 token 用后即焚（从快照清除）
     if build_url:
         snapshot["jenkins_build_url"] = build_url
+    snapshot.pop("callback_token", None)
     record.deploy_config = json.dumps(snapshot, ensure_ascii=False)
     db.commit()
 

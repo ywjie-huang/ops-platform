@@ -7,9 +7,9 @@
 
 | 端点 | 用途 | 认证 |
 |---|---|---|
-| `GET /api/v1/deploy/jenkins/demo/config` | 拿回调地址 + 回调 token | JWT + `deploy.execute` |
+| `GET /api/v1/deploy/jenkins/demo/config` | 拿回调地址 | JWT + `deploy.execute` |
 | `POST /api/v1/deploy/jenkins/demo/trigger` | 触发 demo job，建 triggering 记录 | JWT + `deploy.execute` |
-| `POST /api/v1/deploy/jenkins/callback` | Jenkins post 阶段回调 | `X-Deploy-Token` 头（token 认证 + 幂等） |
+| `POST /api/v1/deploy/jenkins/callback` | Jenkins post 阶段回调 | `X-Deploy-Token` 头（**一次性 token**：触发时生成、随构建参数下发、用后即焚） |
 
 ---
 
@@ -20,7 +20,7 @@
 - 系统设置里已配置 **Jenkins**（URL / 用户名 / API Token）——demo 复用这份配置
 - 重启后端（加载新路由）
 
-### 2. 拿回调 token 和地址
+### 2. 拿回调地址
 
 登录平台后，从浏览器 F12 → Application → Local Storage 拿 JWT（或用登录接口），
 然后：
@@ -38,7 +38,6 @@ curl -H "Authorization: Bearer $TOKEN" \
   "code": 0,
   "data": {
     "callback_url": "http://<后端地址>:8000/api/v1/deploy/jenkins/callback",
-    "callback_token": "xxxxx...",
     "demo_job_default": "ops-modeb-demo"
   }
 }
@@ -53,17 +52,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 1. Jenkins → 新建任务 → **Pipeline**，名称 `ops-modeb-demo`
 2. 勾选「参数化构建」**不需要**——Jenkinsfile 里 `parameters` 块会自动声明
 3. Pipeline → Definition: *Pipeline script*，粘贴本目录 `Jenkinsfile`
-4. **改两处**：
-   - `CALLBACK_URL`：改成步骤 2 拿到的地址（注意集群内/外网络）
-   - `DEPLOY_TOKEN = credentials('ops-modeb-demo-token')`：先去
-     Manage Jenkins → Credentials → 添加 **Secret text** 凭据：
-     - ID: `ops-modeb-demo-token`
-     - Secret: 步骤 2 拿到的 `callback_token`
+4. **只改一处**：`CALLBACK_URL` 改成步骤 2 拿到的地址（注意集群内/外网络）。
+   **Jenkins 侧无需配置任何凭据**——回调 token 由平台每次触发时生成、随构建参数
+   `CALLBACK_TOKEN` 自动下发、用后即焚。
 5. **⚠️ 先手动空跑一次（Jenkins 经典坑）**：Declarative Pipeline 的 `parameters`
    块只在 job **运行过一次后**才注册为 job 参数。刚建的 job 直接被平台触发会
    `buildWithParameters → HTTP 500`（Jenkins 认为是无参数 job）。
    处理：左侧点 **Build Now** 空跑一次（这次会失败，参数为空，预期内），
    刷新后左侧出现 **Build with Parameters** 按钮即注册成功，再走步骤 4 触发。
+   注意：**修改 Jenkinsfile 的 parameters 块后同样要空跑一次**让新参数注册。
 
 ### 4. 触发成功链路
 
@@ -101,16 +98,14 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 
 预期：跳过构建 stage，直接走回滚部署，平台记录 `trigger_type=rollback`。
 
-### 7. 验证幂等（可选）
+### 7. 验证一次性 token（可选）
 
-对同一条已完成的记录手动重复回调，应返回 no-op：
+- 用已完成的记录 ID + 它当时的 token 重放回调 → token 已焚毁，被拒
+  （或状态非 triggering → no-op，两者取先命中者）
+- 用错误 token 回调 triggering 记录 → 拒绝，记录不受影响
 
-```bash
-curl -X POST -H "X-Deploy-Token: <callback_token>" -H "Content-Type: application/json" \
-  -d '{"record_id": <已完成的记录ID>, "status": "success"}' \
-  http://<后端地址>:8000/api/v1/deploy/jenkins/callback
-# → {"code":0,"msg":"no-op：记录当前状态 success，忽略回调"}
-```
+一次性 token 在 Jenkins 构建参数 `CALLBACK_TOKEN` 里可见（构建进行中），
+但只绑定当次记录、用后即焚，泄露无影响。
 
 ---
 

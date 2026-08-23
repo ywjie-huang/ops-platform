@@ -1,9 +1,13 @@
 // 模式 B（Jenkins 治理触发）链路验证 demo job
 // 用法：Jenkins 新建 Pipeline job（建议名 ops-modeb-demo），Pipeline Script 粘贴本文件。
-// 需要改两处：CALLBACK_URL（平台回调地址）与 credentials id（ops-modeb-demo-token）。
+// 只需要改一处：CALLBACK_URL（平台回调地址）。
+//
+// 认证说明：回调 token 由平台在每次触发时生成并随参数 CALLBACK_TOKEN 下发
+// （一次性，用后即焚），Jenkins 侧无需配置任何凭据。
 //
 // 参数契约与正式模式 B 一致（SIMULATE_RESULT 为 demo 专用）：
-//   APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM / SIMULATE_RESULT
+//   APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM
+//   + CALLBACK_TOKEN（一次性回调凭据）/ SIMULATE_RESULT（demo 结果模拟）
 
 pipeline {
     agent any
@@ -17,13 +21,12 @@ pipeline {
         string(name: 'RELEASE_MODE',  defaultValue: 'deploy')
         string(name: 'ROLLBACK_FROM', defaultValue: '')
         string(name: 'SIMULATE_RESULT', defaultValue: 'success')
+        string(name: 'CALLBACK_TOKEN',   defaultValue: '')
     }
 
     environment {
-        // ── 改这里①：平台回调地址（按网络拓扑，Jenkins 能访问到后端即可）──
+        // ── 只改这里：平台回调地址（按网络拓扑，Jenkins 能访问到后端即可）──
         CALLBACK_URL = 'http://192.168.32.10:8000/api/v1/deploy/jenkins/callback'
-        // ── 改这里②：Jenkins 凭据 id（Secret text，值为平台生成的回调 token）──
-        DEPLOY_TOKEN = credentials('ops-modeb-demo-token')
     }
 
     stages {
@@ -77,7 +80,7 @@ pipeline {
             echo "构建成功，回调平台…"
             sh """
                 curl -s -X POST "${CALLBACK_URL}" \
-                  -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+                  -H "X-Deploy-Token: ${params.CALLBACK_TOKEN}" \
                   -H "Content-Type: application/json" \
                   -d '{"record_id": ${params.RECORD_ID}, "status": "success", "build_url": "${BUILD_URL}"}'
             """
@@ -86,7 +89,7 @@ pipeline {
             echo "构建失败，回调平台…"
             sh """
                 curl -s -X POST "${CALLBACK_URL}" \
-                  -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+                  -H "X-Deploy-Token: ${params.CALLBACK_TOKEN}" \
                   -H "Content-Type: application/json" \
                   -d '{"record_id": ${params.RECORD_ID}, "status": "failed", "build_url": "${BUILD_URL}", "message": "Jenkins 构建失败，详见构建日志"}'
             """
