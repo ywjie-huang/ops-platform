@@ -11,6 +11,7 @@ from app.api import (
     containers,
     dashboard,
     deploy,
+    deploy_jenkins,
     docker_mgmt,
     exec_terminal,
     logs,
@@ -75,6 +76,8 @@ def create_api_router(controls: EmergencyAccessControls = SECURITY_CONTROLS) -> 
 
     # 应用发布（产物 Webhook 在端点级别通过独立开关保护）
     api_router.include_router(deploy.router)
+    # 模式B（Jenkins 治理触发）demo + 回调（callback 端点 token 认证）
+    api_router.include_router(deploy_jenkins.router)
 
     return api_router
 

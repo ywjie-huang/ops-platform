@@ -1,0 +1,95 @@
+// 模式 B（Jenkins 治理触发）链路验证 demo job
+// 用法：Jenkins 新建 Pipeline job（建议名 ops-modeb-demo），Pipeline Script 粘贴本文件。
+// 需要改两处：CALLBACK_URL（平台回调地址）与 credentials id（ops-modeb-demo-token）。
+//
+// 参数契约与正式模式 B 一致（SIMULATE_RESULT 为 demo 专用）：
+//   APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM / SIMULATE_RESULT
+
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'APP_NAME',      defaultValue: '')
+        string(name: 'ENV',           defaultValue: '')
+        string(name: 'VERSION',       defaultValue: '')
+        string(name: 'OPERATOR',      defaultValue: '')
+        string(name: 'RECORD_ID',     defaultValue: '')
+        string(name: 'RELEASE_MODE',  defaultValue: 'deploy')
+        string(name: 'ROLLBACK_FROM', defaultValue: '')
+        string(name: 'SIMULATE_RESULT', defaultValue: 'success')
+    }
+
+    environment {
+        // ── 改这里①：平台回调地址（按网络拓扑，Jenkins 能访问到后端即可）──
+        CALLBACK_URL = 'http://192.168.32.10:8000/api/v1/deploy/jenkins/callback'
+        // ── 改这里②：Jenkins 凭据 id（Secret text，值为平台生成的回调 token）──
+        DEPLOY_TOKEN = credentials('ops-modeb-demo-token')
+    }
+
+    stages {
+        stage('参数回显') {
+            steps {
+                echo """
+                ═══ 模式B demo ═══
+                应用:     ${params.APP_NAME}
+                环境:     ${params.ENV}
+                版本:     ${params.VERSION}
+                操作人:   ${params.OPERATOR}（来自运维平台）
+                记录ID:   ${params.RECORD_ID}（回调对账锚点）
+                模式:     ${params.RELEASE_MODE}
+                预期结果: ${params.SIMULATE_RESULT}
+                ══════════════════""".stripIndent()
+            }
+        }
+
+        stage('构建') {
+            when { expression { params.RELEASE_MODE == 'deploy' } }
+            steps {
+                echo "模拟构建 ${params.APP_NAME} ${params.VERSION}（3s）…"
+                sleep 3
+                // 真实场景：这里放你们现有的构建逻辑（maven/npm/go build…）
+            }
+        }
+
+        stage('部署') {
+            steps {
+                script {
+                    if (params.RELEASE_MODE == 'rollback') {
+                        echo "回滚 ${params.APP_NAME}/${params.ENV} 到 ${params.VERSION}（跳过构建，直接用旧产物）"
+                        sleep 3
+                    } else {
+                        echo "部署 ${params.APP_NAME} → ${params.ENV}（10s，期间可在平台看到 triggering 状态）…"
+                        sleep 10
+                        // 真实场景：这里放你们现有的部署脚本
+                        // sh "./deploy.sh --app ${params.APP_NAME} --env ${params.ENV} --version ${params.VERSION}"
+                    }
+                    // 模拟失败：验证 failed 回调链路
+                    if (params.SIMULATE_RESULT == 'failure') {
+                        error("模拟部署失败（SIMULATE_RESULT=failure）")
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "构建成功，回调平台…"
+            sh """
+                curl -s -X POST "${CALLBACK_URL}" \
+                  -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"record_id": ${params.RECORD_ID}, "status": "success", "build_url": "${BUILD_URL}"}'
+            """
+        }
+        failure {
+            echo "构建失败，回调平台…"
+            sh """
+                curl -s -X POST "${CALLBACK_URL}" \
+                  -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"record_id": ${params.RECORD_ID}, "status": "failed", "build_url": "${BUILD_URL}", "message": "Jenkins 构建失败，详见构建日志"}'
+            """
+        }
+    }
+}
