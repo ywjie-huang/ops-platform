@@ -59,6 +59,11 @@ curl -H "Authorization: Bearer $TOKEN" \
      Manage Jenkins → Credentials → 添加 **Secret text** 凭据：
      - ID: `ops-modeb-demo-token`
      - Secret: 步骤 2 拿到的 `callback_token`
+5. **⚠️ 先手动空跑一次（Jenkins 经典坑）**：Declarative Pipeline 的 `parameters`
+   块只在 job **运行过一次后**才注册为 job 参数。刚建的 job 直接被平台触发会
+   `buildWithParameters → HTTP 500`（Jenkins 认为是无参数 job）。
+   处理：左侧点 **Build Now** 空跑一次（这次会失败，参数为空，预期内），
+   刷新后左侧出现 **Build with Parameters** 按钮即注册成功，再走步骤 4 触发。
 
 ### 4. 触发成功链路
 
