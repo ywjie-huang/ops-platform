@@ -25,6 +25,7 @@ def _make_db():
 
 
 def _seed_record(db, status="triggering"):
+    from datetime import datetime
     app = DeployApplication(name="jenkins-modeb-demo", status="archived")
     db.add(app)
     db.flush()
@@ -35,6 +36,8 @@ def _seed_record(db, status="triggering"):
         deploy_config=json.dumps({"mode": "jenkins-modeb-demo", "jenkins_build_number": 5}),
         log="",
     )
+    # started_at 不带时区（naive）——模拟 MySQL 剥掉 tzinfo 后读回的真实形态
+    record.started_at = datetime.now()
     db.add(record)
     db.commit()
     return record
@@ -73,6 +76,9 @@ def test_callback_updates_triggering_record_to_success():
     db.refresh(record)
     assert record.status == "success"
     assert record.finished_at is not None
+    # duration 正常计算（回归：naive started_at 不再抛 TypeError → 500）
+    assert isinstance(record.duration, float)
+    assert record.duration >= 0
     # build_url 合并进快照
     snapshot = json.loads(record.deploy_config)
     assert snapshot["jenkins_build_url"] == "http://jenkins/job/demo/7/"

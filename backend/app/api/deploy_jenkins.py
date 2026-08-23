@@ -195,9 +195,10 @@ def demo_trigger(
         return {"code": 1, "msg": record.error_message, "data": {"record_id": record.id}}
 
     # ── 从 queue 拿构建号（简化轮询，拿不到不阻塞，demo 宽容）──
+    # 10 次 × 2s = 20s：Jenkins executor 忙时分配合并队列可能较慢
     build_number: int | None = None
     if queue_url:
-        for _ in range(5):
+        for _ in range(10):
             try:
                 with httpx.Client(timeout=_JENKINS_TIMEOUT, verify=False) as client:
                     q = client.get(f"{queue_url.rstrip('/')}/api/json", auth=auth).json()
@@ -271,7 +272,12 @@ def jenkins_callback(
     record.status = status
     record.finished_at = now
     if record.started_at:
-        record.duration = (now - record.started_at).total_seconds()
+        # MySQL 读回的 datetime 是 naive（时区被剥离），补上中国时区再相减，
+        # 否则 aware - naive 抛 TypeError → 500
+        started = record.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=CHINA_TZ)
+        record.duration = (now - started).total_seconds()
     if status == "failed":
         record.error_message = message or "Jenkins 构建失败（详见构建日志）"
     record.log += f"\n[Jenkins 回调] status={status} build_url={build_url}"
