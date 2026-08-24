@@ -90,6 +90,7 @@ class AppCreate(BaseModel):
     description: str = ""
     app_type: str = "web"
     deploy_strategy: str = "ssh"
+    release_mode: str = "platform"   # platform=平台执行 / jenkins=Jenkins 执行（模式B）
     git_url: str = ""
     git_branch: str = "main"
     build_mode: str = "upload"
@@ -105,6 +106,7 @@ class AppUpdate(BaseModel):
     description: str = ""
     app_type: str = "web"
     deploy_strategy: str = "ssh"
+    release_mode: str = "platform"
     status: str = "active"
     git_url: str = ""
     git_branch: str = "main"
@@ -150,6 +152,7 @@ def _app_dict(app) -> dict:
         "description": app.description,
         "app_type": app.app_type,
         "deploy_strategy": app.deploy_strategy,
+        "release_mode": app.release_mode or "platform",
         "status": app.status,
         "git_url": app.git_url,
         "git_branch": app.git_branch,
@@ -332,6 +335,7 @@ def api_create_app(
         description=body.description.strip(),
         app_type=body.app_type.strip() or "web",
         deploy_strategy=body.deploy_strategy.strip() or "ssh",
+        release_mode=body.release_mode.strip() or "platform",
         git_url=body.git_url.strip(),
         git_branch=body.git_branch.strip() or "main",
         build_mode=body.build_mode.strip() or "upload",
@@ -369,6 +373,7 @@ def api_update_app(
         description=body.description.strip(),
         app_type=body.app_type.strip() or "web",
         deploy_strategy=body.deploy_strategy.strip() or "ssh",
+        release_mode=body.release_mode.strip() or "platform",
         status=body.status.strip() or "active",
         git_url=body.git_url.strip(),
         git_branch=body.git_branch.strip() or "main",
@@ -612,7 +617,7 @@ def api_delete_app_env(
 
 
 def _record_dict(r) -> dict:
-    return {
+    result = {
         "id": r.id,
         "app_id": r.app_id,
         "app_name": r.application.name if r.application else None,
@@ -630,6 +635,16 @@ def _record_dict(r) -> dict:
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
         "created_at": r.created_at.isoformat(),
     }
+    # 模式 B 字段：快照里的 Jenkins 构建信息（供前端跳转构建日志）
+    if r.deploy_config:
+        try:
+            snap = json.loads(r.deploy_config)
+            result["jenkins_build_url"] = snap.get("jenkins_build_url") or ""
+            result["jenkins_build_number"] = snap.get("jenkins_build_number")
+            result["release_mode"] = snap.get("release_mode") or "platform"
+        except (ValueError, TypeError):
+            pass
+    return result
 
 
 class DeployExecute(BaseModel):
@@ -659,6 +674,7 @@ def api_execute_deploy(
         "app_id": app.id,
         "app_name": app.name,
         "deploy_strategy": app.deploy_strategy,
+        "release_mode": app.release_mode or "platform",
         "env_id": body.env_id,
         "app_env_id": app_env.id,
         "artifact_path": app_env.artifact_path,
@@ -687,7 +703,20 @@ def api_execute_deploy(
 
     db.commit()
 
-    # 异步线程执行部署
+    # 模式 B：Jenkins 执行部署（平台只触发 + 等回调）
+    if (app.release_mode or "platform") == "jenkins":
+        from app.services.deploy.modeb import spawn_jenkins_release
+        spawn_jenkins_release(
+            record_id=record.id,
+            app_id=app.id,
+            env_name=(env.name if env else str(body.env_id)),
+            version=body.version or "",
+            operator=current_user.username,
+        )
+        print(f"[deploy] 模式B触发: record_id={record.id}, app={app.name}, job={app.jenkins_job_name}")
+        return {"code": 0, "msg": "已触发 Jenkins 执行部署，等待回调更新状态", "data": _record_dict(record)}
+
+    # 异步线程执行部署（平台执行模式）
     thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
     thread.start()
 
@@ -704,7 +733,7 @@ def api_cancel_deploy(
     record = get_record(db, record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="记录不存在")
-    if record.status not in ("pending", "building", "deploying"):
+    if record.status not in ("pending", "building", "deploying", "triggering"):
         raise HTTPException(status_code=400, detail="当前状态无法取消")
 
     request_cancel(record_id)
@@ -733,6 +762,11 @@ def api_rollback(
         raise HTTPException(status_code=400, detail="只能回滚已完成的部署记录")
 
     build_number = (body or {}).get("build_number")
+    _app = original.application
+
+    # 模式 B 应用的构建产物不在平台，指定构建版本回滚不可用
+    if build_number and _app and (_app.release_mode or "platform") == "jenkins":
+        raise HTTPException(status_code=400, detail="Jenkins 执行模式的应用请使用「回滚到上一次成功部署」（构建产物在 Jenkins 侧）")
 
     if build_number:
         # 回滚到指定构建版本
@@ -802,6 +836,20 @@ def api_rollback(
 
     write_log(db, user=current_user, action="rollback", target_type="deploy_record", target_id=new_record.id, target_name=f"#{record_id} → #{new_record.id}", ip_address=get_client_ip(request))
     db.commit()
+
+    # 模式 B：回滚也由 Jenkins 执行（RELEASE_MODE=rollback，跳过构建）
+    if _app and (_app.release_mode or "platform") == "jenkins":
+        from app.services.deploy.modeb import spawn_jenkins_release
+        spawn_jenkins_release(
+            record_id=new_record.id,
+            app_id=_app.id,
+            env_name=(new_record.environment.name if new_record.environment else ""),
+            version=new_record.version or "",
+            operator=current_user.username,
+            release_mode="rollback",
+            rollback_from=record_id,
+        )
+        return {"code": 0, "msg": "回滚已触发（Jenkins 执行）", "data": _record_dict(new_record)}
 
     # 异步线程执行部署
     thread = threading.Thread(target=execute_deploy, args=(new_record.id,), daemon=True)
@@ -1015,10 +1063,25 @@ def api_approve(
     if record and record.status in ("pending", "cancelled"):
         from app.services.deploy.records import update_status, append_log
         update_status(db, record, "pending")
-        append_log(db, record, f"审批通过 (审批人: {current_user.username})，开始部署…")
-        db.commit()
-        thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
-        thread.start()
+        app = record.application
+        # 模式 B：Jenkins 执行部署
+        if app and (app.release_mode or "platform") == "jenkins":
+            env_name = record.environment.name if record.environment else ""
+            append_log(db, record, f"审批通过 (审批人: {current_user.username})，触发 Jenkins 执行部署…")
+            db.commit()
+            from app.services.deploy.modeb import spawn_jenkins_release
+            spawn_jenkins_release(
+                record_id=record.id,
+                app_id=app.id,
+                env_name=env_name,
+                version=record.version or "",
+                operator=current_user.username,
+            )
+        else:
+            append_log(db, record, f"审批通过 (审批人: {current_user.username})，开始部署…")
+            db.commit()
+            thread = threading.Thread(target=execute_deploy, args=(record.id,), daemon=True)
+            thread.start()
 
     write_log(db, user=current_user, action="approve", target_type="deploy_approval", target_id=a.id, target_name=f"#{a.id}", ip_address=get_client_ip(request))
     db.commit()

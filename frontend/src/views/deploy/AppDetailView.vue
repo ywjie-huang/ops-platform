@@ -1344,12 +1344,16 @@ const deployVersion = ref('')
 const deploying = ref(false)
 
 function isDeployReady(ae: any): boolean {
+  // Jenkins 构建模式 / 模式 B（Jenkins 执行）：产物不在平台，恒可发
   if (app.value.build_mode === 'jenkins') return true
+  if (app.value.release_mode === 'jenkins') return true
   return !!ae.artifact_filename
 }
 
 function deployBlockReason(ae: any): string {
-  if (app.value.build_mode !== 'jenkins' && !ae.artifact_filename) return '尚未上传构建产物，无法部署'
+  if (app.value.build_mode !== 'jenkins' && app.value.release_mode !== 'jenkins' && !ae.artifact_filename) {
+    return '尚未上传构建产物，无法部署'
+  }
   return ''
 }
 

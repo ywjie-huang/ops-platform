@@ -70,6 +70,7 @@ def create_application(
     description: str = "",
     app_type: str = "web",
     deploy_strategy: str = "ssh",
+    release_mode: str = "platform",
     git_url: str = "",
     git_branch: str = "main",
     build_mode: str = "upload",
@@ -86,6 +87,7 @@ def create_application(
         description=description,
         app_type=app_type,
         deploy_strategy=deploy_strategy,
+        release_mode=release_mode,
         git_url=git_url,
         git_branch=git_branch,
         build_mode=build_mode,
@@ -110,6 +112,7 @@ def update_application(
     description: str = "",
     app_type: str = "web",
     deploy_strategy: str = "ssh",
+    release_mode: str = "platform",
     status: str = "active",
     git_url: str = "",
     git_branch: str = "main",
@@ -125,6 +128,7 @@ def update_application(
     app.description = description
     app.app_type = app_type
     app.deploy_strategy = deploy_strategy
+    app.release_mode = release_mode
     app.status = status
     app.git_url = git_url
     app.git_branch = git_branch

@@ -34,6 +34,15 @@
             <el-radio-button value="k8s">Kubernetes</el-radio-button>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="执行模式">
+          <el-radio-group v-model="form.release_mode">
+            <el-radio-button value="platform">平台执行</el-radio-button>
+            <el-radio-button value="jenkins">Jenkins 执行</el-radio-button>
+          </el-radio-group>
+          <el-text v-if="form.release_mode === 'jenkins'" type="info" size="small" class="release-mode-tip">
+            模式 B：平台负责权限/审批/记录，Jenkins Job 负责构建与部署，完成后回调平台更新状态。
+          </el-text>
+        </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="应用用途说明" />
         </el-form-item>
@@ -84,6 +93,19 @@
           </el-form-item>
         </template>
 
+        <!-- Jenkins 执行模式（模式 B）：需要 Job 名 + 参数契约 -->
+        <template v-if="form.release_mode === 'jenkins' && form.build_mode !== 'jenkins'">
+          <el-form-item label="Job 名称">
+            <el-input v-model="form.jenkins_job_name" placeholder="Jenkins Job 名称（执行构建与部署）" />
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-text type="warning" size="small">
+              Job 需声明参数：APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM / CALLBACK_TOKEN，
+              构建结束回调平台（详见 docs/design/modeb-demo/Jenkinsfile 模板）。
+            </el-text>
+          </el-form-item>
+        </template>
+
         <!-- 提交 -->
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">创建应用</el-button>
@@ -109,6 +131,7 @@ const form = reactive({
   description: '',
   app_type: 'web',
   deploy_strategy: 'ssh',
+  release_mode: 'platform',
   git_url: '',
   git_branch: 'main',
   build_mode: 'upload',
@@ -181,5 +204,10 @@ onActivated(() => {
   margin-left: 12px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.release-mode-tip {
+  display: block;
+  margin-top: 4px;
 }
 </style>

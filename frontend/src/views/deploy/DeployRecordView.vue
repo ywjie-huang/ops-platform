@@ -94,8 +94,8 @@ const statusOptions = [
   { label: '已取消', value: 'cancelled' },
 ]
 
-const statusLabel = (v: string) => ({ pending: '待执行', building: '构建中', deploying: '部署中', success: '成功', failed: '失败', cancelled: '已取消' }[v] || v)
-const statusType = (v: string) => ({ pending: 'info', building: 'warning', deploying: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }[v] || '') as any
+const statusLabel = (v: string) => ({ pending: '待执行', building: '构建中', deploying: '部署中', triggering: 'Jenkins执行中', success: '成功', failed: '失败', cancelled: '已取消' }[v] || v)
+const statusType = (v: string) => ({ pending: 'info', building: 'warning', deploying: 'warning', triggering: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }[v] || '') as any
 const triggerLabel = (v: string) => ({ manual: '手动', rollback: '回滚', webhook: 'Webhook' }[v] || v)
 
 function formatDuration(sec: number) {

@@ -33,6 +33,12 @@
             <el-radio-button value="k8s">Kubernetes</el-radio-button>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="执行模式">
+          <el-radio-group v-model="form.release_mode">
+            <el-radio-button value="platform">平台执行</el-radio-button>
+            <el-radio-button value="jenkins">Jenkins 执行</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width: 100%">
             <el-option label="活跃" value="active" />
@@ -71,6 +77,16 @@
             <el-input v-model="form.jenkins_token" />
           </el-form-item>
         </template>
+        <template v-if="form.release_mode === 'jenkins' && form.build_mode !== 'jenkins'">
+          <el-form-item label="Job 名称">
+            <el-input v-model="form.jenkins_job_name" placeholder="Jenkins Job 名称（执行构建与部署）" />
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-text type="warning" size="small">
+              Job 需声明参数：APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM / CALLBACK_TOKEN。
+            </el-text>
+          </el-form-item>
+        </template>
 
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">保存</el-button>
@@ -99,6 +115,7 @@ const form = reactive({
   description: '',
   app_type: 'web',
   deploy_strategy: 'ssh',
+  release_mode: 'platform',
   status: 'active',
   git_url: '',
   git_branch: 'main',
@@ -128,6 +145,7 @@ async function fetchApp() {
       description: res.data.description,
       app_type: res.data.app_type,
       deploy_strategy: res.data.deploy_strategy,
+      release_mode: res.data.release_mode || 'platform',
       status: res.data.status,
       git_url: res.data.git_url,
       git_branch: res.data.git_branch,

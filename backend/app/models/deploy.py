@@ -26,6 +26,8 @@ class DeployApplication(Base):
 
     # 构建配置
     build_mode: Mapped[str] = mapped_column(String(20), default="upload")     # upload / webhook / jenkins
+    # 执行模式：platform=平台执行部署；jenkins=Jenkins 执行部署（平台只治理，等回调）
+    release_mode: Mapped[str] = mapped_column(String(20), default="platform")
     build_command: Mapped[str] = mapped_column(Text, default="")
     artifact_path: Mapped[str] = mapped_column(String(500), default="")       # 构建产物存储路径（平台本地）
     artifact_filename: Mapped[str] = mapped_column(String(255), default="")   # 原始文件名

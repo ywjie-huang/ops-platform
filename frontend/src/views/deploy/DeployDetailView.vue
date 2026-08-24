@@ -46,6 +46,12 @@
           </div>
           <div class="meta-item"><span class="meta-label">触发方式</span><span class="meta-value">{{ triggerLabel(record.trigger_type) }}</span></div>
           <div class="meta-item"><span class="meta-label">触发人</span><span class="meta-value">{{ record.trigger_user_name || '—' }}</span></div>
+          <div v-if="record.jenkins_build_url" class="meta-item">
+            <span class="meta-label">Jenkins</span>
+            <a class="meta-link" :href="record.jenkins_build_url" target="_blank" rel="noopener">
+              构建 #{{ record.jenkins_build_number }} 日志 ↗
+            </a>
+          </div>
           <div class="meta-item"><span class="meta-label">耗时</span><span class="meta-value">{{ record.duration != null ? formatDuration(record.duration) : '—' }}</span></div>
           <div class="meta-item"><span class="meta-label">开始时间</span><span class="meta-value">{{ formatTime(record.started_at) }}</span></div>
           <div class="meta-item"><span class="meta-label">结束时间</span><span class="meta-value">{{ formatTime(record.finished_at) }}</span></div>
@@ -149,11 +155,11 @@ function stepClass(stepKey: string, idx: number) {
   return ''
 }
 
-const canCancel = computed(() => ['pending', 'building', 'deploying'].includes(record.value.status))
+const canCancel = computed(() => ['pending', 'building', 'deploying', 'triggering'].includes(record.value.status))
 const canRollback = computed(() => ['success', 'failed', 'cancelled'].includes(record.value.status))
 
-const statusLabel = (v: string) => ({ pending: '待执行', building: '构建中', deploying: '部署中', success: '成功', failed: '失败', cancelled: '已取消' }[v] || v)
-const statusType = (v: string) => ({ pending: 'info', building: 'warning', deploying: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }[v] || '') as any
+const statusLabel = (v: string) => ({ pending: '待执行', building: '构建中', deploying: '部署中', triggering: 'Jenkins执行中', success: '成功', failed: '失败', cancelled: '已取消' }[v] || v)
+const statusType = (v: string) => ({ pending: 'info', building: 'warning', deploying: 'warning', triggering: 'warning', success: 'success', failed: 'danger', cancelled: 'info' }[v] || '') as any
 const triggerLabel = (v: string) => ({ manual: '手动', rollback: '回滚', webhook: 'Webhook' }[v] || v)
 
 function formatDuration(sec: number) {

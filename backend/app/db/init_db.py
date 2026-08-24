@@ -381,6 +381,7 @@ def _ensure_deploy_artifact_columns() -> None:
                     ('artifact_filename', "VARCHAR(255) NOT NULL DEFAULT ''"),
                     ('artifact_size', "INT NOT NULL DEFAULT 0"),
                     ('artifact_uploaded_at', 'DATETIME NULL'),
+                    ('release_mode', "VARCHAR(20) NOT NULL DEFAULT 'platform'"),
                 ]:
                     cur.execute(f"SHOW COLUMNS FROM deploy_applications LIKE '{col}'")
                     if cur.fetchone() is None:
