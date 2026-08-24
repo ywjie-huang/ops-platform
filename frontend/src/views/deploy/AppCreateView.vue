@@ -88,8 +88,8 @@
           <el-form-item label="Job 名称">
             <el-input v-model="form.jenkins_job_name" placeholder="Jenkins Job 名称" />
           </el-form-item>
-          <el-form-item label="Token">
-            <el-input v-model="form.jenkins_token" placeholder="Jenkins 触发 Token" />
+          <el-form-item v-if="form.release_mode !== 'jenkins'" label="Token">
+            <el-input v-model="form.jenkins_token" placeholder="Jenkins 远程触发 Token（可选，未配则用全局账号凭据）" />
           </el-form-item>
         </template>
 
