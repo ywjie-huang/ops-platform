@@ -77,8 +77,8 @@ export function getDeployRecord(id: number) {
   return request.get(`/deploy/records/${id}`)
 }
 
-export function rollbackDeploy(recordId: number, buildNumber?: string) {
-  return request.post(`/deploy/records/${recordId}/rollback`, buildNumber ? { build_number: buildNumber } : {})
+export function rollbackDeploy(recordId: number, targetRecordId?: number) {
+  return request.post(`/deploy/records/${recordId}/rollback`, targetRecordId ? { target_record_id: targetRecordId } : {})
 }
 
 export function getRollbackTargets(recordId: number) {

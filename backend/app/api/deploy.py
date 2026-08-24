@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, noload, selectinload
 
 from app.api.deps import api_permission_required, get_client_ip
 from app.db.database import get_db
-from app.models.deploy import DeployAppEnv, DeployApplication
+from app.models.deploy import DeployAppEnv, DeployApplication, DeployApproval
 from app.models.user import User
 from app.services.audit import write_log
 from app.services.deploy.applications import (
@@ -635,11 +635,23 @@ def api_rollback(
 
     from sqlalchemy import select
     from app.models.deploy import DeployRecord as DR
-    prev_success = db.scalar(
-        select(DR)
-        .where(DR.app_id == original.app_id, DR.env_id == original.env_id, DR.status == "success", DR.id < record_id)
-        .order_by(DR.id.desc())
-    )
+    # 支持指定回滚目标（历史成功版本），缺省回滚到最近一次成功
+    target_id = (body or {}).get("target_record_id")
+    if target_id:
+        prev_success = db.get(DR, int(target_id))
+        if (
+            prev_success is None
+            or prev_success.app_id != original.app_id
+            or prev_success.env_id != original.env_id
+            or prev_success.status != "success"
+        ):
+            raise HTTPException(status_code=400, detail="目标记录不可用于回滚（需为同应用同环境的成功记录）")
+    else:
+        prev_success = db.scalar(
+            select(DR)
+            .where(DR.app_id == original.app_id, DR.env_id == original.env_id, DR.status == "success", DR.id < record_id)
+            .order_by(DR.id.desc())
+        )
     if prev_success is None:
         raise HTTPException(status_code=400, detail="未找到可回滚的成功部署记录")
 
@@ -738,6 +750,14 @@ def api_get_record(
         raise HTTPException(status_code=404, detail="记录不存在")
     data = _record_dict(record)
     data["log"] = record.log or ""
+    # 关联审批信息（详情页步骤条/侧栏展示）
+    approval = db.scalar(
+        select(DeployApproval)
+        .where(DeployApproval.record_id == record_id)
+        .order_by(DeployApproval.id.desc())
+        .limit(1)
+    )
+    data["approval"] = _approval_dict(approval) if approval else None
     return {"code": 0, "data": data}
 
 

@@ -33,6 +33,7 @@ def list_applications(
                 DeployApplication.display_name.ilike(like_val),
                 DeployApplication.description.ilike(like_val),
                 DeployApplication.git_url.ilike(like_val),
+                DeployApplication.jenkins_job_name.ilike(like_val),
             )
         )
     if app_type:
@@ -69,15 +70,9 @@ def create_application(
     display_name: str = "",
     description: str = "",
     app_type: str = "web",
-    deploy_strategy: str = "ssh",
-    release_mode: str = "platform",
     git_url: str = "",
     git_branch: str = "main",
-    build_mode: str = "upload",
-    build_command: str = "",
-    artifact_path: str = "",
     jenkins_job_name: str = "",
-    jenkins_token: str = "",
     creator_id: int | None = None,
 ) -> DeployApplication:
     """创建新应用。"""
@@ -86,15 +81,9 @@ def create_application(
         display_name=display_name,
         description=description,
         app_type=app_type,
-        deploy_strategy=deploy_strategy,
-        release_mode=release_mode,
         git_url=git_url,
         git_branch=git_branch,
-        build_mode=build_mode,
-        build_command=build_command,
-        artifact_path=artifact_path,
         jenkins_job_name=jenkins_job_name,
-        jenkins_token=jenkins_token,
         creator_id=creator_id,
     )
     db.add(app)
@@ -111,32 +100,20 @@ def update_application(
     display_name: str = "",
     description: str = "",
     app_type: str = "web",
-    deploy_strategy: str = "ssh",
-    release_mode: str = "platform",
     status: str = "active",
     git_url: str = "",
     git_branch: str = "main",
-    build_mode: str = "upload",
-    build_command: str = "",
-    artifact_path: str = "",
     jenkins_job_name: str = "",
-    jenkins_token: str = "",
 ) -> DeployApplication:
     """更新应用信息。"""
     app.name = name
     app.display_name = display_name
     app.description = description
     app.app_type = app_type
-    app.deploy_strategy = deploy_strategy
-    app.release_mode = release_mode
     app.status = status
     app.git_url = git_url
     app.git_branch = git_branch
-    app.build_mode = build_mode
-    app.build_command = build_command
-    app.artifact_path = artifact_path
     app.jenkins_job_name = jenkins_job_name
-    app.jenkins_token = jenkins_token
     app.updated_at = datetime.now(CHINA_TZ)
     db.commit()
     db.refresh(app)

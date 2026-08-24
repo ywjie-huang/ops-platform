@@ -102,7 +102,7 @@
             <div class="env-foot">
               <template v-if="isActive(env.latest_record)">
                 <el-button size="small" @click="goRecord(env.latest_record!.id)">查看进度</el-button>
-                <el-button size="small" text type="danger" :disabled="env.latest_record!.status === 'pending'" @click="handleCancel(env.latest_record!)">取消</el-button>
+                <el-button size="small" text type="danger" @click="handleCancel(env.latest_record!)">取消</el-button>
               </template>
               <el-button
                 v-else
