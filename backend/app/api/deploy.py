@@ -145,6 +145,8 @@ def _app_env_dict(ae) -> dict:
         "app_id": ae.app_id,
         "env_id": ae.env_id,
         "env_name": ae.environment.name if ae.environment else None,
+        "env_display_name": ae.environment.display_name if ae.environment else None,
+        "env_sort_order": ae.environment.sort_order if ae.environment else 0,
         "env_description": ae.environment.description if ae.environment else None,
         "approval_required": ae.environment.approval_required if ae.environment else False,
         "enabled": ae.enabled,
@@ -428,7 +430,14 @@ def api_list_app_envs(
 ):
     app = _resolve_app(db, app_name)
     envs = list_app_envs(db, app.id)
-    return {"code": 0, "data": [_app_env_dict(e) for e in envs]}
+    # 附每个环境的最新部署记录（环境管道卡片用），一次 max-id 子查询避免 N+1
+    latest_map = latest_records_by_pair(db)
+    items = []
+    for e in envs:
+        d = _app_env_dict(e)
+        d["latest_record"] = record_brief(latest_map.get((app.id, e.env_id)))
+        items.append(d)
+    return {"code": 0, "data": items}
 
 
 @router.put("/apps/{app_name}/envs/{env_id}")

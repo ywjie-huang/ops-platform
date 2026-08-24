@@ -150,9 +150,15 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/deploy',
     component: Layout,
-    redirect: '/deploy/apps',
+    redirect: '/deploy/overview',
     meta: { title: '应用发布', icon: 'Folder' },
     children: [
+      {
+        path: 'overview',
+        name: 'DeployOverview',
+        component: () => import('@/views/deploy/DeployOverviewView.vue'),
+        meta: { title: '发布总览', icon: 'Odometer', permission: 'deploy.view' },
+      },
       {
         path: 'apps',
         name: 'DeployAppList',

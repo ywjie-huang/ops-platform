@@ -1,10 +1,14 @@
 import request from './request'
 
+// ── 发布总览 ──
+export function getDeployOverview() {
+  return request.get('/deploy/overview')
+}
+
 // ── 应用管理 ──
 export function getDeployApps(params?: {
   keyword?: string
   app_type?: string
-  deploy_strategy?: string
   status?: string
   page?: number
   page_size?: number
@@ -30,19 +34,6 @@ export function updateDeployApp(name: string, data: any) {
 
 export function deleteDeployApp(name: string) {
   return request.delete(`/deploy/apps/${name}`)
-}
-
-// ── 构建产物（环境级别） ──
-export function uploadArtifact(appName: string, envId: number, file: File) {
-  const formData = new FormData()
-  formData.append('file', file)
-  return request.post(`/deploy/apps/${appName}/envs/${envId}/artifact`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
-}
-
-export function deleteArtifact(appName: string, envId: number) {
-  return request.delete(`/deploy/apps/${appName}/envs/${envId}/artifact`)
 }
 
 // ── 环境列表 ──
@@ -125,62 +116,3 @@ export function deleteAppConfig(configId: number) {
 }
 
 // ── Webhook + 构建记录 ──
-export function getBuilds(appName: string, params?: {
-  status?: string
-  tag?: string
-  keyword?: string
-  page?: number
-  page_size?: number
-}) {
-  return request.get(`/deploy/apps/${appName}/builds`, { params })
-}
-
-export function getBuild(appName: string, buildNumber: string) {
-  return request.get(`/deploy/apps/${appName}/builds/${buildNumber}`)
-}
-
-export function deployBuild(appName: string, buildNumber: string, data: { app_name: string; env_id: number }) {
-  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/deploy`, data)
-}
-
-export function deleteBuild(appName: string, buildNumber: string) {
-  return request.delete(`/deploy/apps/${appName}/builds/${buildNumber}`)
-}
-
-export function updateBuildTag(appName: string, buildNumber: string, tag: string) {
-  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/tag`, { tag })
-}
-
-export function pinBuild(appName: string, buildNumber: string) {
-  return request.post(`/deploy/apps/${appName}/builds/${buildNumber}/pin`)
-}
-
-export function unpinBuild(appName: string, buildNumber: string) {
-  return request.delete(`/deploy/apps/${appName}/builds/${buildNumber}/pin`)
-}
-
-export function generateWebhookSecret(appName: string) {
-  return request.post(`/deploy/apps/${appName}/webhook-secret/generate`)
-}
-
-export function getWebhookUrl(appName: string) {
-  return request.get(`/deploy/apps/${appName}/webhook-url`)
-}
-
-export function getCleanupConfig(appName: string) {
-  return request.get(`/deploy/apps/${appName}/cleanup-config`)
-}
-
-export function updateCleanupConfig(appName: string, data: { keep_count: number; keep_days: number }) {
-  return request.put(`/deploy/apps/${appName}/cleanup-config`, data)
-}
-
-export function cleanupBuilds(appName: string) {
-  return request.post(`/deploy/apps/${appName}/builds/cleanup`)
-}
-
-export function compareBuilds(appName: string, buildA: string, buildB: string) {
-  return request.get(`/deploy/apps/${appName}/builds/compare`, {
-    params: { build_a: buildA, build_b: buildB },
-  })
-}

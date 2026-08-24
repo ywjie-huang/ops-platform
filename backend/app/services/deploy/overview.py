@@ -89,6 +89,7 @@ def record_brief(r: DeployRecord | None) -> dict | None:
         "version": r.version,
         "status": r.status,
         "trigger_type": r.trigger_type,
+        "duration": r.duration,
         "trigger_user_name": r.trigger_user.username if r.trigger_user else None,
         "jenkins_build_url": build_url,
         "jenkins_build_number": build_number,
