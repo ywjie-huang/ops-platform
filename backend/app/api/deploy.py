@@ -715,6 +715,8 @@ def api_list_records(
     app_name: str = "",
     env_id: int | None = None,
     status: str = "",
+    trigger_type: str = "",
+    version_kw: str = "",
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
@@ -725,7 +727,7 @@ def api_list_records(
         app = get_application_by_name(db, app_name)
         if app:
             resolved_app_id = app.id
-    items = list_records(db, app_id=resolved_app_id, env_id=env_id, status=status)
+    items = list_records(db, app_id=resolved_app_id, env_id=env_id, status=status, trigger_type=trigger_type, version_kw=version_kw)
     total = len(items)
     start = (max(page, 1) - 1) * page_size
     return {
@@ -806,6 +808,7 @@ def api_list_approvals(
 def api_approve(
     approval_id: int,
     request: Request,
+    body: dict | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(api_permission_required("deploy.approve")),
 ):
@@ -815,7 +818,8 @@ def api_approve(
     if a.status != "pending":
         raise HTTPException(status_code=400, detail="该审批已处理")
 
-    approve(db, a, approver_id=current_user.id, comment="")
+    comment = (body or {}).get("comment", "")
+    approve(db, a, approver_id=current_user.id, comment=comment)
 
     # 审批通过 → 触发 Jenkins 执行部署（模式 B）
     record = a.record

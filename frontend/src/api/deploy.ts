@@ -67,6 +67,8 @@ export function getDeployRecords(params?: {
   app_name?: string
   env_id?: number
   status?: string
+  trigger_type?: string
+  version_kw?: string
   page?: number
   page_size?: number
 }) {
@@ -90,8 +92,8 @@ export function getDeployApprovals(params?: { status?: string }) {
   return request.get('/deploy/approvals', { params })
 }
 
-export function approveDeploy(approvalId: number) {
-  return request.post(`/deploy/approvals/${approvalId}/approve`)
+export function approveDeploy(approvalId: number, comment?: string) {
+  return request.post(`/deploy/approvals/${approvalId}/approve`, comment ? { comment } : {})
 }
 
 export function rejectDeploy(approvalId: number, comment?: string) {

@@ -265,6 +265,10 @@ function stopTicker() {
 onActivated(async () => {
   await fetchRecord()
   if (active.value) startTicker()
+  // 记录列表「回滚」操作带 ?rollback=1 深链直达
+  if (route.query.rollback === '1' && !active.value && canRollback.value) {
+    openRollback()
+  }
 })
 
 onDeactivated(stopTicker)

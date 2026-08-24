@@ -28,7 +28,9 @@ def list_approvals(
         selectinload(DeployApproval.record).selectinload(DeployRecord.trigger_user),
         selectinload(DeployApproval.approver),
     )
-    if status:
+    if status == "resolved":
+        stmt = stmt.where(DeployApproval.status.in_(["approved", "rejected"]))
+    elif status:
         stmt = stmt.where(DeployApproval.status == status)
     stmt = stmt.order_by(DeployApproval.id.desc())
     return list(db.scalars(stmt).unique().all())
