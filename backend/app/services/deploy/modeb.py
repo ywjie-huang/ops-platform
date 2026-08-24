@@ -145,6 +145,7 @@ def _trigger_and_track(
         )
         record.started_at = record.started_at or datetime.now(CHINA_TZ)
         record.status = "triggering"  # 回调幂等只认 triggering
+        record.version = record.version or final_version  # 兜底版本写回记录，页面可见
         append_log(db, record, f"[模式B] 触发 Jenkins job={job_name} env={env_name} version={final_version} 操作人={operator}")
         db.commit()
 
