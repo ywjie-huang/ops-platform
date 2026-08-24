@@ -52,16 +52,15 @@ def _make_db():
     return sessionmaker(bind=engine)()
 
 
-def test_application_release_mode_crud_roundtrip():
-    """应用 CRUD 透传 release_mode，默认 platform。"""
+def test_application_jenkins_job_crud_roundtrip():
+    """应用 CRUD 透传 jenkins_job_name（模式 B 的核心配置）。"""
     db = _make_db()
-    app = create_application(db, name="order-service", release_mode="jenkins", jenkins_job_name="order-deploy")
-    assert app.release_mode == "jenkins"
+    app = create_application(db, name="order-service", jenkins_job_name="order-deploy")
+    assert app.jenkins_job_name == "order-deploy"
 
-    # 未传时默认 platform
     app2 = create_application(db, name="another")
-    assert app2.release_mode == "platform"
+    assert app2.jenkins_job_name == ""
 
-    update_application(db, app2, name="another", release_mode="jenkins")
+    update_application(db, app2, name="another", jenkins_job_name="another-job")
     db.refresh(app2)
-    assert app2.release_mode == "jenkins"
+    assert app2.jenkins_job_name == "another-job"

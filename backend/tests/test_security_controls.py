@@ -6,7 +6,6 @@ from fastapi import HTTPException
 from app.api import create_api_router
 from app.api import sftp
 from app.api import deps
-from app.api.deploy import validate_deploy_webhook_signature
 from app.core.security_controls import (
     EmergencyAccessControls,
     ensure_feature_enabled,
@@ -99,28 +98,3 @@ def test_disabled_feature_guard_returns_service_unavailable():
 
 def test_enabled_feature_guard_allows_request():
     ensure_feature_enabled(True, "部署产物 Webhook")
-
-
-def test_deploy_webhook_rejects_missing_secret():
-    with pytest.raises(HTTPException) as exc_info:
-        validate_deploy_webhook_signature(b"{}", "", "")
-
-    assert exc_info.value.status_code == 503
-    assert "签名密钥" in str(exc_info.value.detail)
-
-
-def test_deploy_webhook_rejects_invalid_signature():
-    with pytest.raises(HTTPException) as exc_info:
-        validate_deploy_webhook_signature(b"{}", "sha256=invalid", "secret")
-
-    assert exc_info.value.status_code == 401
-
-
-def test_deploy_webhook_accepts_valid_signature():
-    import hashlib
-    import hmac
-
-    body = b'{"status":"success"}'
-    digest = hmac.new(b"secret", body, hashlib.sha256).hexdigest()
-
-    validate_deploy_webhook_signature(body, f"sha256={digest}", "secret")

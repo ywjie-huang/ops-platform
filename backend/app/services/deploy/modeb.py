@@ -28,7 +28,24 @@ _JENKINS_TIMEOUT = 15
 _QUEUE_POLL_TIMES = 10      # 10 × 2s = 20s：等 Jenkins 队列分配合并构建号
 _QUEUE_POLL_INTERVAL = 2
 
-RELEASE_MODES = ("platform", "jenkins")
+
+def _get_jenkins_config() -> dict | None:
+    """从 system_config 表读取 Jenkins 配置。"""
+    from sqlalchemy import select
+    from app.db.database import SessionLocal
+    from app.models.system_config import SystemConfig
+
+    db = SessionLocal()
+    try:
+        cfg = db.scalar(select(SystemConfig).where(SystemConfig.key == "jenkins_config"))
+        if cfg and cfg.value:
+            try:
+                return json.loads(cfg.value)
+            except json.JSONDecodeError:
+                logger.error("jenkins_config JSON 解析失败")
+        return None
+    finally:
+        db.close()
 
 
 def build_jenkins_params(
@@ -106,7 +123,6 @@ def _trigger_and_track(
 
     在独立线程与 Session 中运行（与 execute_deploy 的线程模式一致）。
     """
-    from app.services.deploy.builder import _get_jenkins_config
     from app.services.deploy.records import append_log, update_status
 
     db = SessionLocal()
