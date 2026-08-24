@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onActivated } from 'vue'
+import { ref, reactive, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDeployRecords, getDeployApps, getDeployEnvs } from '@/api/deploy'
 import { usePagination } from '@/hooks/usePagination'
@@ -89,6 +89,7 @@ const statusOptions = [
   { label: '待执行', value: 'pending' },
   { label: '构建中', value: 'building' },
   { label: '部署中', value: 'deploying' },
+  { label: 'Jenkins执行中', value: 'triggering' },
   { label: '成功', value: 'success' },
   { label: '失败', value: 'failed' },
   { label: '已取消', value: 'cancelled' },
@@ -110,8 +111,8 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString('zh-CN')
 }
 
-async function fetchData(extra?: any) {
-  loading.value = true
+async function fetchData(extra?: any, silent = false) {
+  if (!silent) loading.value = true
   try {
     const params: any = {
       page: extra?.page || currentPage.value,
@@ -124,7 +125,7 @@ async function fetchData(extra?: any) {
     items.value = res.data.items
     total.value = res.data.total
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -141,9 +142,35 @@ function handleRowClick(row: any) {
   router.push(`/deploy/records/${row.id}`)
 }
 
+// ── 自动刷新：进行中的部署（含模式 B triggering）状态变化无需手动刷新 ──
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshTimer = setInterval(() => {
+    // 存在进行中记录才刷新；全部终态则保持静态（新部署发起后下次激活/操作会恢复轮询）
+    const active = items.value.some((r) =>
+      ['pending', 'building', 'deploying', 'triggering'].includes(r.status),
+    )
+    if (active) fetchData(undefined, true)
+  }, 3000)
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
 onActivated(() => {
   fetchData()
   fetchDropdowns()
+  startAutoRefresh()
+})
+
+onDeactivated(() => {
+  stopAutoRefresh()
 })
 </script>
 

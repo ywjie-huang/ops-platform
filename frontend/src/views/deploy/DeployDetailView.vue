@@ -271,8 +271,8 @@ onActivated(() => {
   stopSSE()
   recordId.value = Number(route.params.id)
   fetchRecord().then(() => {
-    // 如果还在执行中，启动 SSE
-    if (['pending', 'building', 'deploying'].includes(record.value.status)) {
+    // 如果还在执行中（含模式 B 的 triggering），启动轮询
+    if (['pending', 'building', 'deploying', 'triggering'].includes(record.value.status)) {
       startSSE()
     }
   })
