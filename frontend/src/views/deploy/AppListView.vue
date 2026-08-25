@@ -46,68 +46,85 @@
     <div class="data-card table-card">
       <div class="table-wrapper">
         <el-table :data="visibleItems" v-loading="loading" @row-click="(row: any) => goDetail(row.name)" row-class-name="row-clickable">
-          <el-table-column label="应用" min-width="180">
-            <template #default="{ row }">
-              <div class="app-name">{{ row.name }}</div>
-              <div class="app-desc">{{ row.description || row.display_name || '—' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="类型" width="110">
-            <template #default="{ row }">
-              <span class="type-tag">{{ typeLabel(row.app_type) }}</span>
-              <div v-if="row.status === 'archived'" class="archived-note">已归档</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="Jenkins Job" min-width="170">
-            <template #default="{ row }">
-              <code v-if="row.jenkins_job_name" class="mono job-code">{{ row.jenkins_job_name }}</code>
-              <span v-else class="muted">未配置</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="环境状态" min-width="230">
-            <template #default="{ row }">
-              <div v-if="row.env_status?.length" class="env-chips">
-                <span
-                  v-for="e in row.env_status"
-                  :key="e.env_id"
-                  class="echip"
-                  :class="echipClass(e)"
-                  :title="echipTitle(e)"
-                >
-                  <span class="echip-env">{{ e.env_name }}</span>
-                  <span class="st">{{ echipMark(e) }}</span>
-                </span>
-              </div>
-              <span v-else class="muted">未配置环境</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="最近部署" min-width="170">
-            <template #default="{ row }">
-              <template v-if="row.last_record">
-                <span class="pill" :class="'pill--' + deployStatusType(row.last_record.status)">
-                  <i class="dot" :class="{ 'dot--pulse': isActiveStatus(row.last_record.status) }"></i>
-                  {{ deployStatusLabel(row.last_record.status) }}
-                </span>
-                <div class="last-meta">
-                  {{ formatRelativeTime(row.last_record.created_at || '') }} · {{ row.last_record.trigger_user_name || '—' }}
-                  <template v-if="row.last_record.version"> · <code class="mono">{{ row.last_record.version }}</code></template>
-                </div>
+          <!-- 分组一：应用基础信息 -->
+          <el-table-column label="应用基础信息" label-class-name="group-label">
+            <el-table-column label="应用" min-width="180">
+              <template #default="{ row }">
+                <div class="app-name">{{ row.name }}</div>
+                <div class="app-desc">{{ row.description || row.display_name || '—' }}</div>
               </template>
-              <span v-else class="muted">从未部署</span>
-            </template>
+            </el-table-column>
+            <el-table-column label="类型" width="110">
+              <template #default="{ row }">
+                <span class="type-tag">{{ typeLabel(row.app_type) }}</span>
+                <div v-if="row.status === 'archived'" class="archived-note">已归档</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="110">
+              <template #default="{ row }">
+                <span class="muted" :title="formatFullDateTime(row.updated_at)">{{ formatRelativeTime(row.updated_at) }}</span>
+              </template>
+            </el-table-column>
           </el-table-column>
-          <el-table-column label="更新时间" width="110">
-            <template #default="{ row }">
-              <span class="muted" :title="formatFullDateTime(row.updated_at)">{{ formatRelativeTime(row.updated_at) }}</span>
-            </template>
+          <!-- 分组二：部署状态 -->
+          <el-table-column label="部署状态" label-class-name="group-label group-label--div">
+            <el-table-column label="环境状态" min-width="230" class-name="group-first" label-class-name="group-first">
+              <template #default="{ row }">
+                <div v-if="row.env_status?.length" class="env-chips">
+                  <span
+                    v-for="e in row.env_status"
+                    :key="e.env_id"
+                    class="echip"
+                    :class="echipClass(e)"
+                    :title="echipTitle(e)"
+                  >
+                    <span class="echip-env">{{ e.env_name }}</span>
+                    <span class="st">{{ echipMark(e) }}</span>
+                  </span>
+                </div>
+                <span v-else class="muted">未配置环境</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近部署" min-width="170">
+              <template #default="{ row }">
+                <template v-if="row.last_record">
+                  <span class="pill" :class="'pill--' + deployStatusType(row.last_record.status)">
+                    <i class="dot" :class="{ 'dot--pulse': isActiveStatus(row.last_record.status) }"></i>
+                    {{ deployStatusLabel(row.last_record.status) }}
+                  </span>
+                  <div class="last-meta">
+                    {{ formatRelativeTime(row.last_record.created_at || '') }} · {{ row.last_record.trigger_user_name || '—' }}
+                    <template v-if="row.last_record.version"> · <code class="mono">{{ row.last_record.version }}</code></template>
+                  </div>
+                </template>
+                <span v-else class="muted">从未部署</span>
+              </template>
+            </el-table-column>
           </el-table-column>
-          <el-table-column label="操作" width="210" fixed="right">
+          <!-- 分组三：API服务 -->
+          <el-table-column label="API服务" label-class-name="group-label group-label--div">
+            <el-table-column label="Jenkins Job" min-width="170" class-name="group-first" label-class-name="group-first">
+              <template #default="{ row }">
+                <code v-if="row.jenkins_job_name" class="mono job-code">{{ row.jenkins_job_name }}</code>
+                <span v-else class="muted">未配置</span>
+              </template>
+            </el-table-column>
+          </el-table-column>
+          <el-table-column label="操作" width="220" fixed="right">
             <template #default="{ row }">
-              <div @click.stop>
-                <el-button text type="primary" size="small" @click="goDetail(row.name)">详情</el-button>
-                <el-button v-if="canExecute" text type="primary" size="small" :disabled="row.status !== 'active' || !row.env_status?.some((e: any) => e.enabled)" @click="openDeploy(row)">部署</el-button>
-                <el-button v-if="canUpdate" text size="small" @click="$router.push('/deploy/apps/' + row.name + '/edit')">编辑</el-button>
-                <el-button v-if="canDelete" text type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+              <div class="action-cell" @click.stop>
+                <el-button text type="primary" size="small" @click="goDetail(row.name)">
+                  <el-icon><View /></el-icon><span>详情</span>
+                </el-button>
+                <el-button v-if="canExecute" text type="primary" size="small" :disabled="row.status !== 'active' || !row.env_status?.some((e: any) => e.enabled)" @click="openDeploy(row)">
+                  <el-icon><Promotion /></el-icon><span>部署</span>
+                </el-button>
+                <el-button v-if="canUpdate" text size="small" @click="$router.push('/deploy/apps/' + row.name + '/edit')">
+                  <el-icon><EditPen /></el-icon><span>编辑</span>
+                </el-button>
+                <el-button v-if="canDelete" text type="danger" size="small" @click="handleDelete(row)">
+                  <el-icon><Delete /></el-icon><span>删除</span>
+                </el-button>
               </div>
             </template>
           </el-table-column>
@@ -166,7 +183,7 @@
 import { ref, reactive, computed, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Promotion } from '@element-plus/icons-vue'
+import { Plus, Search, Promotion, View, EditPen, Delete } from '@element-plus/icons-vue'
 import { getDeployApps, deleteDeployApp, executeDeploy } from '@/api/deploy'
 import { usePagination } from '@/hooks/usePagination'
 import { useAuthStore } from '@/stores/modules/auth'
@@ -403,6 +420,41 @@ async function confirmDeploy() {
 
 :deep(.row-clickable) {
   cursor: pointer;
+}
+
+/* ── 列视觉分组：浅灰分割线 + 分组表头 ── */
+:deep(.group-label) {
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 6%, transparent);
+
+  .cell { text-align: center; }
+}
+
+/* 组边界：表头（label-class-name）与表体（class-name）同时画左侧浅灰分割线，贯通整列 */
+:deep(.group-label--div),
+:deep(.group-first) {
+  border-left: 1px solid var(--border-color);
+}
+
+/* ── 操作列：图标+文字，垂直居中对齐 ── */
+.action-cell {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+
+  .el-button {
+    margin-left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+/* 行内容统一垂直居中 */
+:deep(.el-table__cell) {
+  vertical-align: middle;
 }
 
 /* ── 环境状态 chips ── */
