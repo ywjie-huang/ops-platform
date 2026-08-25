@@ -68,7 +68,7 @@
           </el-table-column>
           <!-- 分组二：部署状态 -->
           <el-table-column label="部署状态" label-class-name="group-label group-label--div">
-            <el-table-column label="环境状态" min-width="230" class-name="group-first" label-class-name="group-first">
+            <el-table-column label="环境状态" min-width="180" class-name="group-first" label-class-name="group-first">
               <template #default="{ row }">
                 <div v-if="row.env_status?.length" class="env-chips">
                   <span
@@ -110,7 +110,7 @@
               </template>
             </el-table-column>
           </el-table-column>
-          <el-table-column label="操作" width="220" fixed="right">
+          <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <div class="action-cell" @click.stop>
                 <el-button text type="primary" size="small" @click="goDetail(row.name)">
@@ -441,14 +441,17 @@ async function confirmDeploy() {
 .action-cell {
   display: flex;
   align-items: center;
-  gap: 2px;
-  flex-wrap: wrap;
+  gap: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 
   .el-button {
     margin-left: 0;
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    padding-left: 7px;
+    padding-right: 7px;
   }
 }
 
