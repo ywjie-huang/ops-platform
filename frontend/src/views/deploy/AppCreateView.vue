@@ -16,7 +16,10 @@
     </div>
 
     <AppBaseFormCards ref="baseFormRef" :form="form">
-      <template #footer-hint>创建后可进入「编辑应用」绑定部署环境</template>
+      <template #footer-hint>
+        <span v-if="isDirty" class="dirty-note"><i class="dirty-dot"></i>有未保存的修改</span>
+        <span v-else>创建后可进入「编辑应用」绑定部署环境</span>
+      </template>
       <template #footer>
         <el-button @click="$router.back()">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="handleSubmit">
@@ -28,9 +31,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, onActivated } from 'vue'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { createDeployApp } from '@/api/deploy'
 import AppBaseFormCards from './components/AppBaseFormCards.vue'
@@ -50,6 +53,25 @@ const DEFAULT_FORM = {
 
 const form = reactive({ ...DEFAULT_FORM })
 
+// ── 脏状态检测：与默认表单对比 ──
+const DEFAULT_SNAPSHOT = JSON.stringify(DEFAULT_FORM)
+const isDirty = computed(() => JSON.stringify(form) !== DEFAULT_SNAPSHOT)
+let skipGuard = false
+
+onBeforeRouteLeave(async () => {
+  if (skipGuard || !isDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前页面有未填写完成的内容，离开后内容将丢失。确定离开吗？', '未保存的内容', {
+      type: 'warning',
+      confirmButtonText: '离开',
+      cancelButtonText: '继续填写',
+    })
+    return true
+  } catch {
+    return false
+  }
+})
+
 async function handleSubmit() {
   const valid = await baseFormRef.value?.validate()?.catch(() => false)
   if (!valid) return
@@ -57,6 +79,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     await createDeployApp(form)
+    skipGuard = true
     ElMessage.success('创建成功')
     router.push('/deploy/apps')
   } finally {

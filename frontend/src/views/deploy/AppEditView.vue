@@ -84,7 +84,10 @@
         </section>
       </template>
 
-      <template #footer-hint>环境配置即时生效；此处按钮仅保存基本信息、构建配置与状态</template>
+      <template #footer-hint>
+        <span v-if="isDirty" class="dirty-note"><i class="dirty-dot"></i>有未保存的修改</span>
+        <span v-else>环境配置即时生效；此处按钮仅保存基本信息、构建配置与状态</span>
+      </template>
       <template #footer>
         <el-button @click="$router.back()">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="handleSubmit">
@@ -97,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onActivated } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Check, SwitchButton, Grid } from '@element-plus/icons-vue'
 import { getDeployApp, updateDeployApp, getDeployEnvs, getAppEnvs, updateAppEnv, deleteAppEnv } from '@/api/deploy'
@@ -125,6 +128,25 @@ const form = reactive({
   jenkins_job_name: '',
 })
 
+// ── 脏状态检测：表单快照对比 ──
+const pristine = ref('')
+const snapshot = () => JSON.stringify(form)
+const isDirty = computed(() => pristine.value !== '' && snapshot() !== pristine.value)
+
+onBeforeRouteLeave(async () => {
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前页面有未保存的修改，离开后修改将丢失。确定离开吗？', '未保存的修改', {
+      type: 'warning',
+      confirmButtonText: '离开',
+      cancelButtonText: '继续编辑',
+    })
+    return true
+  } catch {
+    return false
+  }
+})
+
 async function fetchApp() {
   loading.value = true
   try {
@@ -138,6 +160,7 @@ async function fetchApp() {
       git_branch: res.data.git_branch,
       jenkins_job_name: res.data.jenkins_job_name,
     })
+    pristine.value = snapshot()
   } finally {
     loading.value = false
   }
@@ -150,6 +173,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     await updateDeployApp(appName.value, form)
+    pristine.value = snapshot()
     ElMessage.success('保存成功')
     router.push(`/deploy/apps/${appName.value}`)
   } finally {
