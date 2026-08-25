@@ -1,111 +1,117 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h2 class="page-title">编辑应用</h2>
-      <el-button @click="$router.back()">返回</el-button>
-    </div>
+  <div v-loading="loading">
+    <!-- 面包屑 -->
+    <nav class="crumb" aria-label="面包屑">
+      <router-link to="/deploy/apps">应用管理</router-link>
+      <span class="sep">/</span>
+      <router-link :to="`/deploy/apps/${appName}`">{{ appName }}</router-link>
+      <span class="sep">/</span>
+      <span>编辑</span>
+    </nav>
 
-    <div v-loading="loading" class="data-card">
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="120px"
-        style="max-width: 720px"
-      >
-        <div class="form-section-title">基本信息</div>
-        <el-form-item label="应用名称" prop="name">
-          <el-input v-model="form.name" maxlength="100" show-word-limit />
-        </el-form-item>
-        <el-form-item label="应用类型" prop="app_type">
-          <el-select v-model="form.app_type" style="width: 100%">
-            <el-option label="Web 应用" value="web" />
-            <el-option label="API 服务" value="api" />
-            <el-option label="后台任务" value="worker" />
-            <el-option label="前端项目" value="frontend" />
-            <el-option label="其他" value="other" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Jenkins Job" prop="jenkins_job_name">
-          <el-input v-model="form.jenkins_job_name" placeholder="Jenkins Job 名称（执行构建与部署）" />
-          <el-text type="info" size="small" class="release-mode-tip">
-            Job 需声明参数：APP_NAME / ENV / VERSION / OPERATOR / RECORD_ID / RELEASE_MODE / ROLLBACK_FROM / CALLBACK_TOKEN。
-          </el-text>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option label="活跃" value="active" />
-            <el-option label="已归档" value="archived" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" />
-        </el-form-item>
-
-        <div class="form-section-title">Git 配置</div>
-        <el-form-item label="Git 仓库地址">
-          <el-input v-model="form.git_url" />
-        </el-form-item>
-        <el-form-item label="默认分支">
-          <el-input v-model="form.git_branch" />
-        </el-form-item>
-
-        <el-form-item>
-          <el-button type="primary" @click="handleSubmit" :loading="submitting">保存</el-button>
-          <el-button @click="$router.back()">取消</el-button>
-        </el-form-item>
-      </el-form>
-
-      <!-- 环境配置：独立于应用表单，操作即保存 -->
-      <div class="form-section-title">环境配置</div>
-      <p class="env-hint">将全局环境绑定到本应用后，即可在应用详情页对该环境发起部署；「停用」保留绑定但不可部署，「移除」解除绑定。</p>
-      <div v-loading="envsLoading" class="env-list">
-        <div v-for="env in allEnvs" :key="env.id" class="env-row">
-          <div class="env-info">
-            <span class="env-title">{{ env.display_name || env.name }}</span>
-            <span class="env-key mono muted">{{ env.name }}</span>
-            <span v-if="env.approval_required" class="approval-tag">需审批</span>
-          </div>
-          <span class="env-desc muted">{{ env.description || '' }}</span>
-          <span class="sp"></span>
-          <template v-if="boundOf(env)">
-            <el-switch
-              :model-value="boundOf(env)!.enabled"
-              :disabled="!canUpdate"
-              inline-prompt
-              active-text="启用"
-              inactive-text="停用"
-              @change="(val: string | number | boolean) => toggleEnvEnabled(env, val === true)"
-            />
-            <el-button v-if="canUpdate" text type="danger" size="small" @click="removeEnv(env)">
-              <el-icon><Delete /></el-icon><span>移除</span>
-            </el-button>
-          </template>
-          <el-button v-else-if="canUpdate" size="small" @click="addEnv(env)">
-            <el-icon><Plus /></el-icon><span>添加</span>
-          </el-button>
-          <span v-else class="muted">未绑定</span>
-        </div>
-        <el-empty v-if="!envsLoading && !allEnvs.length" description="暂无可用环境，请联系管理员在初始化数据中配置" :image-size="60" />
+    <!-- 页头 -->
+    <div class="page-header edit-head">
+      <div class="head-left">
+        <h2 class="page-title">编辑应用</h2>
+        <span class="pill" :class="form.status === 'active' ? 'pill--success' : 'pill--info'">
+          <i class="dot"></i>{{ form.status === 'active' ? '活跃' : '已归档' }}
+        </span>
+        <span class="type-tag">{{ appTypeLabel(form.app_type) }}</span>
       </div>
     </div>
+
+    <AppBaseFormCards ref="baseFormRef" :form="form">
+      <!-- 状态卡片（辅列顶部） -->
+      <template #side-top>
+        <section class="form-card">
+          <header class="card-head">
+            <span class="card-icon"><el-icon><SwitchButton /></el-icon></span>
+            <div class="card-head-t">
+              <h3 class="card-title">状态</h3>
+              <p class="card-desc">控制应用是否可发起新的部署</p>
+            </div>
+          </header>
+          <el-radio-group v-model="form.status" class="status-radios">
+            <el-radio-button value="active">活跃</el-radio-button>
+            <el-radio-button value="archived">已归档</el-radio-button>
+          </el-radio-group>
+          <p class="card-note">归档后应用从发布总览矩阵隐藏，且无法触发新部署；历史记录保留。</p>
+        </section>
+      </template>
+
+      <!-- 环境配置卡片（主列，即时保存） -->
+      <template #main-extra>
+        <section class="form-card">
+          <header class="card-head">
+            <span class="card-icon"><el-icon><Grid /></el-icon></span>
+            <div class="card-head-t">
+              <h3 class="card-title">环境配置</h3>
+              <p class="card-desc">绑定全局环境后即可在详情页对其发起部署；此区块操作即时保存</p>
+            </div>
+          </header>
+          <div v-loading="envsLoading" class="env-list">
+            <div v-for="env in allEnvs" :key="env.id" class="env-row">
+              <span class="env-dot" :style="{ background: envColor(env.name) }"></span>
+              <div class="env-info" :class="{ 'env-info--off': boundOf(env) && !boundOf(env)!.enabled }">
+                <div class="env-line">
+                  <span class="env-title">{{ env.display_name || env.name }}</span>
+                  <span class="env-key mono muted">{{ env.name }}</span>
+                  <span v-if="env.approval_required" class="approval-tag">需审批</span>
+                </div>
+                <div class="env-desc muted">{{ env.description || '—' }}</div>
+              </div>
+              <span class="pill" :class="envPillClass(env)"><i class="dot"></i>{{ envPillText(env) }}</span>
+              <template v-if="boundOf(env)">
+                <el-switch
+                  :model-value="boundOf(env)!.enabled"
+                  :disabled="!canUpdate"
+                  inline-prompt
+                  active-text="启用"
+                  inactive-text="停用"
+                  aria-label="启用或停用该环境"
+                  @change="(val: string | number | boolean) => toggleEnvEnabled(env, val === true)"
+                />
+                <el-button v-if="canUpdate" text type="danger" size="small" @click="removeEnv(env)">
+                  <el-icon><Delete /></el-icon><span>移除</span>
+                </el-button>
+              </template>
+              <el-button v-else-if="canUpdate" size="small" @click="addEnv(env)">
+                <el-icon><Plus /></el-icon><span>添加</span>
+              </el-button>
+            </div>
+            <el-empty v-if="!envsLoading && !allEnvs.length" description="暂无可用环境，请联系管理员在初始化数据中配置" :image-size="60" />
+          </div>
+        </section>
+      </template>
+
+      <template #footer-hint>环境配置即时生效；此处按钮仅保存基本信息、构建配置与状态</template>
+      <template #footer>
+        <el-button @click="$router.back()">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">
+          <el-icon><Check /></el-icon>保存
+        </el-button>
+      </template>
+    </AppBaseFormCards>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Delete, Check, SwitchButton, Grid } from '@element-plus/icons-vue'
 import { getDeployApp, updateDeployApp, getDeployEnvs, getAppEnvs, updateAppEnv, deleteAppEnv } from '@/api/deploy'
 import { useAuthStore } from '@/stores/modules/auth'
+import { appTypeLabel } from '@/utils/appTypes'
+import { envColor } from '@/utils/deployStatus'
+import AppBaseFormCards from './components/AppBaseFormCards.vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const canUpdate = computed(() => authStore.hasPermission('deploy.update'))
 const appName = ref(String(route.params.name))
-const formRef = ref<FormInstance>()
+const baseFormRef = ref<InstanceType<typeof AppBaseFormCards>>()
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -118,14 +124,6 @@ const form = reactive({
   git_branch: 'main',
   jenkins_job_name: '',
 })
-
-const rules: FormRules = {
-  name: [
-    { required: true, message: '请输入应用名称', trigger: 'blur' },
-    { min: 2, max: 100, message: '长度 2-100 个字符', trigger: 'blur' },
-  ],
-  app_type: [{ required: true, message: '请选择应用类型', trigger: 'change' }],
-}
 
 async function fetchApp() {
   loading.value = true
@@ -146,7 +144,7 @@ async function fetchApp() {
 }
 
 async function handleSubmit() {
-  const valid = await formRef.value?.validate().catch(() => false)
+  const valid = await baseFormRef.value?.validate()?.catch(() => false)
   if (!valid) return
 
   submitting.value = true
@@ -178,6 +176,18 @@ const appEnvs = ref<any[]>([])
 const envsLoading = ref(false)
 
 const boundOf = (env: any) => appEnvs.value.find((ae: any) => ae.env_id === env.id)
+
+function envPillClass(env: any) {
+  const ae = boundOf(env)
+  if (!ae) return 'pill--info'
+  return ae.enabled ? 'pill--success' : 'pill--warning'
+}
+
+function envPillText(env: any) {
+  const ae = boundOf(env)
+  if (!ae) return '未绑定'
+  return ae.enabled ? '已启用' : '已停用'
+}
 
 async function fetchEnvs() {
   envsLoading.value = true
@@ -217,65 +227,95 @@ async function removeEnv(env: any) {
 </script>
 
 <style scoped lang="scss">
-.form-section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 24px 0 16px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.form-section-title:first-child {
-  margin-top: 0;
-}
-
-.form-hint {
-  margin-left: 12px;
-  font-size: 12px;
+.crumb {
+  font-size: 13px;
   color: var(--text-muted);
+  margin-bottom: 10px;
+
+  a { color: var(--text-secondary); transition: color .15s; }
+  a:hover { color: var(--primary-color); }
+  .sep { margin: 0 6px; }
 }
+
+.edit-head { margin-bottom: 14px; }
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── 状态 pill ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+  &--success { color: #15803d; background: color-mix(in srgb, var(--success-color) 12%, transparent); }
+  &--warning { color: #b45309; background: color-mix(in srgb, var(--warning-color) 14%, transparent); }
+  &--info { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 14%, transparent); }
+}
+
+.type-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.status-radios { width: 100%; }
 
 /* ── 环境配置 ── */
-.env-hint {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin: -6px 0 10px;
-}
-
-.env-list {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 4px 16px;
-}
+.env-list { min-height: 48px; }
 
 .env-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
+  flex-wrap: wrap;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border-color);
 
-  &:last-child { border-bottom: 0; }
+  &:first-child { padding-top: 2px; }
+  &:last-child { border-bottom: 0; padding-bottom: 2px; }
+}
+
+.env-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
 }
 
 .env-info {
+  flex: 1 1 240px;
+  min-width: 0;
+
+  &--off { opacity: .6; }
+}
+
+.env-line {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  min-width: 0;
 }
 
 .env-title { font-weight: 650; }
 .env-key { font-size: 11.5px; }
-
-.env-desc {
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.env-desc { font-size: 12px; margin-top: 2px; }
 
 .approval-tag {
   display: inline-flex;
@@ -290,5 +330,4 @@ async function removeEnv(env: any) {
 
 .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
 .muted { color: var(--text-muted); }
-.sp { flex: 1; }
 </style>
