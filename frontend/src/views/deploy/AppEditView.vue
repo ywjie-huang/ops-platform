@@ -55,18 +55,55 @@
           <el-button @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
+
+      <!-- 环境配置：独立于应用表单，操作即保存 -->
+      <div class="form-section-title">环境配置</div>
+      <p class="env-hint">将全局环境绑定到本应用后，即可在应用详情页对该环境发起部署；「停用」保留绑定但不可部署，「移除」解除绑定。</p>
+      <div v-loading="envsLoading" class="env-list">
+        <div v-for="env in allEnvs" :key="env.id" class="env-row">
+          <div class="env-info">
+            <span class="env-title">{{ env.display_name || env.name }}</span>
+            <span class="env-key mono muted">{{ env.name }}</span>
+            <span v-if="env.approval_required" class="approval-tag">需审批</span>
+          </div>
+          <span class="env-desc muted">{{ env.description || '' }}</span>
+          <span class="sp"></span>
+          <template v-if="boundOf(env)">
+            <el-switch
+              :model-value="boundOf(env)!.enabled"
+              :disabled="!canUpdate"
+              inline-prompt
+              active-text="启用"
+              inactive-text="停用"
+              @change="(val: string | number | boolean) => toggleEnvEnabled(env, val === true)"
+            />
+            <el-button v-if="canUpdate" text type="danger" size="small" @click="removeEnv(env)">
+              <el-icon><Delete /></el-icon><span>移除</span>
+            </el-button>
+          </template>
+          <el-button v-else-if="canUpdate" size="small" @click="addEnv(env)">
+            <el-icon><Plus /></el-icon><span>添加</span>
+          </el-button>
+          <span v-else class="muted">未绑定</span>
+        </div>
+        <el-empty v-if="!envsLoading && !allEnvs.length" description="暂无可用环境，请联系管理员在初始化数据中配置" :image-size="60" />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onActivated } from 'vue'
+import { ref, reactive, computed, watch, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { getDeployApp, updateDeployApp } from '@/api/deploy'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Plus, Delete } from '@element-plus/icons-vue'
+import { getDeployApp, updateDeployApp, getDeployEnvs, getAppEnvs, updateAppEnv, deleteAppEnv } from '@/api/deploy'
+import { useAuthStore } from '@/stores/modules/auth'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const canUpdate = computed(() => authStore.hasPermission('deploy.update'))
 const appName = ref(String(route.params.name))
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -122,17 +159,64 @@ async function handleSubmit() {
   }
 }
 
-onActivated(fetchApp)
+onActivated(() => {
+  fetchApp()
+  fetchEnvs()
+})
 // keep-alive 下切换不同应用时重新加载
 watch(() => route.params.name, (n, o) => {
   if (n && n !== o) {
     appName.value = String(n)
     fetchApp()
+    fetchEnvs()
   }
 })
+
+// ── 环境配置 ──
+const allEnvs = ref<any[]>([])
+const appEnvs = ref<any[]>([])
+const envsLoading = ref(false)
+
+const boundOf = (env: any) => appEnvs.value.find((ae: any) => ae.env_id === env.id)
+
+async function fetchEnvs() {
+  envsLoading.value = true
+  try {
+    const [allRes, boundRes]: any[] = await Promise.all([getDeployEnvs(), getAppEnvs(appName.value)])
+    allEnvs.value = (allRes.data || []).slice().sort((a: any, b: any) => (a.sort_order - b.sort_order) || (a.id - b.id))
+    appEnvs.value = boundRes.data || []
+  } finally {
+    envsLoading.value = false
+  }
+}
+
+async function addEnv(env: any) {
+  await updateAppEnv(appName.value, env.id, { enabled: true })
+  ElMessage.success(`已添加环境「${env.display_name || env.name}」`)
+  await fetchEnvs()
+}
+
+async function toggleEnvEnabled(env: any, val: boolean) {
+  const ae = boundOf(env)
+  // 透传已有配置，避免 upsert 时用默认值覆盖 SSH / Docker / K8s 等字段
+  await updateAppEnv(appName.value, env.id, { ...ae, enabled: val })
+  ElMessage.success(val ? '已启用' : '已停用')
+  await fetchEnvs()
+}
+
+async function removeEnv(env: any) {
+  await ElMessageBox.confirm(
+    `确定将环境「${env.display_name || env.name}」从本应用移除吗？历史部署记录不受影响。`,
+    '移除环境',
+    { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' },
+  )
+  await deleteAppEnv(appName.value, env.id)
+  ElMessage.success('已移除')
+  await fetchEnvs()
+}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .form-section-title {
   font-size: 15px;
   font-weight: 600;
@@ -151,4 +235,60 @@ watch(() => route.params.name, (n, o) => {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* ── 环境配置 ── */
+.env-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: -6px 0 10px;
+}
+
+.env-list {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 4px 16px;
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+
+  &:last-child { border-bottom: 0; }
+}
+
+.env-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.env-title { font-weight: 650; }
+.env-key { font-size: 11.5px; }
+
+.env-desc {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.approval-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b45309;
+  background: color-mix(in srgb, var(--warning-color) 16%, transparent);
+}
+
+.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+.muted { color: var(--text-muted); }
+.sp { flex: 1; }
 </style>
