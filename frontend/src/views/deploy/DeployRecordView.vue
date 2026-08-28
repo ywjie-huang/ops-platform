@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="rec-page">
     <!-- 页头 -->
     <div class="page-header">
       <div>
@@ -244,6 +244,14 @@ async function handleCancel(row: any) {
 </script>
 
 <style scoped lang="scss">
+// 撑满 AppMain 内容区（100vh - 头部 44px - AppMain 上下 padding 40px），
+// 避免内容不足一屏时页面底部出现大片背景空白
+.rec-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--header-height) - 40px);
+}
+
 .rec-sub {
   font-size: 13px;
   color: var(--text-muted);
@@ -276,7 +284,13 @@ async function handleCancel(row: any) {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-.table-card { padding: 12px 16px 16px; }
+// 表格卡片撑满剩余高度，零星空白收进卡片内部
+.table-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 16px;
+}
 
 .app-name { font-weight: 650; }
 .ver-code { font-weight: 700; font-size: 12.5px; }
@@ -328,8 +342,10 @@ async function handleCancel(row: any) {
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
 }
 
+// 分页钉在卡片底部：位置不随行数跳动，操作路径稳定
 .pager {
-  margin-top: 14px;
+  margin-top: auto;
+  padding-top: 14px;
   justify-content: flex-end;
 }
 
